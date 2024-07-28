@@ -6,7 +6,7 @@ If you don't already have one, go to [Google AI Studio](https://ai.google.dev/tu
 Plain text generation  
 `$ gen dix noms de fleurs`
 
-At the prompt, best to quote the prompt with characters mean something to the shell  
+At the command line, you may have to put the prompt inside double quotes to avoid confusing the shell
 `$ gen "a scheme function to compute the Levenshtein distance between two strings; only the code"`
 
 Pipe content into gen  
@@ -35,6 +35,12 @@ List known Gemini models by invoking tool
 
 > [!NOTE]
 The -tool flag relies on Gemini API's Function Calling feature which is in Beta release.
+
+Extract entities from text  
+`w3m -dump https://lite.cnn.com/2024/07/27/asia/us-austin-trilateral-japan-south-korea-intl-hnk/index.html | gen -json extract entities`
+
+Prompts as files for iterative Prisonner's Dilemma paper  
+`cat pd.system | gen -json -s -f pd.prompt`
 
 ## Usage
 ```

@@ -2,14 +2,17 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
 
 	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/googleapi"
 )
 
 // ParamMap holds key-value pairs for string replacement.
@@ -144,4 +147,24 @@ func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) i
 	}
 	fmt.Fprintf(out, "%s", res)
 	return tokenCount
+}
+
+// getMIMEType returns the type of the given file
+func getMIMEType(f *os.File) string {
+	var res string
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err == nil {
+		res = http.DetectContentType(buf)
+		res = strings.Split(res, ";")[0]
+	}
+	return res
+}
+
+func genLogFatal(err error) {
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) {
+		log.Fatal(gerr)
+	} else {
+		log.Fatal(err)
+	}
 }

@@ -50,17 +50,17 @@ func emitGen(in io.Reader, out io.Writer) int {
 	// Flag handling
 	verboseFlag := flag.Bool("V", false, "output model | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
 	chatModeFlag := flag.Bool("c", false, "enter chat mode using prompt\nenter 2 consecutive blank lines to exit")
-	filePathVal := flag.String("f", "", "attach file to prompt")
+	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file")
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
 	jsonFlag := flag.Bool("json", false, "response uses the application/json MIME type")
 	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
 	keyVals := ParamMap{}
-	flag.Var(&keyVals, "p", "prompt parameter in format key=val\nreplace all occurrences of {key} in prompt with val")
+	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val")
 	systemInstructionFlag := flag.Bool("s", false, "treat prompt as system instruction\nstdin used if found")
 	tokenCountFlag := flag.Bool("t", false, "output number of tokens for prompt")
 	tempVal := flag.Float64("temp", 1.0, "changes sampling during response generation [0.0,2.0]")
-	topPVal := flag.Float64("top_p", 0.95, "change how the model selects tokens for generation [0.0,1.0]")
 	toolFlag := flag.Bool("tool", false, fmt.Sprintf("invoke one of the tools {%s}", knownTools()))
+	topPVal := flag.Float64("top_p", 0.95, "change how the model selects tokens for generation [0.0,1.0]")
 	unsafeFlag := flag.Bool("unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	versionFlag := flag.Bool("v", false, "show version and exit")
 	flag.Parse()
@@ -98,7 +98,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
 	if err != nil {
-		log.Fatal(err)
+		genLogFatal(err)
 	}
 	defer client.Close()
 
@@ -154,7 +154,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 	if *verboseFlag {
 		info, err := model.Info(ctx)
 		if err != nil {
-			log.Fatal(err)
+			genLogFatal(err)
 		}
 		fmt.Fprintf(out, "\033[36m%s | %d | %d | %.2f | %.2f | %d\033[0m\n", info.Name, info.InputTokenLimit, info.OutputTokenLimit, *tempVal, *topPVal, info.TopK)
 	}
@@ -181,26 +181,28 @@ func emitGen(in io.Reader, out io.Writer) int {
 			log.Fatal(err)
 		}
 		defer f.Close()
-		file, err = client.UploadFile(ctx, "", f, nil)
+		mimeType := getMIMEType(f)
+		opts := &genai.UploadFileOptions{MIMEType: mimeType}
+		file, err = client.UploadFile(ctx, "", f, opts)
 		if err != nil {
-			log.Fatal(err)
+			genLogFatal(err)
 		}
 		defer func() {
 			err := client.DeleteFile(ctx, file.Name)
 			if err != nil {
-				log.Fatal(err)
+				genLogFatal(err)
 			}
 		}()
 		if *tokenCountFlag {
 			resp, err := model.CountTokens(ctx, genai.FileData{URI: file.URI})
 			if err != nil {
-				log.Fatal(err)
+				genLogFatal(err)
 			}
 			tokenCount += resp.TotalTokens
 		}
 		_, err = sess.SendMessage(ctx, genai.FileData{URI: file.URI})
 		if err != nil {
-			log.Fatal(err)
+			genLogFatal(err)
 		}
 	}
 
@@ -208,7 +210,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		if *tokenCountFlag {
 			resp, err := model.CountTokens(ctx, genai.Text(prompt))
 			if err != nil {
-				log.Fatal(err)
+				genLogFatal(err)
 			}
 			tokenCount += resp.TotalTokens
 		}
@@ -220,7 +222,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 			}
 			if err != nil {
 				fmt.Fprintf(out, "\n")
-				log.Fatal(err)
+				genLogFatal(err)
 			}
 			emitGeneratedResponse(resp, out)
 		}
