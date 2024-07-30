@@ -2,14 +2,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/googleapi"
@@ -62,6 +63,7 @@ func searchReplace(prompt string, pm ParamMap) string {
 	return res
 }
 
+// knownTools returns string of comma-separated function names
 func knownTools() string {
 	var res []string
 	genTool := reflect.TypeOf(Tool{})
@@ -71,6 +73,7 @@ func knownTools() string {
 	return strings.Join(res, ",")
 }
 
+// registerTools declares functions of Tool in genai.FunctionDeclaration format
 func registerTools(model *genai.GenerativeModel, mode genai.FunctionCallingMode) {
 	genTool := reflect.TypeOf(Tool{})
 	for i := 0; i < genTool.NumMethod(); i++ {
@@ -109,6 +112,7 @@ func registerTools(model *genai.GenerativeModel, mode genai.FunctionCallingMode)
 	}
 }
 
+// invokeTool calls tool identified by genai.FunctionCall using anonymous argument names
 func invokeTool(fc genai.FunctionCall) string {
 	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
 	var args []reflect.Value
@@ -139,7 +143,7 @@ func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) i
 				if fc, ok := part.(genai.FunctionCall); ok {
 					res += invokeTool(fc)
 				} else {
-					res += fmt.Sprint(part)
+					res += fmt.Sprintf("\033[97m%s\033[0m", part)
 				}
 			}
 			tokenCount += cand.TokenCount
@@ -149,17 +153,7 @@ func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) i
 	return tokenCount
 }
 
-// getMIMEType returns the type of the given file
-func getMIMEType(f *os.File) string {
-	var res string
-	buf := make([]byte, 512)
-	if _, err := f.Read(buf); err == nil {
-		res = http.DetectContentType(buf)
-		res = strings.Split(res, ";")[0]
-	}
-	return res
-}
-
+// genLogFatal refines the error if available
 func genLogFatal(err error) {
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
@@ -167,4 +161,30 @@ func genLogFatal(err error) {
 	} else {
 		log.Fatal(err)
 	}
+}
+
+// uploadFile tracks state until FileStateActive reached
+func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fd.Close()
+
+	file, err := client.UploadFile(ctx, "", fd, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for file.State == genai.FileStateProcessing {
+		time.Sleep(1 * time.Second)
+		file, err = client.GetFile(ctx, file.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if file.State != genai.FileStateActive {
+		return nil, fmt.Errorf("uploaded file has state %s", file.State)
+	}
+	return file, nil
 }

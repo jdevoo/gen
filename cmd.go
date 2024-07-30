@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -32,7 +33,7 @@ func emitUsage(out io.Writer) {
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "Command-line interface to Google Gemini large language models\n")
 	fmt.Fprintf(out, "  Requires a valid GEMINI_API_KEY environment variable set\n")
-	fmt.Fprintf(out, "  The prompt is set from stdin and/or arguments.\n")
+	fmt.Fprintf(out, "  The final prompt is made of parts read from stdin, file option and argument.\n")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "Options:\n")
 	flag.PrintDefaults()
@@ -49,14 +50,14 @@ func emitGen(in io.Reader, out io.Writer) int {
 
 	// Flag handling
 	verboseFlag := flag.Bool("V", false, "output model | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
-	chatModeFlag := flag.Bool("c", false, "enter chat mode using prompt\nenter 2 consecutive blank lines to exit")
-	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file")
+	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype 2 consecutive blank lines to exit")
+	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file\nfile with the extension .prompt is treated as prompt")
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
 	jsonFlag := flag.Bool("json", false, "response uses the application/json MIME type")
 	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
 	keyVals := ParamMap{}
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val")
-	systemInstructionFlag := flag.Bool("s", false, "treat prompt as system instruction\nstdin used if found")
+	systemInstructionFlag := flag.Bool("s", false, "treat first of stdin or argument prompt as system instruction")
 	tokenCountFlag := flag.Bool("t", false, "output number of tokens for prompt")
 	tempVal := flag.Float64("temp", 1.0, "changes sampling during response generation [0.0,2.0]")
 	toolFlag := flag.Bool("tool", false, fmt.Sprintf("invoke one of the tools {%s}", knownTools()))
@@ -71,25 +72,30 @@ func emitGen(in io.Reader, out io.Writer) int {
 		return 0
 	}
 
-	// Set prompt from stdin, if any
-	var prompt string
+	// Stash stdin into prompt, if provided
+	var prompt []genai.Part
 	stdinFlag := hasInputFromStdin(in)
 	if stdinFlag {
 		if data, err := io.ReadAll(in); err != nil {
 			log.Fatal(err)
 		} else {
-			prompt = string(data)
+			prompt = append(prompt, genai.Text(searchReplace(string(data), keyVals)))
 			stdinFlag = len(prompt) > 0
 		}
 	}
 
 	// Handle invalid combinations
-	// no prompt at all, as argument or via stdin
-	// system instruction flag with prompt but no stdin
+	// no prompt at all, as argument, stdin or file
+	// stdin as system prompt, no other prompt
+	// argument as system prompt, no other prompt
+	// file option as system prompt, no other prompt
 	if *helpFlag ||
 		(*tempVal < 0 || *tempVal > 2) ||
 		(*topPVal < 0 || *topPVal > 1) ||
-		(!stdinFlag && len(flag.Args()) == 0) {
+		(!stdinFlag && len(flag.Args()) == 0 && *filePathVal == "") ||
+		*systemInstructionFlag && ((stdinFlag && len(flag.Args()) == 0 && *filePathVal == "") ||
+			(!stdinFlag && len(flag.Args()) != 0 && *filePathVal == "") ||
+			(!stdinFlag && len(flag.Args()) == 0 && *filePathVal != "")) {
 		emitUsage(out)
 		return 1
 	}
@@ -130,23 +136,53 @@ func emitGen(in io.Reader, out io.Writer) int {
 		registerTools(model, genai.FunctionCallingNone)
 	}
 
-	// Set system instruction
-	if stdinFlag {
-		prompt = searchReplace(prompt, keyVals)
-		if *systemInstructionFlag {
-			model.SystemInstruction = &genai.Content{
-				Parts: []genai.Part{genai.Text(prompt)},
+	// Set prompt from stdin unless system instruction set
+	if stdinFlag && *systemInstructionFlag {
+		model.SystemInstruction = &genai.Content{
+			Parts: prompt,
+		}
+		prompt = nil
+	}
+
+	// Handle attach flag and set as prompt if text
+	var file *genai.File
+	if *filePathVal != "" {
+		f, err := os.Open(*filePathVal)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		if path.Ext(*filePathVal) == ".prompt" {
+			if data, err := io.ReadAll(f); err != nil {
+				log.Fatal(err)
+			} else {
+				prompt = append(prompt, genai.Text(searchReplace(string(data), keyVals)))
 			}
-			prompt = ""
+		} else {
+			file, err = uploadFile(ctx, client, *filePathVal)
+			if err != nil {
+				genLogFatal(err)
+			}
+			defer func() {
+				err := client.DeleteFile(ctx, file.Name)
+				if err != nil {
+					genLogFatal(err)
+				}
+			}()
+			if err != nil {
+				genLogFatal(err)
+			}
 		}
 	}
+
+	// Set system instruction from argument
 	if len(flag.Args()) > 0 {
-		prompt += strings.Join(flag.Args(), " ")
-		prompt = searchReplace(prompt, keyVals)
-		if !stdinFlag && *chatModeFlag && *systemInstructionFlag {
+		prompt = append(prompt, genai.Text(searchReplace(strings.Join(flag.Args(), " "), keyVals)))
+		if !stdinFlag && *systemInstructionFlag { // argument as system instruction for chat
 			model.SystemInstruction = &genai.Content{
-				Parts: []genai.Part{genai.Text(prompt)},
+				Parts: prompt[len(prompt)-1:],
 			}
+			prompt = prompt[:len(prompt)-1]
 		}
 	}
 
@@ -161,60 +197,35 @@ func emitGen(in io.Reader, out io.Writer) int {
 
 	// Chat session
 	sess := model.StartChat()
-	var r io.Reader
+	var fd io.Reader
 
-	// Set descriptor for chat input
+	// Set file descriptor for chat input
 	if stdinFlag {
-		r, err = os.Open("/dev/tty")
+		fd, err = os.Open("/dev/tty")
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		r = in
+		fd = in
 	}
 
-	// Handle attach flag
-	var file *genai.File
-	if *filePathVal != "" {
-		f, err := os.Open(*filePathVal)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-		mimeType := getMIMEType(f)
-		opts := &genai.UploadFileOptions{MIMEType: mimeType}
-		file, err = client.UploadFile(ctx, "", f, opts)
-		if err != nil {
-			genLogFatal(err)
-		}
-		defer func() {
-			err := client.DeleteFile(ctx, file.Name)
-			if err != nil {
-				genLogFatal(err)
-			}
-		}()
-		if *tokenCountFlag {
-			resp, err := model.CountTokens(ctx, genai.FileData{URI: file.URI})
-			if err != nil {
-				genLogFatal(err)
-			}
-			tokenCount += resp.TotalTokens
-		}
-		_, err = sess.SendMessage(ctx, genai.FileData{URI: file.URI})
+	// Send FileData to model if available
+	if file != nil {
+		prompt = append(prompt, genai.FileData{MIMEType: file.MIMEType, URI: file.URI})
 		if err != nil {
 			genLogFatal(err)
 		}
 	}
 
 	for {
+		iter := sess.SendMessageStream(ctx, prompt...)
 		if *tokenCountFlag {
-			resp, err := model.CountTokens(ctx, genai.Text(prompt))
+			resp, err := model.CountTokens(ctx, prompt...)
 			if err != nil {
 				genLogFatal(err)
 			}
 			tokenCount += resp.TotalTokens
 		}
-		iter := sess.SendMessageStream(ctx, genai.Text(prompt))
 		for {
 			resp, err := iter.Next()
 			if err == iterator.Done {
@@ -235,24 +246,25 @@ func emitGen(in io.Reader, out io.Writer) int {
 			}
 		}
 		fmt.Fprintf(out, "\n")
-		prompt, err = readLine(r)
+		input, err := readLine(fd)
 		if err != nil {
 			log.Fatal(err)
 		}
 		// Check for double blank line exit condition
-		if prompt == "" {
-			prompt, err = readLine(r)
+		if input == "" {
+			input, err = readLine(fd)
 			if err != nil {
 				log.Fatal(err)
 			}
-			if prompt == "" {
+			if input == "" {
 				break // exit chat mode
 			}
 		}
+		prompt = []genai.Part{genai.Text(input)}
 	}
 
 	if *tokenCountFlag {
-		fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", tokenCount)
+		fmt.Fprintf(out, "\n\033[31m%d tokens\033[0m\n", tokenCount)
 	}
 
 	return 0
@@ -264,7 +276,7 @@ func main() {
 	go func() {
 		<-done
 		if tokenCount > 0 {
-			fmt.Printf("\033[31m%d tokens\033[0m\n", tokenCount)
+			fmt.Printf("\n\033[31m%d tokens\033[0m\n", tokenCount)
 		}
 		os.Exit(1)
 	}()

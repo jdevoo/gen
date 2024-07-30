@@ -38,7 +38,7 @@ func (t Tool) KnownModels() (string, error) {
 
 // DSN e.g. postgres://steampipe:secret@localhost/steampipe
 func (t Tool) QueryPostgres(query string) (string, error) {
-	return fmt.Sprintf(">>> %s\n", query), nil
+	return fmt.Sprintf("%s\n", query), nil
 	/*
 		if val, ok := os.LookupEnv("GENDSN"); !ok || len(val) == 0 {
 			return "", fmt.Errorf("QueryPostgres() GENDSN environment variable not set")

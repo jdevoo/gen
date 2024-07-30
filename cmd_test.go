@@ -59,7 +59,7 @@ func TestFlags(T *testing.T) {
 			"you understand english but always reply in french",
 			[]string{"-s", "ten names for money"},
 			0,
-			"oici",
+			"illets",
 		},
 		{
 			"gen",
