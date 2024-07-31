@@ -18,8 +18,11 @@ Obtain the token count
 Parameterize prompts  
 `gen -p a=1 -p b=2 "complete this sentence: replace {a} apple with {a} banana and {b} oranges for a good ..."`
 
-Set a system instruction and submit prompt as argument  
+Set a system instruction from stdin and argument as prompt  
 `echo "you understand english but always reply in french" | gen -s ten names for flowers`
+
+Set a system instruction from file option and argument as prompt  
+`gen -f french.prompt -s you understand english but always answer in french"`
 
 Attach a file to the prompt and return total token count  
 `gen -t -f ../twitter/img/123497680.jpg is this picture showing a face or a logo?`
@@ -47,32 +50,33 @@ Prompts as files from iterative Prisonner's Dilemma [paper](https://arxiv.org/ht
 Usage: gen [options] <prompt>
 
 Command-line interface to Google Gemini large language models
-  Requires a valid GEMINI_API_KEY environment variable set
-  The prompt is assembled from stdin, file option and argument.
+  Requires a valid GEMINI_API_KEY environment variable set.
+  Content is generated according to the prompt argument.
+  Additionally, supports stdin and .prompt files as valid prompt parts.
 
 Options:
   -V    output model | maxInputTokens | maxOutputTokens | temp | top_p | top_k
-  -c    enter chat mode using system instruction or prompt
-        type 2 consecutive blank lines to exit
+  -c    enter chat mode after content generation
+        type two consecutive blank lines to exit
   -f string
         attach file to prompt where string is the path to the file
+        file with the extension .prompt is treated as prompt
   -h    show this help message and exit
   -json
-        response uses the application/json MIME type
+        response in JavaScript Object Notation
   -m string
         generative model name (default "gemini-1.5-flash")
   -p value
         prompt parameter value in format key=val
         replaces all occurrences of {key} in prompt with val
-  -s    treat prompt as system instruction
-        one of stdin, file or argument in that order
+  -s    treat first of stdin or file option as system instruction
   -t    output number of tokens for prompt
   -temp float
         changes sampling during response generation [0.0,2.0] (default 1)
   -tool
         invoke one of the tools {KnownModels,QueryPostgres}
   -top_p float
-        change how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit

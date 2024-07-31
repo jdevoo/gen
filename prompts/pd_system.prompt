@@ -1,0 +1,9 @@
+Player A and player B are playing a multi-round game.
+At each turn, player A and player B simultaneously perform one of the following actions: {"Cooperate", "Defect"}
+The payoffs for each combination of chosen actions are the following:
+If A plays "Defect" and B plays "Defect", A collects 1 point and B collects 1 point.
+If A plays "Defect" and B plays "Cooperate", A collects 5 points and B collects 0 points.
+If A plays "Cooperate" and B plays "Defect", A collects 0 points and B collects 5 points.
+If A plays "Cooperate" and B plays "Cooperate", A collects 3 points and B collects 3 points.
+They will play a total of 100 rounds of this game.
+Remember that a player's objective is to get the highest possible number of points in the long run.

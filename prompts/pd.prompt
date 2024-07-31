@@ -1,0 +1,18 @@
+The history of the game in the last rounds is the following:
+
+Round 2: A played "Cooperate" and B played "Defect" A collected 0 points and B collected 5 points.
+Round 3: A played "Defect" and B played "Defect" A collected 1 point and B collected 1 point.
+Round 4: A played "Cooperate" and B played "Defect" A collected 0 points and B collected 5 points.
+Round 5: A played "Defect" and B played "Cooperate" A collected 5 points and B collected 0 points.
+Round 6: A played "Defect" and B played "Defect" A collected 1 point and B collected 1 point.
+
+In total, A chose "Cooperate" 2 times and chose "Defect" 3 times, B chose "Cooperate" 1 time and chose "Defect" 4 times.
+In total, A collected 7 points and B collected 12 points.
+
+Remember to use only the following JSON format: {"action": "<ACTION>", "reason": "<REASON>"}
+
+Answer saying which action player A should play.
+
+Remember to answer using the right format.
+
+Current round: 7

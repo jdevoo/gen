@@ -32,8 +32,9 @@ func emitUsage(out io.Writer) {
 	fmt.Fprintf(out, "Usage: "+filepath.Base(os.Args[0])+" [options] <prompt>\n")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "Command-line interface to Google Gemini large language models\n")
-	fmt.Fprintf(out, "  Requires a valid GEMINI_API_KEY environment variable set\n")
-	fmt.Fprintf(out, "  The final prompt is made of parts read from stdin, file option and argument.\n")
+	fmt.Fprintf(out, "  Requires a valid GEMINI_API_KEY environment variable set.\n")
+	fmt.Fprintf(out, "  Content is generated according to the prompt argument.\n")
+	fmt.Fprintf(out, "  Additionally, supports stdin and .prompt files as valid prompt parts.\n")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "Options:\n")
 	flag.PrintDefaults()
@@ -50,18 +51,18 @@ func emitGen(in io.Reader, out io.Writer) int {
 
 	// Flag handling
 	verboseFlag := flag.Bool("V", false, "output model | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
-	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype 2 consecutive blank lines to exit")
+	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype two consecutive blank lines to exit")
 	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file\nfile with the extension .prompt is treated as prompt")
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
-	jsonFlag := flag.Bool("json", false, "response uses the application/json MIME type")
+	jsonFlag := flag.Bool("json", false, "response in JavaScript Object Notation")
 	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
 	keyVals := ParamMap{}
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val")
-	systemInstructionFlag := flag.Bool("s", false, "treat first of stdin or argument prompt as system instruction")
+	systemInstructionFlag := flag.Bool("s", false, "treat first of stdin or file option as system instruction")
 	tokenCountFlag := flag.Bool("t", false, "output number of tokens for prompt")
 	tempVal := flag.Float64("temp", 1.0, "changes sampling during response generation [0.0,2.0]")
 	toolFlag := flag.Bool("tool", false, fmt.Sprintf("invoke one of the tools {%s}", knownTools()))
-	topPVal := flag.Float64("top_p", 0.95, "change how the model selects tokens for generation [0.0,1.0]")
+	topPVal := flag.Float64("top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
 	unsafeFlag := flag.Bool("unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	versionFlag := flag.Bool("v", false, "show version and exit")
 	flag.Parse()
@@ -72,7 +73,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		return 0
 	}
 
-	// Stash stdin into prompt, if provided
+	// Set stdin as prompt, if provided
 	var prompt []genai.Part
 	stdinFlag := hasInputFromStdin(in)
 	if stdinFlag {
@@ -95,7 +96,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		(!stdinFlag && len(flag.Args()) == 0 && *filePathVal == "") ||
 		*systemInstructionFlag && ((stdinFlag && len(flag.Args()) == 0 && *filePathVal == "") ||
 			(!stdinFlag && len(flag.Args()) != 0 && *filePathVal == "") ||
-			(!stdinFlag && len(flag.Args()) == 0 && *filePathVal != "")) {
+			(!stdinFlag && len(flag.Args()) == 0 && path.Ext(*filePathVal) == ".prompt")) {
 		emitUsage(out)
 		return 1
 	}
@@ -109,16 +110,6 @@ func emitGen(in io.Reader, out io.Writer) int {
 	defer client.Close()
 
 	model := client.GenerativeModel(*modelName)
-
-	// Handle safety flag
-	if *unsafeFlag {
-		model.SafetySettings = []*genai.SafetySetting{
-			{
-				Category:  genai.HarmCategoryDangerousContent,
-				Threshold: genai.HarmBlockNone,
-			},
-		}
-	}
 
 	// Set temperature and top_p from args or model defaults
 	model.SetTemperature(float32(*tempVal))
@@ -136,7 +127,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		registerTools(model, genai.FunctionCallingNone)
 	}
 
-	// Set prompt from stdin unless system instruction set
+	// Promote stdin prompt as system instruction
 	if stdinFlag && *systemInstructionFlag {
 		model.SystemInstruction = &genai.Content{
 			Parts: prompt,
@@ -144,7 +135,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		prompt = nil
 	}
 
-	// Handle attach flag and set as prompt if text
+	// Handle file option and set as prompt or system instruction if file ends with .prompt
 	var file *genai.File
 	if *filePathVal != "" {
 		f, err := os.Open(*filePathVal)
@@ -157,6 +148,12 @@ func emitGen(in io.Reader, out io.Writer) int {
 				log.Fatal(err)
 			} else {
 				prompt = append(prompt, genai.Text(searchReplace(string(data), keyVals)))
+				if !stdinFlag && len(flag.Args()) > 0 && *systemInstructionFlag {
+					model.SystemInstruction = &genai.Content{
+						Parts: prompt,
+					}
+					prompt = nil
+				}
 			}
 		} else {
 			file, err = uploadFile(ctx, client, *filePathVal)
@@ -175,14 +172,16 @@ func emitGen(in io.Reader, out io.Writer) int {
 		}
 	}
 
-	// Set system instruction from argument
+	// Handle argument as prompt
 	if len(flag.Args()) > 0 {
 		prompt = append(prompt, genai.Text(searchReplace(strings.Join(flag.Args(), " "), keyVals)))
-		if !stdinFlag && *systemInstructionFlag { // argument as system instruction for chat
-			model.SystemInstruction = &genai.Content{
-				Parts: prompt[len(prompt)-1:],
-			}
-			prompt = prompt[:len(prompt)-1]
+	}
+
+	// Send FileData to model if available
+	if file != nil {
+		prompt = append(prompt, genai.FileData{MIMEType: file.MIMEType, URI: file.URI})
+		if err != nil {
+			genLogFatal(err)
 		}
 	}
 
@@ -209,15 +208,16 @@ func emitGen(in io.Reader, out io.Writer) int {
 		fd = in
 	}
 
-	// Send FileData to model if available
-	if file != nil {
-		prompt = append(prompt, genai.FileData{MIMEType: file.MIMEType, URI: file.URI})
-		if err != nil {
-			genLogFatal(err)
-		}
-	}
-
+	// Main chat loop
 	for {
+		if *unsafeFlag {
+			model.SafetySettings = []*genai.SafetySetting{
+				{
+					Category:  genai.HarmCategoryDangerousContent,
+					Threshold: genai.HarmBlockNone,
+				},
+			}
+		}
 		iter := sess.SendMessageStream(ctx, prompt...)
 		if *tokenCountFlag {
 			resp, err := model.CountTokens(ctx, prompt...)
