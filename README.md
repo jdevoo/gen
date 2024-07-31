@@ -6,7 +6,7 @@ If you don't already have one, go to [Google AI Studio](https://ai.google.dev/tu
 Plain text generation  
 `$ gen dix noms de fleurs`
 
-At the command line, you may have to put the prompt inside double quotes to avoid confusing the shell
+At the command line, you may have to put the prompt inside double quotes to avoid confusing the shell  
 `$ gen "a scheme function to compute the Levenshtein distance between two strings; only the code"`
 
 Pipe content into gen  
@@ -22,7 +22,7 @@ Set a system instruction from stdin and argument as prompt
 `echo "you understand english but always reply in french" | gen -s ten names for flowers`
 
 Set a system instruction from file option and argument as prompt  
-`gen -f french.prompt -s you understand english but always answer in french"`
+`gen -s -f french.prompt ten names for flowers"`
 
 Attach a file to the prompt and return total token count  
 `gen -t -f ../twitter/img/123497680.jpg is this picture showing a face or a logo?`
