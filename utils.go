@@ -133,10 +133,9 @@ func invokeTool(fc genai.FunctionCall) string {
 	return vals[0].String()
 }
 
-// printGeneratedResponse emits LLM content, invokes tool if FunctionCall found, returns token count
-func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) int32 {
+// printGeneratedResponse emits LLM content, invokes tool if FunctionCall found
+func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) {
 	var res string
-	var tokenCount int32
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
@@ -146,11 +145,9 @@ func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) i
 					res += fmt.Sprintf("\033[97m%s\033[0m", part)
 				}
 			}
-			tokenCount += cand.TokenCount
 		}
 	}
 	fmt.Fprintf(out, "%s", res)
-	return tokenCount
 }
 
 // genLogFatal refines the error if available

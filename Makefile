@@ -45,6 +45,7 @@ release:
 	$(MAKE) $(COMPRESSED_TARGETS)
 	git push && git push --tags
 	git log --pretty=format:"%s" $(OLDTAG)...$(NEWTAG) | $(RELEASE_TOOL) release -u $(USER) -r $(BINARY) -t $(NEWTAG) -n $(NEWTAG) -d - || true
+	$(RELEASE_TOOL) info -u $(USER) -r $(BINARY) -t $(NEWTAG) | true
 	$(foreach FILE, $(COMPRESSED_BINARIES), $(RELEASE_TOOL) upload -u $(USER) -r $(BINARY) -t $(NEWTAG) -n $(subst /,-,$(FILE)) -f target/$(FILE);)
 
 clean:

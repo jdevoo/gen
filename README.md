@@ -9,7 +9,7 @@ Plain text generation
 At the command line, you may have to put the prompt inside double quotes to avoid confusing the shell  
 `$ gen "a scheme function to compute the Levenshtein distance between two strings; only the code"`
 
-Pipe content into gen  
+Pipe content into gen and save it in a text file  
 `$ cat cmd.go | gen what does this code do? | tee report.txt`
 
 Obtain the token count  
@@ -18,14 +18,14 @@ Obtain the token count
 Parameterize prompts  
 `gen -p a=1 -p b=2 "complete this sentence: replace {a} apple with {a} banana and {b} oranges for a good ..."`
 
-Set a system instruction from stdin and prompt from argument
+Set a system instruction from stdin and prompt from argument  
 `echo "you understand english but always reply in french" | gen -s ten names for flowers`
 
-Set a system instruction from file option and prompt from argument
+Set a system instruction from file option and prompt from argument  
 `gen -s -f french.prompt ten names for flowers"`
 
 Set a system instruction from argument and enter chat  
-`gen -s you understand english but always answer in German`
+`gen -c -s you understand english but always answer in German`
 
 Attach a file to the prompt and return total token count  
 `gen -t -f ../twitter/img/123497680.jpg is this picture showing a face or a logo?`
@@ -48,6 +48,10 @@ Extract entities from text
 System instruction and prompts as files from iterative Prisonner's Dilemma [paper](https://arxiv.org/html/2406.13605v1)  
 `cat pd_system.prompt | gen -json -s -f pd.prompt`
 
+## Multi-turn Example
+Generate a brief using an adapted version of Ali Abassi's prompt  
+`cat brief_system.prompt | gen -c -s -f brief.prompt -p role="Sr. Business Analyst" -p department="ACME Technology Solutions" -p task="create a project brief" -p deliverable="project brief"`
+
 ## Usage
 ```
 Usage: gen [options] <prompt>
@@ -58,31 +62,33 @@ Command-line interface to Google Gemini large language models
   Additionally, supports stdin and .prompt files as valid inputs.
 
 Options:
-  -V    output model | maxInputTokens | maxOutputTokens | temp | top_p | top_k
-  -c    enter chat mode after content generation
-        type two consecutive blank lines to exit
+  -V	output model details and chat history
+    	details include model name | maxInputTokens | maxOutputTokens | temp | top_p | top_k
+  -c	enter chat mode after content generation
+    	type two consecutive blank lines to exit
+    	not supported on windows when stdin used
   -f string
-        attach file to prompt where string is the path to the file
-        file with extension .prompt treated as prompt or system instruction
-  -h    show this help message and exit
+    	attach file to prompt where string is the path to the file
+    	file with extension .prompt treated as prompt or system instruction
+  -h	show this help message and exit
   -json
-        response in JavaScript Object Notation
+    	response in JavaScript Object Notation
   -m string
-        generative model name (default "gemini-1.5-flash")
+    	generative model name (default "gemini-1.5-flash")
   -p value
-        prompt parameter value in format key=val
-        replaces all occurrences of {key} in prompt with val
-  -s    treat first of stdin, file option or argument as system instruction
-  -t    output number of tokens for prompt
+    	zero or more prompt parameter values in format key=val
+    	replaces all occurrences of {key} in prompt with val
+  -s	treat first of stdin, file option or argument as system instruction
+  -t	output total number of tokens
   -temp float
-        changes sampling during response generation [0.0,2.0] (default 1)
+    	changes sampling during response generation [0.0,2.0] (default 1)
   -tool
-        invoke one of the tools {KnownModels,QueryPostgres}
+    	invoke one of the tools {KnownModels,QueryPostgres}
   -top_p float
-        changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
+    	changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
-        force generation when gen aborts with FinishReasonSafety
-  -v    show version and exit
+    	force generation when gen aborts with FinishReasonSafety
+  -v	show version and exit
 ```
 
 ## License
