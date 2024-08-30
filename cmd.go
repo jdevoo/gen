@@ -21,11 +21,13 @@ import (
 
 // Version information, populated by make
 // Token count accumulator in case of CTRL-C
+// Parameter map shared with tools
 var (
 	version    string
 	golang     string
 	githash    string
 	tokenCount int32
+	keyVals    ParamMap
 )
 
 // Usage overrides PrintDefaults to provide custom usage information.
@@ -43,6 +45,8 @@ func emitUsage(out io.Writer) {
 
 func emitGen(in io.Reader, out io.Writer) int {
 	var err error
+	var prompts []genai.Part
+	var instructions []genai.Part
 
 	// Check for API key
 	if val, ok := os.LookupEnv("GEMINI_API_KEY"); !ok || len(val) == 0 {
@@ -53,11 +57,11 @@ func emitGen(in io.Reader, out io.Writer) int {
 	// Flag handling
 	verboseFlag := flag.Bool("V", false, "output model details and chat history\ndetails include model name | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
 	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype two consecutive blank lines to exit\nnot supported on windows when stdin used")
-	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file\nfile with extension .prompt treated as user prompt or system instruction")
+	filePathVal := flag.String("f", "", "attach file to prompt where string is the path to the file\nfile with extension .prompt treated as user prompt")
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
 	jsonFlag := flag.Bool("json", false, "response in JavaScript Object Notation")
 	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
-	keyVals := ParamMap{}
+	keyVals = ParamMap{}
 	flag.Var(&keyVals, "p", "zero or more prompt parameter values in format key=val\nreplaces all occurrences of {key} in prompt with val")
 	systemInstructionFlag := flag.Bool("s", false, "treat first of stdin, file option or argument as system instruction")
 	tokenCountFlag := flag.Bool("t", false, "output total number of tokens")
@@ -75,14 +79,17 @@ func emitGen(in io.Reader, out io.Writer) int {
 	}
 
 	// Set stdin as prompt, if provided
-	var prompt []genai.Part
 	stdinFlag := hasInputFromStdin(in)
 	if stdinFlag {
-		if data, err := io.ReadAll(in); err != nil {
+		data, err := io.ReadAll(in)
+		if err != nil {
 			log.Fatal(err)
+		}
+		stdinFlag = len(data) > 0
+		if *systemInstructionFlag {
+			instructions = append(instructions, genai.Text(searchReplace(string(data), keyVals)))
 		} else {
-			prompt = append(prompt, genai.Text(searchReplace(string(data), keyVals)))
-			stdinFlag = len(prompt) > 0
+			prompts = append(prompts, genai.Text(searchReplace(string(data), keyVals)))
 		}
 	}
 
@@ -94,6 +101,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		(*topPVal < 0 || *topPVal > 1) ||
 		// no prompt as stdin, argument or file
 		(!stdinFlag && len(flag.Args()) == 0 && path.Ext(*filePathVal) != ".prompt") ||
+		// lack of /dev/tty on Windows prevents this flag combination
 		(runtime.GOOS == "windows" && stdinFlag && *chatModeFlag) ||
 		(!*chatModeFlag && *systemInstructionFlag &&
 			// no chat mode, stdin as system instruction, no prompt
@@ -117,6 +125,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 	}
 	defer client.Close()
 
+	// Set generative model
 	model := client.GenerativeModel(*modelName)
 
 	// Set temperature and top_p from args or model defaults
@@ -152,72 +161,57 @@ func emitGen(in io.Reader, out io.Writer) int {
 
 	// Handle tool flag registering tools declared in the tools.go file
 	if *toolFlag {
-		registerTools(model, genai.FunctionCallingAny)
-	} else {
-		registerTools(model, genai.FunctionCallingNone)
-	}
-
-	// Promote stdin prompt as system instruction
-	if stdinFlag && *systemInstructionFlag {
-		model.SystemInstruction = &genai.Content{
-			Parts: prompt,
-		}
-		prompt = nil
+		registerTools(model) // FunctionCallingAny
 	}
 
 	// Handle file option and set as prompt or system instruction if file ends with .prompt
-	var file *genai.File
 	if *filePathVal != "" {
 		f, err := os.Open(*filePathVal)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer f.Close()
-		if path.Ext(*filePathVal) == ".prompt" {
-			if data, err := io.ReadAll(f); err != nil {
+		switch path.Ext(*filePathVal) {
+		case ".prompt":
+			data, err := io.ReadAll(f)
+			if err != nil {
 				log.Fatal(err)
-			} else {
-				prompt = append(prompt, genai.Text(searchReplace(string(data), keyVals)))
-				if !stdinFlag && len(flag.Args()) > 0 && *systemInstructionFlag {
-					model.SystemInstruction = &genai.Content{
-						Parts: prompt,
-					}
-					prompt = nil
-				}
 			}
-		} else {
-			file, err = uploadFile(ctx, client, *filePathVal)
+			if !stdinFlag && len(flag.Args()) > 0 && *systemInstructionFlag {
+				instructions = append(instructions, genai.Text(searchReplace(string(data), keyVals)))
+			} else {
+				prompts = append(prompts, genai.Text(searchReplace(string(data), keyVals)))
+			}
+		case ".java", ".c", ".cpp", ".scm", ".js", ".ts", ".R":
+			data, err := io.ReadAll(f)
+			if err != nil {
+				log.Fatal(err)
+			}
+			prompts = append(prompts, genai.Text(searchReplace(string(data), keyVals)))
+		case ".jpg", ".jpeg", ".png", ".gif", ".webp",
+			".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
+			file, err := uploadFile(ctx, client, *filePathVal)
 			if err != nil {
 				genLogFatal(err)
 			}
+			prompts = append(prompts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
 			defer func() {
 				err := client.DeleteFile(ctx, file.Name)
 				if err != nil {
 					genLogFatal(err)
 				}
 			}()
-			if err != nil {
-				genLogFatal(err)
-			}
+		default:
+			log.Fatal("File extension not supported")
 		}
 	}
 
-	// Handle argument as prompt
+	// Handle argument as prompt or system instruction
 	if len(flag.Args()) > 0 {
-		prompt = append(prompt, genai.Text(searchReplace(strings.Join(flag.Args(), " "), keyVals)))
-		if path.Ext(*filePathVal) != ".prompt" && *chatModeFlag && *systemInstructionFlag { // argument as system instruction for chat
-			model.SystemInstruction = &genai.Content{
-				Parts: prompt[len(prompt)-1:],
-			}
-			prompt = prompt[:len(prompt)-1]
-		}
-	}
-
-	// Send FileData to model if available
-	if file != nil {
-		prompt = append(prompt, genai.FileData{MIMEType: file.MIMEType, URI: file.URI})
-		if err != nil {
-			genLogFatal(err)
+		if path.Ext(*filePathVal) != ".prompt" && *chatModeFlag && *systemInstructionFlag {
+			instructions = append(instructions, genai.Text(searchReplace(strings.Join(flag.Args(), " "), keyVals)))
+		} else {
+			prompts = append(prompts, genai.Text(searchReplace(strings.Join(flag.Args(), " "), keyVals)))
 		}
 	}
 
@@ -242,12 +236,19 @@ func emitGen(in io.Reader, out io.Writer) int {
 		}
 	}
 
+	// Set system instructions
+	if len(instructions) > 0 {
+		model.SystemInstruction = &genai.Content{
+			Parts: instructions,
+		}
+	}
+
 	// Main chat loop
 	for {
-		if len(prompt) > 0 {
-			iter := sess.SendMessageStream(ctx, prompt...)
+		if len(prompts) > 0 {
+			iter := sess.SendMessageStream(ctx, prompts...)
 			if *tokenCountFlag {
-				res, err := model.CountTokens(ctx, prompt...)
+				res, err := model.CountTokens(ctx, prompts...)
 				if err != nil {
 					genLogFatal(err)
 				}
@@ -262,7 +263,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
-				emitGeneratedResponse(resp, out)
+				emitGeneratedResponse(out, resp)
 			}
 		}
 		if !*chatModeFlag {
@@ -270,10 +271,10 @@ func emitGen(in io.Reader, out io.Writer) int {
 		}
 		if *verboseFlag {
 			for i, c := range sess.History {
-				fmt.Fprintf(out, "\033[36m%02d: %+v\033[0m\n", i, c)
+				fmt.Fprintf(out, "\033[36m%02d: %+v\033[0m", i, c)
 			}
 		}
-		fmt.Fprintf(out, "\n")
+		fmt.Fprint(out, "\n")
 		input, err := readLine(tty)
 		if err != nil {
 			log.Fatal(err)
@@ -288,7 +289,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 				break // exit chat mode
 			}
 		}
-		prompt = []genai.Part{genai.Text(input)}
+		prompts = []genai.Part{genai.Text(input)}
 	}
 
 	if *tokenCountFlag {

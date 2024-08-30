@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/google/generative-ai-go/genai"
-	_ "github.com/lib/pq"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -36,40 +35,7 @@ func (t Tool) KnownModels() (string, error) {
 	return res, nil
 }
 
-// DSN e.g. postgres://steampipe:secret@localhost/steampipe
-func (t Tool) QueryPostgres(query string) (string, error) {
-	return fmt.Sprintf("%s\n", query), nil
-	/*
-		if val, ok := os.LookupEnv("GENDSN"); !ok || len(val) == 0 {
-			return "", fmt.Errorf("QueryPostgres() GENDSN environment variable not set")
-		}
-		var res []string
-		db, err := sql.Open("postgres", os.Getenv("GENDSN"))
-		if err != nil {
-			return "", err
-		}
-		defer db.Close()
-		rows, err := db.Query(query)
-		if err != nil {
-			return "", err
-		}
-		defer rows.Close()
-		cols, _ := rows.Columns()
-		row := make([]interface{}, len(cols))
-		rowPtr := make([]interface{}, len(cols))
-		for i := range row {
-			rowPtr[i] = &row[i]
-		}
-		for rows.Next() {
-			err := rows.Scan(rowPtr...)
-			if err != nil {
-				return "", err
-			}
-			res = append(res, fmt.Sprintf("%v", row))
-		}
-		if err := rows.Err(); err != nil {
-			return "", err
-		}
-		return strings.Join(res, "\n"), nil
-	*/
+// RetrieveAWSAccountIDs obtains data from steampipe service
+func (t Tool) RetrieveAWSAccountIDs() (string, error) {
+	return QueryPostgres("SELECT account_id FROM aws_account")
 }

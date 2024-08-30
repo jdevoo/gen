@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	_ "github.com/lib/pq"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/googleapi"
@@ -24,11 +27,11 @@ func (*ParamMap) String() string { return "" }
 
 // Set implements the flag.Value interface for ParamMap.
 func (m *ParamMap) Set(kv string) error {
-	param := strings.SplitN(kv, "=", 2) // limit splits to 2
-	if len(param) != 2 {
+	parts := strings.SplitN(kv, "=", 2) // limit splits to 2
+	if len(parts) != 2 {
 		return fmt.Errorf("invalid parameter %s", kv)
 	}
-	(*m)[param[0]] = param[1]
+	(*m)[parts[0]] = parts[1]
 	return nil
 }
 
@@ -43,6 +46,15 @@ func hasInputFromStdin(in io.Reader) bool {
 		v := reflect.Indirect(r).FieldByName("s")
 		return len(v.String()) > 0
 	}
+}
+
+// hasOutputRedirected checks if ok to emit non-printable characters.
+func hasOutputRedirected(out io.Writer) bool {
+	if f, ok := out.(*os.File); ok {
+		fileInfo, _ := f.Stat()
+		return fileInfo.Mode()&os.ModeCharDevice == 0
+	}
+	return true
 }
 
 // readLine reads a line from standard input.
@@ -63,7 +75,7 @@ func searchReplace(prompt string, pm ParamMap) string {
 	return res
 }
 
-// knownTools returns string of comma-separated function names
+// knownTools returns string of comma-separated function names.
 func knownTools() string {
 	var res []string
 	genTool := reflect.TypeOf(Tool{})
@@ -73,46 +85,44 @@ func knownTools() string {
 	return strings.Join(res, ",")
 }
 
-// registerTools declares functions of Tool in genai.FunctionDeclaration format
-func registerTools(model *genai.GenerativeModel, mode genai.FunctionCallingMode) {
+// registerTools declares functions of Tool in genai.FunctionDeclaration format.
+// TODO support other argument types than string
+func registerTools(model *genai.GenerativeModel) {
 	genTool := reflect.TypeOf(Tool{})
-	for i := 0; i < genTool.NumMethod(); i++ {
+	n := genTool.NumMethod()
+	funDecl := make([]*genai.FunctionDeclaration, n)
+	for i := 0; i < n; i++ {
 		m := genTool.Method(i)
 		f := reflect.ValueOf(Tool{}).MethodByName(m.Name)
 		t := f.Type()
-		schema := make(map[string]*genai.Schema)
+		argMap := make(map[string]*genai.Schema)
 		if t.NumIn() > 0 {
 			for j := 0; j < t.NumIn(); j++ {
 				switch t.In(j).Kind() {
 				case reflect.String:
-					schema[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeString}
+					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeString}
 				}
 			}
-			model.Tools = append(model.Tools, &genai.Tool{
-				FunctionDeclarations: []*genai.FunctionDeclaration{{
-					Name: m.Name,
-					Parameters: &genai.Schema{
-						Type:       genai.TypeObject,
-						Properties: schema,
-					},
-				}},
-			})
+			funDecl[i] = &genai.FunctionDeclaration{
+				Name: m.Name,
+				Parameters: &genai.Schema{
+					Type:       genai.TypeObject,
+					Properties: argMap,
+				},
+			}
 		} else {
-			model.Tools = append(model.Tools, &genai.Tool{
-				FunctionDeclarations: []*genai.FunctionDeclaration{{
-					Name: m.Name,
-				}},
-			})
+			funDecl[i] = &genai.FunctionDeclaration{
+				Name: m.Name,
+			}
 		}
-		model.ToolConfig = &genai.ToolConfig{
-			FunctionCallingConfig: &genai.FunctionCallingConfig{
-				Mode: mode,
-			},
-		}
+	}
+	model.Tools = make([]*genai.Tool, 1)
+	model.Tools[0] = &genai.Tool{
+		FunctionDeclarations: funDecl,
 	}
 }
 
-// invokeTool calls tool identified by genai.FunctionCall using anonymous argument names
+// invokeTool calls tool identified by genai.FunctionCall using anonymous argument names.
 func invokeTool(fc genai.FunctionCall) string {
 	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
 	var args []reflect.Value
@@ -133,8 +143,8 @@ func invokeTool(fc genai.FunctionCall) string {
 	return vals[0].String()
 }
 
-// printGeneratedResponse emits LLM content, invokes tool if FunctionCall found
-func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) {
+// printGeneratedResponse emits LLM content, invokes tool if FunctionCall found.
+func emitGeneratedResponse(out io.Writer, resp *genai.GenerateContentResponse) {
 	var res string
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
@@ -142,15 +152,19 @@ func emitGeneratedResponse(resp *genai.GenerateContentResponse, out io.Writer) {
 				if fc, ok := part.(genai.FunctionCall); ok {
 					res += invokeTool(fc)
 				} else {
-					res += fmt.Sprintf("\033[97m%s\033[0m", part)
+					res += fmt.Sprintf("%s", part)
 				}
+			}
+			if !hasOutputRedirected(out) {
+				fmt.Fprintf(out, "\033[97m%s\033[0m", res)
+			} else {
+				fmt.Fprintf(out, "%s", res)
 			}
 		}
 	}
-	fmt.Fprintf(out, "%s", res)
 }
 
-// genLogFatal refines the error if available
+// genLogFatal refines the error if available.
 func genLogFatal(err error) {
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
@@ -160,7 +174,7 @@ func genLogFatal(err error) {
 	}
 }
 
-// uploadFile tracks state until FileStateActive reached
+// uploadFile tracks state until FileStateActive reached.
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
 	fd, err := os.Open(path)
 	if err != nil {
@@ -184,4 +198,50 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 		return nil, fmt.Errorf("uploaded file has state %s", file.State)
 	}
 	return file, nil
+}
+
+// containsAny returns true if any of the strings wanted are found in actualOutput.
+func containsAny(wantOutput []string, actualOutput string) bool {
+	for _, s := range wantOutput {
+		if strings.Contains(strings.ToLower(actualOutput), strings.ToLower(s)) {
+			return true
+		}
+	}
+	return false
+}
+
+// QueryPostgres submits query to database set by DSN parameter.
+func QueryPostgres(query string) (string, error) {
+	var res []string
+	dsn, ok := keyVals["DSN"]
+	if !ok || len(dsn) == 0 {
+		return "", fmt.Errorf("DSN parameter required for query")
+	}
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	rows, err := db.Query(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	cols, _ := rows.Columns()
+	row := make([]interface{}, len(cols))
+	rowPtr := make([]interface{}, len(cols))
+	for i := range row {
+		rowPtr[i] = &row[i]
+	}
+	for rows.Next() {
+		err := rows.Scan(rowPtr...)
+		if err != nil {
+			return "", err
+		}
+		res = append(res, fmt.Sprintf("%v", row))
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return strings.Join(res, "\n"), nil
 }

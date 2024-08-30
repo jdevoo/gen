@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-// TestParamMapSet tests setting prompt parameter
+// TestParamMapSet tests setting prompt parameter.
 func TestParamMapSet(t *testing.T) {
 	tests := []struct {
-		name    string
 		arg     string
 		want    ParamMap
 		wantErr bool
