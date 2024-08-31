@@ -71,17 +71,18 @@ Options:
         type two consecutive blank lines to exit
         not supported on windows when stdin used
   -f value
-        zero or more files to attach to prompt where value is the path to the file
-        files with extension .prompt are treated as prompt
-        files with extension .sprompt are treated as system instruction
+        file to attach where value is the path to the file
+        use extensions .prompt and .sprompt for user and system instructions respectively
+        repeat for each file
   -h    show this help message and exit
   -json
         response in JavaScript Object Notation
   -m string
         generative model name (default "gemini-1.5-flash")
   -p value
-        zero or more prompt parameter values in format key=val
+        prompt parameter value in format key=val
         replaces all occurrences of {key} in prompt with val
+        repeat for each parameter
   -s    treat first of stdin or argument as system instruction
   -t    output total number of tokens
   -temp float

@@ -58,12 +58,12 @@ func emitGen(in io.Reader, out io.Writer) int {
 	verboseFlag := flag.Bool("V", false, "output model details and chat history\ndetails include model name | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
 	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype two consecutive blank lines to exit\nnot supported on windows when stdin used")
 	filePaths := ParamArray{}
-	flag.Var(&filePaths, "f", "zero or more files to attach to prompt where value is the path to the file\nuse extension .prompt for prompt and .sprompt for system instruction")
+	flag.Var(&filePaths, "f", "file to attach where value is the path to the file\nuse extensions .prompt and .sprompt for user and system instructions respectively\nrepeat for each file")
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
 	jsonFlag := flag.Bool("json", false, "response in JavaScript Object Notation")
 	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
 	keyVals = ParamMap{}
-	flag.Var(&keyVals, "p", "zero or more prompt parameter values in format key=val\nreplaces all occurrences of {key} in prompt with val")
+	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val\nrepeat for each parameter")
 	systemInstructionFlag := flag.Bool("s", false, "treat first of stdin or argument as system instruction")
 	tokenCountFlag := flag.Bool("t", false, "output total number of tokens")
 	tempVal := flag.Float64("temp", 1.0, "changes sampling during response generation [0.0,2.0]")
@@ -113,7 +113,8 @@ func emitGen(in io.Reader, out io.Writer) int {
 				// no chat mode, file as system instruction, no prompt
 				(!stdinFlag && len(flag.Args()) == 0 && allMatch(filePaths, ".sprompt")))) ||
 		// chat mode, file is not prompt, stdin or argument as system instruction, no prompt
-		(*chatModeFlag && *systemInstructionFlag && len(filePaths) > 0 && !anyMatches(filePaths, ".prompt", ".sprompt") &&
+		(*chatModeFlag && *systemInstructionFlag && len(filePaths) > 0 &&
+			!anyMatches(filePaths, ".prompt", ".sprompt") &&
 			((!stdinFlag || len(flag.Args()) > 0) || (stdinFlag || len(flag.Args()) == 0))) {
 		emitUsage(out)
 		return 1
