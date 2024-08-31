@@ -23,7 +23,7 @@ func TestFlags(t *testing.T) {
 			"gen",
 			"",
 			[]string{"-h"},
-			1,
+			0,
 			[]string{"Usage:"},
 		},
 		{
@@ -96,7 +96,7 @@ func TestFlags(t *testing.T) {
 			continue
 		}
 		actualOutput := out.String()
-		if !containsAny(test.wantOutput, actualOutput) {
+		if !anyMatches([]string{actualOutput}, test.wantOutput...) {
 			t.Errorf("Wrong output for args: %v %v, expected: %v, got: %v",
 				test.stdin, test.args, strings.Join(test.wantOutput, ","), actualOutput)
 		}

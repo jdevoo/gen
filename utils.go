@@ -35,6 +35,18 @@ func (m *ParamMap) Set(kv string) error {
 	return nil
 }
 
+// ParamArray holds a list of strings.
+type ParamArray []string
+
+// String implements the flag.Value interface for ParamMap.
+func (*ParamArray) String() string { return "" }
+
+// Set implements the flag.Value interface for ParamMap.
+func (a *ParamArray) Set(val string) error {
+	*a = append(*a, val)
+	return nil
+}
+
 // hasInputFromPipe checks if input is being piped to the program.
 func hasInputFromStdin(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
@@ -200,14 +212,26 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 	return file, nil
 }
 
-// containsAny returns true if any of the strings wanted are found in actualOutput.
-func containsAny(wantOutput []string, actualOutput string) bool {
-	for _, s := range wantOutput {
-		if strings.Contains(strings.ToLower(actualOutput), strings.ToLower(s)) {
-			return true
+// anyMatches returns true if any of the match candidates are found in
+func anyMatches(strArray []string, candidates ...string) bool {
+	for _, s := range strArray {
+		for _, c := range candidates {
+			if strings.Contains(strings.ToLower(s), strings.ToLower(c)) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// onlyContains returns true if all list elements match
+func allMatch(strArray []string, cand string) bool {
+	for _, s := range strArray {
+		if !strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
+			return false
+		}
+	}
+	return true
 }
 
 // QueryPostgres submits query to database set by DSN parameter.
@@ -215,7 +239,7 @@ func QueryPostgres(query string) (string, error) {
 	var res []string
 	dsn, ok := keyVals["DSN"]
 	if !ok || len(dsn) == 0 {
-		return "", fmt.Errorf("DSN parameter required for query")
+		return "", fmt.Errorf("DSN parameter missing")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

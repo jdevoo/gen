@@ -14,7 +14,8 @@ GITHASH = $(shell git log -1 --pretty=format:"%h")
 GOVER = $(word 3, $(shell go version))
 LDFLAGS = -ldflags '-X main.version=$(NEWTAG) -X main.githash=$(GITHASH) -X main.golang=$(GOVER)'
 
-RELEASE_TOOL = github-release
+# requires valid GITHUB_TOKEN
+RELEASE_TOOL = gh
 USER = jdevoo
 
 all: $(BINARY)
@@ -37,13 +38,11 @@ install:
 	go install $(LDFLAGS)
 	$(BINARY) -v
 
-# git tag v0.1
-# requires valid GITHUB_TOKEN
+# ensure NEWTAG exists e.g. git tag v0.1
 release:
 	$(MAKE) $(COMPRESSED_TARGETS)
-	git push && git push --tags
-	git log --pretty=format:"%s" $(OLDTAG)...$(NEWTAG) | $(RELEASE_TOOL) release -u $(USER) -r $(BINARY) -t $(NEWTAG) -n $(NEWTAG) -d - || true
-	$(foreach FILE, $(COMPRESSED_BINARIES), $(RELEASE_TOOL) upload -u $(USER) -r $(BINARY) -t $(NEWTAG) -n $(subst /,-,$(FILE)) -f target/$(FILE);)
+	git push && git push --tags && sleep 5
+	$(foreach FILE, $(COMPRESSED_BINARIES), $(RELEASE_TOOL) release create --verify-tag --generate-notes $(NEWTAG) target/$(FILE);)
 
 clean:
 	rm -f $(BINARY)
@@ -53,3 +52,6 @@ test:
 	go test -v ./...
 
 .PHONY: all install release clean test
+
+.DELETE_ON_ERROR:
+
