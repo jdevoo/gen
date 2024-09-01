@@ -52,7 +52,7 @@ func TestParamMapSet(t *testing.T) {
 	}
 }
 
-// TestReadLine tests user input in chat mode
+// TestReadLine tests user input in chat mode.
 func TestReadLine(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -75,11 +75,11 @@ func TestReadLine(t *testing.T) {
 		reader := strings.NewReader(test.input)
 		res, err := readLine(reader)
 		if (err != nil) != test.wantErr {
-			t.Errorf("readLine(%q) error = %v, wantErr %v", test.input, err, test.wantErr)
+			t.Errorf("Did not expect error for '%s'", test.input)
 			continue
 		}
 		if res != test.want {
-			t.Errorf("readLine(%q) = %q, want %q", test.input, res, test.want)
+			t.Errorf("Expected '%s', got '%s' for '%s'", test.want, res, test.input)
 		}
 	}
 }
@@ -117,6 +117,102 @@ func TestSearchReplace(t *testing.T) {
 		result := searchReplace(test.prompt, test.params)
 		if result != test.want {
 			t.Errorf("Expected '%s', got '%s'", test.want, result)
+		}
+	}
+}
+
+// TestAnyMatches tests list inclusion.
+func TestAnyMatches(t *testing.T) {
+	tests := []struct {
+		inputArray []string
+		inputCand  []string
+		wantRes    bool
+	}{
+		{
+			inputArray: []string{},
+			inputCand:  []string{".prompt"},
+			wantRes:    false,
+		},
+		{
+			inputArray: []string{"image.png", "my.prompt"},
+			inputCand:  []string{".prompt"},
+			wantRes:    true,
+		},
+		{
+			inputArray: []string{"my.sprompt"},
+			inputCand:  []string{".prompt"},
+			wantRes:    false,
+		},
+	}
+
+	for _, test := range tests {
+		res := anyMatches(test.inputArray, test.inputCand...)
+		if test.wantRes != res {
+			t.Errorf("Expected %t, got %t", test.wantRes, res)
+		}
+	}
+}
+
+// TestAnyMatch tests list inclusion.
+func TestAllMatch(t *testing.T) {
+	tests := []struct {
+		inputArray []string
+		inputCand  string
+		wantRes    bool
+	}{
+		{
+			inputArray: []string{},
+			inputCand:  ".prompt",
+			wantRes:    false,
+		},
+		{
+			inputArray: []string{"image.png", "my.prompt"},
+			inputCand:  ".prompt",
+			wantRes:    false,
+		},
+		{
+			inputArray: []string{"my.sprompt"},
+			inputCand:  ".sprompt",
+			wantRes:    true,
+		},
+	}
+
+	for _, test := range tests {
+		res := allMatch(test.inputArray, test.inputCand)
+		if test.wantRes != res {
+			t.Errorf("Expected %t, got %t for %v", test.wantRes, res, test.inputArray)
+		}
+	}
+}
+
+// TestOneMatches tests list inclusion.
+func TestOneMatches(t *testing.T) {
+	tests := []struct {
+		inputArray []string
+		inputCand  string
+		wantRes    bool
+	}{
+		{
+			inputArray: []string{},
+			inputCand:  "-",
+			wantRes:    false,
+		},
+		{
+			inputArray: []string{"-", "my.prompt"},
+			inputCand:  ".prompt",
+			wantRes:    true,
+		},
+		{
+			inputArray: []string{"my.sprompt"},
+			inputCand:  "-",
+			wantRes:    false,
+		},
+	}
+
+	for _, test := range tests {
+		res := oneMatches(test.inputArray, test.inputCand)
+		if test.wantRes != res {
+			t.Errorf("Expected %t, got %t for %v", test.wantRes, res, test.inputArray)
 		}
 	}
 }

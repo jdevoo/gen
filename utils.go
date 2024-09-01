@@ -224,14 +224,28 @@ func anyMatches(strArray []string, candidates ...string) bool {
 	return false
 }
 
-// onlyContains returns true if all list elements match
+// allMatch returns true if all list elements match.
 func allMatch(strArray []string, cand string) bool {
+	if len(strArray) == 0 {
+		return false
+	}
 	for _, s := range strArray {
 		if !strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
 			return false
 		}
 	}
 	return true
+}
+
+// oneMatches returns true if one and only one matches.
+func oneMatches(strArray []string, cand string) bool {
+	var res int
+	for _, s := range strArray {
+		if strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
+			res += 1
+		}
+	}
+	return res == 1
 }
 
 // QueryPostgres submits query to database set by DSN parameter.

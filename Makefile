@@ -1,4 +1,4 @@
-# Makefile 
+# Makefile for sandalone Go executable
 
 # requires valid GITHUB_TOKEN
 RELEASE_TOOL = gh
@@ -33,6 +33,7 @@ target/windows/amd64/$(BINARY).exe:
 %.zip: %.exe
 	zip -j "$@" "$<"
 
+# package main
 $(BINARY):
 	go build $(LDFLAGS) -o $(BINARY)
 

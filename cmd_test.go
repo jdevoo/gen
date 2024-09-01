@@ -49,6 +49,13 @@ func TestFlags(t *testing.T) {
 		},
 		{
 			"gen",
+			"you speak like a Valley girl",
+			[]string{"-f", "-", "-s"},
+			1,
+			[]string{"Usage:"},
+		},
+		{
+			"gen",
 			"",
 			[]string{"ten names of flowers"},
 			0,
@@ -57,7 +64,7 @@ func TestFlags(t *testing.T) {
 		{
 			"gen",
 			"you understand english but always reply in french",
-			[]string{"-s", "ten names of flowers"},
+			[]string{"-s", "-f", "-", "ten names of flowers"},
 			0,
 			[]string{"rose", "tulipe", "marguerite"},
 		},
@@ -65,8 +72,8 @@ func TestFlags(t *testing.T) {
 			"gen",
 			"you understand english but always reply in french",
 			[]string{"ten names of flowers"},
-			0,
-			[]string{"rose", "tulipe", "marguerite"},
+			1,
+			[]string{"Usage:"},
 		},
 		{
 			"gen",
