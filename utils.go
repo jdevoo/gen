@@ -150,7 +150,7 @@ func invokeTool(fc genai.FunctionCall) string {
 	}
 	vals := f.Call(args)
 	if err := vals[1].Interface(); err != nil {
-		log.Fatal(err)
+		return fmt.Sprint(err)
 	}
 	return vals[0].String()
 }

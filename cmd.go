@@ -103,26 +103,21 @@ func emitGen(in io.Reader, out io.Writer) int {
 	// Handle invalid argument and option combinations
 	if (*topPVal < 0 || *topPVal > 1) || // temp out of range
 		// no prompt as stdin, argument or file
-		(!stdinFlag && len(flag.Args()) == 0 && !anyMatches(filePaths, pExt, siExt)) ||
+		(!stdinFlag && len(flag.Args()) == 0 && !oneMatches(filePaths, pExt) && !oneMatches(filePaths, siExt)) ||
 		// lack of /dev/tty on Windows prevents this flag combination
 		(runtime.GOOS == "windows" && stdinFlag && *chatModeFlag) ||
 		// stdin set but neither used as file nor as argument
 		(stdinFlag && !(len(flag.Args()) == 1 && flag.Args()[0] == "-") && !oneMatches(filePaths, "-")) ||
-		(!*chatModeFlag && *systemInstructionFlag &&
-			// no chat mode, stdin as system instruction, no prompt argument
-			((stdinFlag && oneMatches(filePaths, "-") && len(flag.Args()) == 0) ||
-				// no chat mode, no file as prompt, argument as system instruction
+		// no chat mode, one of file or argument as system instruction - look for a prompt
+		(*systemInstructionFlag &&
+			// no stdin, no argument
+			((!stdinFlag && len(flag.Args()) == 0) ||
+				// no stdin, argument as system instruction, no prompt as file
 				(!stdinFlag && len(flag.Args()) > 0 && !anyMatches(filePaths, pExt)) ||
-				// no chat mode, file as system instruction, no prompt
-				(!stdinFlag && len(flag.Args()) == 0 && allMatch(filePaths, siExt)))) ||
-		(*chatModeFlag && *systemInstructionFlag && len(filePaths) > 0 &&
-			!anyMatches(filePaths, pExt, siExt) &&
-			// chat mode, no file as prompt, no stdin, argument as system instruction
-			((!stdinFlag && len(flag.Args()) > 0) ||
-				// chat mode, no file as prompt, stdin as system instruction file, no prompt argument
-				(stdinFlag && len(flag.Args()) == 0 && oneMatches(filePaths, "-")) ||
-				// chat mode, no file as prompt, no file as system instruction, argument as system instruction
-				(stdinFlag && !oneMatches(filePaths, "-") && len(flag.Args()) == 1 && flag.Args()[0] == "-"))) {
+				// stdin as file, no prompt as file or argument
+				(stdinFlag && oneMatches(filePaths, "-") && len(flag.Args()) == 0 && !oneMatches(filePaths, pExt)) ||
+				// stdin as argument, no prompt as file
+				(stdinFlag && len(flag.Args()) == 1 && flag.Args()[0] == "-" && !oneMatches(filePaths, pExt)))) {
 		emitUsage(out)
 		return 1
 	}
@@ -230,7 +225,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 		if stdinFlag && text == "-" {
 			text = string(stdinData)
 		}
-		if *chatModeFlag && *systemInstructionFlag {
+		if *systemInstructionFlag && !(stdinFlag && oneMatches(filePaths, "-")) {
 			instructions = append(instructions, genai.Text(text))
 		} else {
 			prompts = append(prompts, genai.Text(text))
