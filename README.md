@@ -9,7 +9,7 @@ Plain text generation
 At the command line, you may have to put the prompt inside double quotes to avoid confusing the shell  
 `$ gen "a scheme function to compute the Levenshtein distance between two strings; only the code"`
 
-Pipe content into gen and save it in a text file  
+Pipe content into gen and save its output in a text file  
 `$ cat cmd.go | gen -f - what does this code do? | tee report.txt`
 
 Obtain the token count  
@@ -48,7 +48,7 @@ System instruction and prompts as files from iterative Prisonner's Dilemma [pape
 Chain of thought  
 `gen Please answer this question starting in two ways. First start with yes, then start with no and show your work. Afterwards determine which is correct. Is 3307 a prime number?`
 
-Generate sequence diagram from code using PlantUML system instruction 
+Generate sequence diagram from code using PlantUML system instruction  
 `gen -f puml.sprompt -f ~/lib/Duke/duke-core/src/main/java/no/priv/garshol/duke/Duke.java sequence diagram of the main_ method in this file`
 
 ## Multi-turn Example
