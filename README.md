@@ -33,8 +33,8 @@ Attach two files to the prompt and return total token count
 Enter chat mode to generate various SQL statements  
 `cat classicmodels.sql | gen -f - -c`
 
-Generate an architecture decision record using a parameterized template  
-`gen -f adr.sprompt -p certified="certified AWS Solution Architect Professional" an architecture decision record to help my organization decide between storage technologies for storing and accessing 10TB worth of time series data - please provide concrete examples and figures where possible`
+Generate an [architecture decision record](https://adr.github.io/madr/) using a parameterized template  
+`gen -p role="an experienced MLOps architect" -f prompts/adr.sprompt "an architecture decision record for selecting between option 1 MLFlow and option 2 Weights & Biases for tracking data science experiments. The team includes 5 data scientists and maintains already 50 models in production. The team produces 5 new models per quarter. Models include regression models, classification models, computer vision models as well as time series models."`
 
 List known Gemini models by invoking tool  
 `gen -tool list known generative models`
@@ -54,6 +54,9 @@ Generate sequence diagram from code using PlantUML system instruction
 ## Multi-turn Example
 Generate a brief using an adapted version of Ali Abassi's prompt  
 `gen -c -f brief.sprompt -f brief.prompt -p role="Sr. Business Analyst" -p department="ACME Technology Solutions" -p task="create a project brief" -p deliverable="project brief"`
+
+Tree of thought  
+`gen -c -f tot.sprompt -f tot.prompt`
 
 ## Usage
 ```
