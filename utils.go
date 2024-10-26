@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -188,13 +189,7 @@ func genLogFatal(err error) {
 
 // uploadFile tracks state until FileStateActive reached.
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer fd.Close()
-
-	file, err := client.UploadFile(ctx, "", fd, nil)
+	file, err := client.UploadFileFromPath(ctx, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +244,7 @@ func oneMatches(strArray []string, cand string) bool {
 }
 
 // QueryPostgres submits query to database set by DSN parameter.
-func QueryPostgres(query string) (string, error) {
+func queryPostgres(query string) (string, error) {
 	var res []string
 	dsn, ok := keyVals["DSN"]
 	if !ok || len(dsn) == 0 {
@@ -282,4 +277,24 @@ func QueryPostgres(query string) (string, error) {
 		return "", err
 	}
 	return strings.Join(res, "\n"), nil
+}
+
+// dotProduct calculates the dot product between two vectors.
+func dotProduct(a, b []float32) float32 {
+	var dotProduct float32
+	for i := range a {
+		dotProduct += a[i] * b[i]
+	}
+	return dotProduct
+}
+
+// isFlagSet visits the flags passed to the command at runtime.
+func isFlagSet(name string) bool {
+	res := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			res = true
+		}
+	})
+	return res
 }

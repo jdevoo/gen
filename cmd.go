@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -31,13 +30,14 @@ var (
 )
 
 const (
-	siExt = ".sprompt"
-	pExt  = ".prompt"
+	siExt    = ".sprompt"
+	pExt     = ".prompt"
+	embModel = "embedding-001"
 )
 
 // Usage overrides PrintDefaults to provide custom usage information.
 func emitUsage(out io.Writer) {
-	fmt.Fprintf(out, "Usage: "+filepath.Base(os.Args[0])+" [options] <prompt>\n")
+	fmt.Fprintf(out, "Usage: gen [options] <prompt>\n")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintf(out, "Command-line interface to Google Gemini large language models\n")
 	fmt.Fprintf(out, "  Requires a valid GEMINI_API_KEY environment variable set.\n")
@@ -50,9 +50,10 @@ func emitUsage(out io.Writer) {
 
 func emitGen(in io.Reader, out io.Writer) int {
 	var err error
-	var prompts []genai.Part
-	var instructions []genai.Part
+	var parts []genai.Part
+	var sysParts []genai.Part
 	var stdinData []byte
+	var model interface{}
 
 	// Check for API key
 	if val, ok := os.LookupEnv("GEMINI_API_KEY"); !ok || len(val) == 0 {
@@ -63,13 +64,16 @@ func emitGen(in io.Reader, out io.Writer) int {
 	// Flag handling
 	verboseFlag := flag.Bool("V", false, "output model details, system instructions and chat history\ndetails include model name | maxInputTokens | maxOutputTokens | temp | top_p | top_k")
 	chatModeFlag := flag.Bool("c", false, "enter chat mode after content generation\ntype two consecutive blank lines to exit\nnot supported on windows when stdin used")
+	digestPaths := ParamArray{}
+	flag.Var(&digestPaths, "d", "path to a digest directory storing content embeddings\nrepeat for each digest to query")
+	embedFlag := flag.Bool("e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")\nuse with a single digest path", embModel))
 	filePaths := ParamArray{}
 	flag.Var(&filePaths, "f", fmt.Sprintf("file to attach where value is the path to the file\nuse extensions %s and %s for user and system instructions respectively\nrepeat for each file", pExt, siExt))
 	helpFlag := flag.Bool("h", false, "show this help message and exit")
 	jsonFlag := flag.Bool("json", false, "response in JavaScript Object Notation")
-	modelName := flag.String("m", "gemini-1.5-flash", "generative model name")
+	genModel := flag.String("m", "gemini-1.5-flash", "embedding or generative model name")
 	keyVals = ParamMap{}
-	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val\nrepeat for each parameter")
+	flag.Var(&keyVals, "p", "prompt parameter value in format key=val\nreplaces all occurrences of {key} in prompt with val\nused as metadata when computing embeddings\nrepeat for each parameter")
 	systemInstructionFlag := flag.Bool("s", false, "treat argument as system instruction\nunless stdin is set as file")
 	tokenCountFlag := flag.Bool("t", false, "output total number of tokens")
 	tempVal := flag.Float64("temp", 1.0, "changes sampling during response generation [0.0,2.0]")
@@ -100,10 +104,16 @@ func emitGen(in io.Reader, out io.Writer) int {
 		stdinFlag = len(stdinData) > 0
 	}
 
-	// Handle invalid argument and option combinations
-	if (*topPVal < 0 || *topPVal > 1) || // temp out of range
-		// no prompt as stdin, argument or file
-		(!stdinFlag && len(flag.Args()) == 0 && !oneMatches(filePaths, pExt) && !oneMatches(filePaths, siExt)) ||
+	// Handle invalid arguments/option combinations, starting with no embed flag, prompt as stdin, argument or file
+	if (!*embedFlag && !stdinFlag && len(flag.Args()) == 0 && !oneMatches(filePaths, pExt) && !oneMatches(filePaths, siExt)) ||
+		// embeddings with chat, prompts, no files, no argument or various generative settings
+		(*embedFlag && (*chatModeFlag || *unsafeFlag || *toolFlag || *jsonFlag ||
+			len(digestPaths) != 1 ||
+			isFlagSet("temp") || isFlagSet("top_p") ||
+			allMatch(filePaths, pExt) || allMatch(filePaths, siExt) ||
+			len(flag.Args()) == 0)) ||
+		// invalid topP or temperature values
+		(*topPVal < 0 || *topPVal > 1) ||
 		// lack of /dev/tty on Windows prevents this flag combination
 		(runtime.GOOS == "windows" && stdinFlag && *chatModeFlag) ||
 		// stdin set but neither used as file nor as argument
@@ -130,21 +140,135 @@ func emitGen(in io.Reader, out io.Writer) int {
 	}
 	defer client.Close()
 
-	// Set generative model
-	model := client.GenerativeModel(*modelName)
+	// Handle file option
+	if len(filePaths) > 0 {
+		for _, filePathVal := range filePaths {
+			if filePathVal == "-" {
+				if *systemInstructionFlag {
+					sysParts = append(sysParts, genai.Text(searchReplace(string(stdinData), keyVals)))
+				} else {
+					parts = append(parts, genai.Text(searchReplace(string(stdinData), keyVals)))
+				}
+				continue
+			}
+			f, err := os.Open(filePathVal)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+			switch path.Ext(filePathVal) {
+			case pExt, siExt:
+				data, err := io.ReadAll(f)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if path.Ext(filePathVal) == siExt {
+					sysParts = append(sysParts, genai.Text(searchReplace(string(data), keyVals)))
+				} else {
+					parts = append(parts, genai.Text(searchReplace(string(data), keyVals)))
+				}
+			case ".jpg", ".jpeg", ".png", ".gif", ".webp",
+				".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
+				file, err := uploadFile(ctx, client, filePathVal)
+				if err != nil {
+					genLogFatal(err)
+				}
+				parts = append(parts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
+				defer func() {
+					err := client.DeleteFile(ctx, file.Name)
+					if err != nil {
+						genLogFatal(err)
+					}
+				}()
+			default:
+				data, err := io.ReadAll(f)
+				if err != nil {
+					log.Fatal(err)
+				}
+				parts = append(parts, genai.Text(searchReplace(string(data), keyVals)))
+			}
+		}
+	}
+
+	// Handle argument
+	if len(flag.Args()) > 0 {
+		text := searchReplace(strings.Join(flag.Args(), " "), keyVals)
+		if stdinFlag && text == "-" {
+			text = string(stdinData)
+		}
+		if *systemInstructionFlag && !(stdinFlag && oneMatches(filePaths, "-")) {
+			sysParts = append(sysParts, genai.Text(text))
+		} else {
+			parts = append(parts, genai.Text(text))
+		}
+	}
+
+	// Set embedding model if -e or -d are used
+	if *embedFlag || len(digestPaths) > 0 {
+		if isFlagSet("m") {
+			model = client.EmbeddingModel(*genModel)
+		} else {
+			model = client.EmbeddingModel(embModel)
+		}
+	} else {
+		model = client.GenerativeModel(*genModel)
+	}
+
+	// Handle verbose flag
+	if *verboseFlag {
+		var info *genai.ModelInfo
+		if *embedFlag || len(digestPaths) > 0 {
+			info, err = model.(*genai.EmbeddingModel).Info(ctx)
+		} else {
+			info, err = model.(*genai.GenerativeModel).Info(ctx)
+		}
+		if err != nil {
+			genLogFatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d | %.2f | %.2f | %d\033[0m\n", info.Name, info.InputTokenLimit, info.OutputTokenLimit, *tempVal, *topPVal, info.TopK)
+	}
+
+	// Handle embed flag and exit
+	if *embedFlag {
+		res, err := model.(*genai.EmbeddingModel).EmbedContent(ctx, parts...)
+		if err != nil {
+			genLogFatal(err)
+		}
+		if err := AppendToDigest(digestPaths[0], res.Embedding.Values, keyVals, *verboseFlag, parts...); err != nil {
+			genLogFatal(err)
+		}
+		return 0
+	}
+
+	// Handle digest flag and retrieve content from digest
+	if len(digestPaths) > 0 {
+		for _, digestPathVal := range digestPaths {
+			res, err := model.(*genai.EmbeddingModel).EmbedContent(ctx, parts...)
+			if err != nil {
+				genLogFatal(err)
+			}
+			content, err := QueryDigest(digestPathVal, res.Embedding.Values, *verboseFlag)
+			if err != nil {
+				genLogFatal(err)
+			}
+			parts = append(parts, genai.Text(content))
+		}
+		// Switch to generative model for the remainder of this program
+		model = client.GenerativeModel(*genModel)
+	}
 
 	// Set temperature and top_p from args or model defaults
-	model.SetTemperature(float32(*tempVal))
-	model.SetTopP(float32(*topPVal))
+	model.(*genai.GenerativeModel).SetTemperature(float32(*tempVal))
+	model.(*genai.GenerativeModel).SetTopP(float32(*topPVal))
 
 	// Handle json flag
 	if *jsonFlag {
-		model.ResponseMIMEType = "application/json"
+		model.(*genai.GenerativeModel).ResponseMIMEType = "application/json"
 	}
 
 	// Handle unsafe flag
 	if *unsafeFlag {
-		model.SafetySettings = []*genai.SafetySetting{
+		model.(*genai.GenerativeModel).SafetySettings = []*genai.SafetySetting{
 			{
 				Category:  genai.HarmCategoryDangerousContent,
 				Threshold: genai.HarmBlockNone,
@@ -166,83 +290,11 @@ func emitGen(in io.Reader, out io.Writer) int {
 
 	// Handle tool flag registering tools declared in the tools.go file
 	if *toolFlag {
-		registerTools(model) // FunctionCallingAny
-	}
-
-	// Handle file option
-	if len(filePaths) > 0 {
-		for _, filePathVal := range filePaths {
-			if filePathVal == "-" {
-				if *systemInstructionFlag {
-					instructions = append(instructions, genai.Text(searchReplace(string(stdinData), keyVals)))
-				} else {
-					prompts = append(prompts, genai.Text(searchReplace(string(stdinData), keyVals)))
-				}
-				continue
-			}
-			f, err := os.Open(filePathVal)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-			switch path.Ext(filePathVal) {
-			case pExt, siExt:
-				data, err := io.ReadAll(f)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if path.Ext(filePathVal) == siExt {
-					instructions = append(instructions, genai.Text(searchReplace(string(data), keyVals)))
-				} else {
-					prompts = append(prompts, genai.Text(searchReplace(string(data), keyVals)))
-				}
-			case ".jpg", ".jpeg", ".png", ".gif", ".webp",
-				".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
-				file, err := uploadFile(ctx, client, filePathVal)
-				if err != nil {
-					genLogFatal(err)
-				}
-				prompts = append(prompts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
-				defer func() {
-					err := client.DeleteFile(ctx, file.Name)
-					if err != nil {
-						genLogFatal(err)
-					}
-				}()
-			default:
-				data, err := io.ReadAll(f)
-				if err != nil {
-					log.Fatal(err)
-				}
-				prompts = append(prompts, genai.Text(searchReplace(string(data), keyVals)))
-			}
-		}
-	}
-
-	// Handle argument
-	if len(flag.Args()) > 0 {
-		text := searchReplace(strings.Join(flag.Args(), " "), keyVals)
-		if stdinFlag && text == "-" {
-			text = string(stdinData)
-		}
-		if *systemInstructionFlag && !(stdinFlag && oneMatches(filePaths, "-")) {
-			instructions = append(instructions, genai.Text(text))
-		} else {
-			prompts = append(prompts, genai.Text(text))
-		}
-	}
-
-	// Handle model information
-	if *verboseFlag {
-		info, err := model.Info(ctx)
-		if err != nil {
-			genLogFatal(err)
-		}
-		fmt.Fprintf(out, "\033[36m%s | %d | %d | %.2f | %.2f | %d\033[0m\n", info.Name, info.InputTokenLimit, info.OutputTokenLimit, *tempVal, *topPVal, info.TopK)
+		registerTools(model.(*genai.GenerativeModel)) // FunctionCallingAny
 	}
 
 	// Start chat session
-	sess := model.StartChat()
+	sess := model.(*genai.GenerativeModel).StartChat()
 	tty := in
 
 	// Set file descriptor for chat input
@@ -253,23 +305,23 @@ func emitGen(in io.Reader, out io.Writer) int {
 		}
 	}
 
-	// Set system instructions
-	if len(instructions) > 0 {
-		model.SystemInstruction = &genai.Content{
-			Parts: instructions,
+	// Set system sysParts
+	if len(sysParts) > 0 {
+		model.(*genai.GenerativeModel).SystemInstruction = &genai.Content{
+			Parts: sysParts,
 			Role:  "model",
 		}
 		if *verboseFlag {
-			fmt.Fprintf(out, "\033[36m%+v\033[0m\n", *model.SystemInstruction)
+			fmt.Fprintf(os.Stderr, "\033[36m%+v\033[0m\n", *model.(*genai.GenerativeModel).SystemInstruction)
 		}
 	}
 
 	// Main chat loop
 	for {
-		if len(prompts) > 0 {
-			iter := sess.SendMessageStream(ctx, prompts...)
+		if len(parts) > 0 {
+			iter := sess.SendMessageStream(ctx, parts...)
 			if *tokenCountFlag {
-				res, err := model.CountTokens(ctx, prompts...)
+				res, err := model.(*genai.GenerativeModel).CountTokens(ctx, parts...)
 				if err != nil {
 					genLogFatal(err)
 				}
@@ -288,11 +340,11 @@ func emitGen(in io.Reader, out io.Writer) int {
 			}
 		}
 		if *verboseFlag {
-			fmt.Fprintf(out, "\033[36m")
+			fmt.Fprintf(os.Stderr, "\033[36m")
 			for i, c := range sess.History {
-				fmt.Fprintf(out, "%02d: %+v", i, c)
+				fmt.Fprintf(os.Stderr, "%02d: %+v", i, c)
 			}
-			fmt.Fprintf(out, "\033[0m\n")
+			fmt.Fprintf(os.Stderr, "\033[0m\n")
 		}
 		fmt.Fprint(out, "\n")
 		if !*chatModeFlag {
@@ -312,7 +364,7 @@ func emitGen(in io.Reader, out io.Writer) int {
 				break // exit chat mode
 			}
 		}
-		prompts = []genai.Part{genai.Text(input)}
+		parts = []genai.Part{genai.Text(input)}
 	}
 
 	if *tokenCountFlag {

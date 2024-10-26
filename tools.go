@@ -37,5 +37,5 @@ func (t Tool) KnownModels() (string, error) {
 
 // RetrieveAWSAccountIDs obtains data from steampipe service
 func (t Tool) RetrieveAWSAccountIDs() (string, error) {
-	return QueryPostgres("SELECT account_id FROM aws_account")
+	return queryPostgres("SELECT account_id FROM aws_account")
 }

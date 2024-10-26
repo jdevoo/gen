@@ -51,6 +51,9 @@ Chain of thought
 Generate sequence diagram from code using PlantUML system instruction  
 `gen -f puml.sprompt -f ~/lib/Duke/duke-core/src/main/java/no/priv/garshol/duke/Duke.java sequence diagram of the main_ method in this file`
 
+Basic information extraction (Google Gemini [cookbook example](https://github.com/google-gemini/cookbook/tree/main))  
+`gen -f extract.sprompt -f extract.prompt | gen -f format.sprompt -`
+
 ## Multi-turn Example
 Generate a brief using an adapted version of Ali Abassi's prompt  
 `gen -c -f brief.sprompt -f brief.prompt -p role="Sr. Business Analyst" -p department="ACME Technology Solutions" -p task="create a project brief" -p deliverable="project brief"`

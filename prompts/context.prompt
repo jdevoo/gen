@@ -1,0 +1,15 @@
+QUERY: provide a list of atheletes that competed in olympics exactly 9 times.
+CONTEXT:
+
+Table title: Olympic athletes and number of times they've competed
+Ian Millar, 10
+Hubert Raudaschl, 9
+Afanasijs Kuzmins, 9
+Nino Salukvadze, 9
+Piero d'Inzeo, 8
+Raimondo d'Inzeo, 8
+Claudia Pechstein, 8
+Jaqueline Mourão, 8
+Ivan Osiier, 7
+François Lafortune, Jr, 7
+
