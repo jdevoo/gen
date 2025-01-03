@@ -12,8 +12,8 @@ import (
 
 type Tool struct{}
 
-// KnownModels retrieves the list of available generative models
-func (t Tool) KnownModels() (string, error) {
+// ListKnownGeminiModels retrieves the list of available generative models
+func (t Tool) ListKnownGeminiModels() (string, error) {
 	var res string
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
@@ -35,7 +35,7 @@ func (t Tool) KnownModels() (string, error) {
 	return res, nil
 }
 
-// RetrieveAWSAccountIDs obtains data from steampipe service
-func (t Tool) RetrieveAWSAccountIDs() (string, error) {
-	return queryPostgres("SELECT account_id FROM aws_account")
+// ListAWSServices returns a list of services via steampipe
+func (t Tool) ListAWSServices() (string, error) {
+	return queryPostgres("SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'")
 }

@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -88,14 +89,67 @@ func searchReplace(prompt string, pm ParamMap) string {
 	return res
 }
 
+// partWithKey searches prompt parts for occurrence of key and returns index.
+func partWithKey(parts []genai.Part, key string) int {
+	for idx, part := range parts {
+		if text, ok := part.(genai.Text); ok {
+			if strings.Contains(string(text), key) {
+				return idx
+			}
+		}
+	}
+	return -1
+}
+
+// replacePart returns new array with updated entry at idx.
+func replacePart(parts []genai.Part, idx int, key string, selection []QueryResult) []genai.Part {
+	var res []genai.Part
+	var keyVal string
+	for _, s := range selection {
+		keyVal += s.doc.content
+	}
+	if text, ok := parts[idx].(genai.Text); ok {
+		newPart := genai.Text(strings.Replace(string(text), key, keyVal, 1))
+		if idx > 0 {
+			res = append(parts[:idx], newPart)
+		} else {
+			res = append(res, newPart)
+		}
+		return append(res, parts[idx+1:]...)
+	}
+	return parts
+}
+
+// prependToParts extends prompts with digest selection.
+func prependToParts(parts []genai.Part, selection []QueryResult) []genai.Part {
+	var res []genai.Part
+	for _, s := range selection {
+		res = append(res, genai.Text(s.doc.content))
+	}
+	return append(res, parts...)
+}
+
+// appendToSelection extends selection with a query result in decreasing order of MMR up to k chunks.
+func appendToSelection(selection []QueryResult, item QueryResult, k int) []QueryResult {
+	result := selection
+	result = append(result, item)
+	sort.Slice(result[:], func(i, j int) bool {
+		return result[i].mmr > result[j].mmr
+	})
+	if len(result) > k {
+		return result[0:k]
+	}
+	return result
+}
+
 // knownTools returns string of comma-separated function names.
 func knownTools() string {
 	var res []string
 	genTool := reflect.TypeOf(Tool{})
 	for i := 0; i < genTool.NumMethod(); i++ {
-		res = append(res, genTool.Method(i).Name)
+		res = append(res, fmt.Sprintf("  * %s", genTool.Method(i).Name))
 	}
-	return strings.Join(res, ",")
+	return strings.Join(res, "\n")
 }
 
 // registerTools declares functions of Tool in genai.FunctionDeclaration format.
@@ -151,9 +205,22 @@ func invokeTool(fc genai.FunctionCall) string {
 	}
 	vals := f.Call(args)
 	if err := vals[1].Interface(); err != nil {
-		return fmt.Sprint(err)
+		return fmt.Sprintf("%s error: %s", fc.Name, err)
 	}
 	return vals[0].String()
+}
+
+// hasInvokedTool checks for function call and response to be sent back to Gemini
+func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, string) {
+	if len(resp.Candidates) == 0 {
+		return false, ""
+	}
+	part := resp.Candidates[0].Content.Parts[0]
+	if fc, ok := part.(genai.FunctionCall); ok {
+		res := invokeTool(fc)
+		return true, res
+	}
+	return false, ""
 }
 
 // printGeneratedResponse emits LLM content, invokes tool if FunctionCall found.
@@ -162,11 +229,7 @@ func emitGeneratedResponse(out io.Writer, resp *genai.GenerateContentResponse) {
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
-				if fc, ok := part.(genai.FunctionCall); ok {
-					res += invokeTool(fc)
-				} else {
-					res += fmt.Sprintf("%s", part)
-				}
+				res += fmt.Sprintf("%s", part)
 			}
 			if !hasOutputRedirected(out) {
 				fmt.Fprintf(out, "\033[97m%s\033[0m", res)
@@ -191,18 +254,18 @@ func genLogFatal(err error) {
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
 	file, err := client.UploadFileFromPath(ctx, path, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("uploading file '%s': %w", path, err)
 	}
 
 	for file.State == genai.FileStateProcessing {
 		time.Sleep(1 * time.Second)
 		file, err = client.GetFile(ctx, file.Name)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("processing state for '%s': %w", file.Name, err)
 		}
 	}
 	if file.State != genai.FileStateActive {
-		return nil, fmt.Errorf("uploaded file has state %s", file.State)
+		return nil, fmt.Errorf("uploaded file has state '%s': %w", file.State, err)
 	}
 	return file, nil
 }
@@ -252,12 +315,12 @@ func queryPostgres(query string) (string, error) {
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("opening DSN '%s': %w", dsn, err)
 	}
 	defer db.Close()
 	rows, err := db.Query(query)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("for query '%s': %w", query, err)
 	}
 	defer rows.Close()
 	cols, _ := rows.Columns()
@@ -277,15 +340,6 @@ func queryPostgres(query string) (string, error) {
 		return "", err
 	}
 	return strings.Join(res, "\n"), nil
-}
-
-// dotProduct calculates the dot product between two vectors.
-func dotProduct(a, b []float32) float32 {
-	var dotProduct float32
-	for i := range a {
-		dotProduct += a[i] * b[i]
-	}
-	return dotProduct
 }
 
 // isFlagSet visits the flags passed to the command at runtime.

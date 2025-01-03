@@ -78,14 +78,7 @@ func TestFlags(t *testing.T) {
 		{
 			"gen",
 			"",
-			[]string{"-tool", "list known models"},
-			0,
-			[]string{"gemini-1.5-flash"},
-		},
-		{
-			"gen",
-			"",
-			[]string{"-tool", "-p", "DSN=postgres://steampipe:146f_4bc7_9c03@127.0.0.1:9193/steampipe", "retrieve AWS account IDs"},
+			[]string{"-p", "DSN=postgres://steampipe:146f_4bc7_9c03@127.0.0.1:9193/steampipe", "list AWS services"},
 			0,
 			[]string{"connection refused"},
 		},

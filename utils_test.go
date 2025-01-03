@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/google/generative-ai-go/genai"
 )
 
 // TestParamMapSet tests setting prompt parameter.
@@ -213,6 +215,116 @@ func TestOneMatches(t *testing.T) {
 		res := oneMatches(test.inputArray, test.inputCand)
 		if test.wantRes != res {
 			t.Errorf("Expected %t, got %t for %v", test.wantRes, res, test.inputArray)
+		}
+	}
+}
+
+// TestPartHasKey tests parts with {digest}.
+func TestPartHasKey(t *testing.T) {
+	tests := []struct {
+		inputParts []genai.Part
+		inputKey   string
+		wantRes    int
+	}{
+		{
+			inputParts: []genai.Part{
+				genai.Text("some prompt without key"),
+				genai.Text("some other prompt without key"),
+			},
+			inputKey: "{digest}",
+			wantRes:  -1,
+		},
+		{
+			inputParts: []genai.Part{
+				genai.Text("some prompt with {digest}"),
+			},
+			inputKey: "{digest}",
+			wantRes:  0,
+		},
+		{
+			inputParts: []genai.Part{
+				genai.Text("some prompt without key}"),
+				genai.Text("some prompt with {digest}"),
+			},
+			inputKey: "{digest}",
+			wantRes:  1,
+		},
+	}
+
+	for _, test := range tests {
+		res := partWithKey(test.inputParts, test.inputKey)
+		if test.wantRes != res {
+			t.Errorf("Expected %d, got %d for %v", test.wantRes, res, test.inputParts)
+		}
+	}
+}
+
+// TestReplacePart tests {digest} substitution.
+func TestReplacePart(t *testing.T) {
+	tests := []struct {
+		inputParts []genai.Part
+		inputIdx   int
+		inputKey   string
+		inputVal   []QueryResult
+		wantRes    []genai.Part
+	}{
+		{
+			inputParts: []genai.Part{
+				genai.Text("prompt with key in first position {digest}"),
+				genai.Text("other prompt without key"),
+				genai.Text("yet another prompt without key"),
+			},
+			inputIdx: 0,
+			inputKey: "{digest}",
+			inputVal: []QueryResult{
+				{
+					Document{
+						nil,
+						"bla",
+						nil,
+					},
+					0,
+				},
+			},
+			wantRes: []genai.Part{
+				genai.Text("prompt with key in first position bla"),
+				genai.Text("other prompt without key"),
+				genai.Text("yet another prompt without key"),
+			},
+		},
+		{
+			inputParts: []genai.Part{
+				genai.Text("other prompt without key"),
+				genai.Text("yet another prompt without key"),
+				genai.Text("prompt with key in last position {digest}"),
+			},
+			inputIdx: 2,
+			inputKey: "{digest}",
+			inputVal: []QueryResult{
+				{
+					Document{
+						nil,
+						"bla",
+						nil,
+					},
+					0,
+				},
+			},
+			wantRes: []genai.Part{
+				genai.Text("other prompt without key"),
+				genai.Text("yet another prompt without key"),
+				genai.Text("prompt with key in last position bla"),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		res := replacePart(test.inputParts, test.inputIdx, test.inputKey, test.inputVal)
+		for idx := range res {
+			if res[idx] != test.wantRes[idx] {
+				t.Errorf("Expected '%s', got '%s'", test.wantRes[idx], res[idx])
+				break
+			}
 		}
 	}
 }
