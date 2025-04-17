@@ -10,6 +10,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -212,7 +214,7 @@ func invokeTool(fc genai.FunctionCall) string {
 
 // hasInvokedTool checks for function call and response to be sent back to Gemini
 func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, string) {
-	if len(resp.Candidates) == 0 {
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return false, ""
 	}
 	part := resp.Candidates[0].Content.Parts[0]
@@ -351,4 +353,65 @@ func isFlagSet(name string) bool {
 		}
 	})
 	return res
+}
+
+// filePathHandler processes a single file path.
+func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]genai.Part, sysParts *[]genai.Part, keyVals ParamMap) error {
+	f, err := os.Open(filePathVal)
+	if err != nil {
+		return fmt.Errorf("opening file '%s': %w", filePathVal, err)
+	}
+	defer f.Close()
+
+	switch path.Ext(filePathVal) {
+	case pExt, siExt:
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return fmt.Errorf("reading file '%s': %w", filePathVal, err)
+		}
+		if path.Ext(filePathVal) == siExt {
+			*sysParts = append(*sysParts, genai.Text(searchReplace(string(data), keyVals)))
+		} else {
+			*parts = append(*parts, genai.Text(searchReplace(string(data), keyVals)))
+		}
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp",
+		".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
+		file, err := uploadFile(ctx, client, filePathVal)
+		if err != nil {
+			return fmt.Errorf("uploading file '%s': %w", filePathVal, err)
+		}
+		*parts = append(*parts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
+		defer func() {
+			err := client.DeleteFile(ctx, file.Name)
+			if err != nil {
+				genLogFatal(err)
+			}
+		}()
+	default:
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return fmt.Errorf("reading file %s: %w", filePathVal, err)
+		}
+		*parts = append(*parts, genai.Text(searchReplace(string(data), keyVals)))
+	}
+
+	return nil
+}
+
+func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]genai.Part, sysParts *[]genai.Part, keyVals ParamMap) error {
+	matches, err := filepath.Glob(filePathVal)
+	if err != nil {
+		return fmt.Errorf("glob pattern: '%s': %w", filePathVal, err)
+	}
+	if len(matches) == 0 {
+		if _, err := os.Stat(filePathVal); os.IsNotExist(err) {
+			return fmt.Errorf("directory or file not found: '%s'", filePathVal)
+		}
+	}
+	for _, match := range matches {
+		if err := filePathHandler(ctx, client, match, parts, sysParts, keyVals); err != nil {
+			return err
+		}
+	}
+	return nil
 }

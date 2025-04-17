@@ -37,7 +37,10 @@ Generate an [architecture decision record](https://adr.github.io/madr/) using a 
 `gen -p role="an experienced MLOps architect" -f prompts/adr.sprompt "an architecture decision record for selecting between option 1 MLFlow and option 2 Weights & Biases for tracking data science experiments. The team includes 5 data scientists and maintains already 50 models in production. The team produces 5 new models per quarter. Models include regression models, classification models, computer vision models as well as time series models."`
 
 List known Gemini models by invoking tool  
-`gen list known generative models`
+`gen -tool list known generative models`
+
+Solve problem through Python code execution  
+`gen -code "What is the sum of the first 50 prime numbers? Generate and run code for the calculation, and make sure you get all 50."`
 
 Extract entities from text  
 `w3m -dump https://lite.cnn.com/2024/07/27/asia/us-austin-trilateral-japan-south-korea-intl-hnk/index.html | gen -json -f - extract entities`

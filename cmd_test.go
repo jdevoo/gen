@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"os"
-	"strings"
+	"path/filepath"
 	"testing"
 )
 
@@ -12,93 +11,100 @@ func TestFlags(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
-	tests := []struct {
-		cmd        string
-		stdin      string
-		args       []string
-		wantExit   int
-		wantOutput []string
+	testCases := []struct {
+		name     string
+		args     []string
+		expected bool
 	}{
 		{
-			"gen",
-			"",
-			[]string{"-h"},
-			0,
-			[]string{"Usage:"},
+			name:     "no flag no prompt",
+			args:     []string{},
+			expected: false,
 		},
 		{
-			"gen",
-			"",
-			[]string{},
-			1,
-			[]string{"Usage:"},
+			name:     "-tool with prompt",
+			args:     []string{"-tool", "list available models"},
+			expected: true,
 		},
 		{
-			"gen",
-			"",
-			[]string{"-s", "ten names of flowers"},
-			1,
-			[]string{"Usage:"},
+			name:     "system flag no prompt",
+			args:     []string{"-s"},
+			expected: false,
 		},
 		{
-			"gen",
-			"",
-			[]string{"-c"},
-			1,
-			[]string{"Usage:"},
+			name:     "chat mode no prompt",
+			args:     []string{"-c"},
+			expected: false,
 		},
 		{
-			"gen",
-			"you speak like a Valley girl",
-			[]string{"-f", "-", "-s"},
-			1,
-			[]string{"Usage:"},
+			name:     "chat mode with prompt",
+			args:     []string{"-c", "ten names for money"},
+			expected: true,
 		},
 		{
-			"gen",
-			"",
-			[]string{"ten names of flowers"},
-			0,
-			[]string{"rose", "lily", "tulip"},
+			name:     "-c and -s with prompt",
+			args:     []string{"-s", "-c", "ten names for money"},
+			expected: true,
 		},
 		{
-			"gen",
-			"you understand english but always reply in french",
-			[]string{"-s", "-f", "-", "ten names of flowers"},
-			0,
-			[]string{"rose", "tulipe", "marguerite"},
+			name:     "-code with prompt",
+			args:     []string{"-code", "Levenshtein distance between Paris and Praha"},
+			expected: true,
 		},
 		{
-			"gen",
-			"you understand english but always reply in french",
-			[]string{"ten names of flowers"},
-			1,
-			[]string{"Usage:"},
+			name:     "embed and digest path but nothing to embed",
+			args:     []string{"-e", "-d", "/path/to/digest"},
+			expected: false,
 		},
 		{
-			"gen",
-			"",
-			[]string{"-p", "DSN=postgres://steampipe:146f_4bc7_9c03@127.0.0.1:9193/steampipe", "list AWS services"},
-			0,
-			[]string{"connection refused"},
+			name:     "path to regular prompt with parameter",
+			args:     []string{"-f", "/path/to/some.prompt", "-p", "key=value"},
+			expected: true,
 		},
 	}
 
-	for _, test := range tests {
-		flag.CommandLine = flag.NewFlagSet(test.cmd, flag.ExitOnError)
-		os.Args = append([]string{test.cmd}, test.args...)
-		t.Log(os.Args)
-		var out bytes.Buffer
-		actualExit := emitGen(strings.NewReader(test.stdin), &out)
-		if test.wantExit != actualExit {
-			t.Errorf("Wrong exit code for args: %v, expected: %v, got: %v",
-				test.args, test.wantExit, actualExit)
-			continue
-		}
-		actualOutput := out.String()
-		if !anyMatches([]string{actualOutput}, test.wantOutput...) {
-			t.Errorf("Wrong output for args: %v, expected one of: %v, got: %v",
-				test.args, strings.Join(test.wantOutput, ","), actualOutput)
-		}
+	var flags *Flags
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset flags for each test case.  Crucial!
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+			flags = &Flags{} // Re-initialize the flags struct
+			flag.BoolVar(&flags.Verbose, "V", false, "")
+			flag.BoolVar(&flags.ChatMode, "c", false, "")
+			flag.BoolVar(&flags.Code, "code", false, "")
+			flags.DigestPaths = ParamArray{}
+			flag.Var(&flags.DigestPaths, "d", "")
+			flag.BoolVar(&flags.Embed, "e", false, "")
+			flags.FilePaths = ParamArray{}
+			flag.Var(&flags.FilePaths, "f", "")
+			flag.BoolVar(&flags.Help, "h", false, "")
+			flag.BoolVar(&flags.JSON, "json", false, "")
+			flag.IntVar(&flags.K, "k", 3, "")
+			flag.Float64Var(&flags.Lambda, "l", 0.5, "")
+			flag.StringVar(&flags.GenModel, "m", "gemini-1.5-flash", "")
+			flag.BoolVar(&flags.OnlyKvs, "o", false, "")
+			keyVals = ParamMap{} // Reset the keyVals map
+			flag.Var(&keyVals, "p", "")
+			flag.BoolVar(&flags.SystemInstruction, "s", false, "")
+			flag.BoolVar(&flags.TokenCount, "t", false, "")
+			flag.Float64Var(&flags.Temp, "temp", 1.0, "")
+			flag.BoolVar(&flags.Tool, "tool", false, "")
+			flag.Float64Var(&flags.TopP, "top_p", 0.95, "")
+			flag.BoolVar(&flags.Unsafe, "unsafe", false, "")
+			flag.BoolVar(&flags.Version, "v", false, "")
+
+			progName := filepath.Base(t.Name())
+			os.Args = []string{progName}
+			os.Args = append(os.Args, tc.args...)
+			err := flag.CommandLine.Parse(os.Args[1:])
+			if err != nil {
+				t.Fatalf("Error parsing flags: %v", err)
+			}
+
+			actual := isValidFlagSet(flags)
+			if actual != tc.expected {
+				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)
+			}
+		})
 	}
 }
