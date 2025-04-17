@@ -94,46 +94,38 @@ Tools:
 
 Options:
 
-  -V	output model details, system instructions and chat history
-    	details include model name | maxInputTokens | maxOutputTokens | temp | top_p | top_k
-  -c	enter chat mode after content generation
-    	type two consecutive blank lines to exit
-    	not supported on windows when stdin used
+  -V    output model details, system instructions and chat history
+  -c    enter chat mode after content generation
+  -code
+        allow code execution (incompatible with -json and -tool)
   -d value
-    	path to a digest folder
-    	use {digest} to inject retrieved chunks into prompt
-    	repeat for every digest to query
-  -e	write embeddings to digest (default model "text-embedding-004")
-    	use with a single digest path
+        path to a digest folder
+  -e    write embeddings to digest (default model "text-embedding-004")
   -f value
-    	file to attach where value is the path to the file
-    	use extensions .prompt and .sprompt for user and system instructions respectively
-    	repeat for every file
-  -h	show this help message and exit
+        file or quoted files matching pattern to attach
+  -h    show this help message and exit
   -json
-    	response in JavaScript Object Notation
+        response in JavaScript Object Notation (incompatible with -tool and -code)
   -k int
-    	maximum number of entries from digest to retrieve (default 3)
+        maximum number of entries from digest to retrieve (default 3)
   -l float
-    	trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
+        trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
   -m string
-    	embedding or generative model name (default "gemini-1.5-flash")
-  -o	only store metadata with embeddings and ignore the content
+        embedding or generative model name (default "gemini-2.0-flash")
+  -o    only store metadata with embeddings and ignore the content
   -p value
-    	prompt parameter value in format key=val
-    	replaces all occurrences of {key} in prompt with val
-    	repeat for every parameter
-    	used as metadata when computing embeddings
-  -s	treat argument as system instruction
-    	unless stdin is set as file
-  -t	output total number of tokens
+        prompt parameter value in format key=val
+  -s    treat argument as system instruction
+  -t    output total number of tokens
   -temp float
-    	changes sampling during response generation [0.0,2.0] (default 1)
+        changes sampling during response generation [0.0,2.0] (default 1)
+  -tool
+        invoke one of the tools (incompatible with -json and -code)
   -top_p float
-    	changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
-    	force generation when gen aborts with FinishReasonSafety
-  -v	show version and exit
+        force generation when gen aborts with FinishReasonSafety
+  -v    show version and exit
 ```
 
 ## License
