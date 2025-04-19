@@ -28,7 +28,7 @@ const (
 	digestKey = "{digest}"
 )
 
-// Flags struct to hold gen option values
+// Flags holds gen option values
 type Flags struct {
 	ChatMode          bool
 	Code              bool
@@ -53,17 +53,17 @@ type Flags struct {
 }
 
 func main() {
-	// Define parameter map.
+	// Define parameter map
 	keyVals = ParamMap{}
 
-	// Define flags.
+	// Define flags
 	flags := &Flags{}
 	flag.BoolVar(&flags.Verbose, "V", false, "output model details, system instructions and chat history")
 	flag.BoolVar(&flags.ChatMode, "c", false, "enter chat mode after content generation")
 	flag.BoolVar(&flags.Code, "code", false, "allow code execution (incompatible with -json and -tool)")
 	flag.Var(&flags.DigestPaths, "d", "path to a digest folder")
 	flag.BoolVar(&flags.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", embModel))
-	flag.Var(&flags.FilePaths, "f", "file or quoted files matching pattern to attach")
+	flag.Var(&flags.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
 	flag.BoolVar(&flags.Help, "h", false, "show this help message and exit")
 	flag.BoolVar(&flags.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -tool and -code)")
 	flag.IntVar(&flags.K, "k", 3, "maximum number of entries from digest to retrieve")
@@ -129,8 +129,12 @@ func emitUsage(out io.Writer) {
 }
 
 func isValidFlagSet(flags *Flags) bool {
-	// Handle invalid arguments/option combinations, starting with no embed flag, prompt as stdin, argument or file
-	if (!flags.Embed && !flags.Stdin && len(flag.Args()) == 0 && !oneMatches(flags.FilePaths, pExt) && !oneMatches(flags.FilePaths, siExt)) ||
+	// Handle invalid arguments/option combinations, starting with no embed flag,
+	// prompt as stdin, argument or file
+	if (!flags.Embed &&
+		!flags.Stdin &&
+		len(flag.Args()) == 0 && !oneMatches(flags.FilePaths, pExt) &&
+		!oneMatches(flags.FilePaths, siExt)) ||
 		// embeddings with chat, prompts, no files, no argument or various generative settings
 		(flags.Embed && (flags.ChatMode || flags.Unsafe || flags.Code || flags.Tool || flags.JSON ||
 			len(flags.DigestPaths) != 1 ||
@@ -155,7 +159,8 @@ func isValidFlagSet(flags *Flags) bool {
 		// lack of /dev/tty on Windows prevents this flag combination
 		(runtime.GOOS == "windows" && flags.Stdin && flags.ChatMode) ||
 		// stdin set but neither used as file nor as argument
-		(flags.Stdin && !(len(flag.Args()) == 1 && flag.Args()[0] == "-") && !oneMatches(flags.FilePaths, "-")) ||
+		(flags.Stdin && !(len(flag.Args()) == 1 && flag.Args()[0] == "-") &&
+			!oneMatches(flags.FilePaths, "-")) ||
 		// one of file or argument as system instruction - look for a prompt
 		(flags.SystemInstruction &&
 			// no stdin, no argument

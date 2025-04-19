@@ -399,19 +399,44 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 }
 
 func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]genai.Part, sysParts *[]genai.Part, keyVals ParamMap) error {
+	fileInfo, err := os.Stat(filePathVal)
+	if err == nil && fileInfo.IsDir() {
+		filePathVal = filepath.Join(filePathVal, "**/*")
+	}
 	matches, err := filepath.Glob(filePathVal)
 	if err != nil {
-		return fmt.Errorf("glob pattern: '%s': %w", filePathVal, err)
+		return fmt.Errorf("globbing '%s': %w", filePathVal, err)
 	}
 	if len(matches) == 0 {
 		if _, err := os.Stat(filePathVal); os.IsNotExist(err) {
 			return fmt.Errorf("directory or file not found: '%s'", filePathVal)
 		}
 	}
+	// Iterate over the matches and process each file
 	for _, match := range matches {
-		if err := filePathHandler(ctx, client, match, parts, sysParts, keyVals); err != nil {
+		err := filePathHandler(ctx, client, match, parts, sysParts, keyVals)
+		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// deepCopyFlags creates a deep copy of the Flags struct.
+// Crucially, it copies the nested ParamArray and the string pointers within it.
+func deepCopyFlags(flags *Flags) Flags {
+	// Create a new Flags struct
+	newFlags := *flags // Start with a shallow copy
+
+	// Deep copy ParamArray FilePaths
+	newFilePaths := make(ParamArray, len(flags.FilePaths))
+	copy(newFilePaths, flags.FilePaths)
+	newFlags.FilePaths = newFilePaths
+
+	// Deep copy ParamArray DigestPaths
+	newDigestPaths := make(ParamArray, len(flags.DigestPaths))
+	copy(newDigestPaths, flags.DigestPaths)
+	newFlags.DigestPaths = newDigestPaths
+
+	return newFlags
 }

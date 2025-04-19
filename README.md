@@ -30,6 +30,9 @@ Set a system instruction from argument and enter chat
 Attach two files to the prompt and return total token count  
 `gen -t -f ../twitter/img/123497680.jpg -f ../twitter/img/123406895.jpg what are the differences between these photos?`
 
+Attach several files using glob patterns  
+`gen -f "src/**/*html" -f "src/*html" "this application is written for Polymer 2 and needs to be migrated to Lit"`
+
 Enter chat mode to generate various SQL statements  
 `cat classicmodels.sql | gen -f - -c`
 
