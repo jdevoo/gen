@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ var (
 	githash    string
 	tokenCount int32
 	keyVals    ParamMap
+	ts         *Amanda
 )
 
 const (
@@ -28,8 +30,8 @@ const (
 	digestKey = "{digest}"
 )
 
-// Flags holds gen option values
-type Flags struct {
+// Parameters holds gen flag values
+type Parameters struct {
 	ChatMode          bool
 	Code              bool
 	DigestPaths       ParamArray
@@ -50,49 +52,57 @@ type Flags struct {
 	Unsafe            bool
 	Verbose           bool
 	Version           bool
+	WhiteboardMode    bool
+	Args              []string
+}
+
+type Env struct {
+	Card *bytes.Buffer
 }
 
 func main() {
 	// Define parameter map
 	keyVals = ParamMap{}
 
-	// Define flags
-	flags := &Flags{}
-	flag.BoolVar(&flags.Verbose, "V", false, "output model details, system instructions and chat history")
-	flag.BoolVar(&flags.ChatMode, "c", false, "enter chat mode after content generation")
-	flag.BoolVar(&flags.Code, "code", false, "allow code execution (incompatible with -json and -tool)")
-	flag.Var(&flags.DigestPaths, "d", "path to a digest folder")
-	flag.BoolVar(&flags.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", embModel))
-	flag.Var(&flags.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
-	flag.BoolVar(&flags.Help, "h", false, "show this help message and exit")
-	flag.BoolVar(&flags.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -tool and -code)")
-	flag.IntVar(&flags.K, "k", 3, "maximum number of entries from digest to retrieve")
-	flag.Float64Var(&flags.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")
-	flag.StringVar(&flags.GenModel, "m", "gemini-2.0-flash", "embedding or generative model name")
-	flag.BoolVar(&flags.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")
+	// Define params
+	params := &Parameters{}
+	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
+	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation")
+	flag.BoolVar(&params.Code, "code", false, "allow code execution (incompatible with -json and -tool)")
+	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
+	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", embModel))
+	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
+	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
+	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -tool and -code)")
+	flag.IntVar(&params.K, "k", 3, "maximum number of entries from digest to retrieve")
+	flag.Float64Var(&params.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")
+	flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "embedding or generative model name")
+	flag.BoolVar(&params.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val")
-	flag.BoolVar(&flags.SystemInstruction, "s", false, "treat argument as system instruction")
-	flag.BoolVar(&flags.TokenCount, "t", false, "output total number of tokens")
-	flag.Float64Var(&flags.Temp, "temp", 1.0, "changes sampling during response generation [0.0,2.0]")
-	flag.BoolVar(&flags.Tool, "tool", false, "invoke one of the tools (incompatible with -json and -code)")
-	flag.Float64Var(&flags.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
-	flag.BoolVar(&flags.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
-	flag.BoolVar(&flags.Version, "v", false, "show version and exit")
+	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system instruction")
+	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
+	flag.Float64Var(&params.Temp, "temp", 1.0, "changes sampling during response generation [0.0,2.0]")
+	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -json and -code)")
+	flag.Float64Var(&params.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
+	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
+	flag.BoolVar(&params.Version, "v", false, "show version and exit")
+	flag.BoolVar(&params.WhiteboardMode, "w", false, "enter whiteboard mode for content generation")
 	flag.Parse()
-	flags.Stdin = hasInputFromStdin(os.Stdin)
+	params.Args = flag.Args()
+	params.Stdin = hasInputFromStdin(os.Stdin)
 
 	// Handle help and version flags before any further processing
-	if flags.Help {
+	if params.Help {
 		emitUsage(os.Stdout)
 		os.Exit(0)
 	}
-	if flags.Version {
+	if params.Version {
 		fmt.Fprintf(os.Stdout, "gen version %s (%s %s)\n", version, golang, githash)
 		os.Exit(0)
 	}
 
 	// Argument validation
-	if !isValidFlagSet(flags) {
+	if !isParamsValid(params) {
 		emitUsage(os.Stderr)
 		os.Exit(1)
 	}
@@ -108,7 +118,29 @@ func main() {
 		os.Exit(1)
 	}()
 
-	os.Exit(emitGen(os.Stdin, os.Stdout, flags))
+	// handle whiteboarding by multiple gen instances
+	if params.WhiteboardMode {
+		var text bytes.Buffer
+		for i, arg := range params.Args {
+			text.WriteString(arg)
+			if i < len(params.Args)-1 {
+				text.WriteString(" ")
+			}
+		}
+		ts = TupleSpace()
+		ts.Out(Env{
+			Card: &text,
+		})
+		for _, thisPath := range params.FilePaths {
+			thisParams := *params // deep copy, ignore DigestPaths
+			thisParams.FilePaths = ParamArray{thisPath}
+			thisParams.Args = []string{} // arguments are obtain via In()
+			ts.Eval(amandaGen, os.Stdin, os.Stdout, &thisParams)
+		}
+		os.Exit(ts.SecondsTimeout(60))
+	} else {
+		os.Exit(emitGen(os.Stdin, os.Stdout, params))
+	}
 }
 
 // Usage overrides PrintDefaults to provide custom usage information.
@@ -123,54 +155,60 @@ func emitUsage(out io.Writer) {
 	fmt.Fprintln(out, "Tools:")
 	fmt.Fprintln(out, knownTools())
 	fmt.Fprintf(out, "\n")
-	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "Parameters:")
 	fmt.Fprintf(out, "\n")
 	flag.PrintDefaults()
 }
 
-func isValidFlagSet(flags *Flags) bool {
+func isParamsValid(params *Parameters) bool {
 	// Handle invalid arguments/option combinations, starting with no embed flag,
 	// prompt as stdin, argument or file
-	if (!flags.Embed &&
-		!flags.Stdin &&
-		len(flag.Args()) == 0 && !oneMatches(flags.FilePaths, pExt) &&
-		!oneMatches(flags.FilePaths, siExt)) ||
+	if (!params.Embed &&
+		!params.Stdin &&
+		len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt) &&
+		!oneMatches(params.FilePaths, siExt)) ||
 		// embeddings with chat, prompts, no files, no argument or various generative settings
-		(flags.Embed && (flags.ChatMode || flags.Unsafe || flags.Code || flags.Tool || flags.JSON ||
-			len(flags.DigestPaths) != 1 ||
-			(flags.OnlyKvs && len(keyVals) == 0) ||
+		(params.Embed && (params.WhiteboardMode || params.ChatMode || params.Unsafe ||
+			params.Code || params.Tool || params.JSON ||
+			len(params.DigestPaths) != 1 ||
+			(params.OnlyKvs && len(keyVals) == 0) ||
 			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
-			anyMatches(flags.FilePaths, pExt) || anyMatches(flags.FilePaths, siExt) ||
-			(len(flag.Args()) == 0 && !oneMatches(flags.FilePaths, "-")))) ||
+			anyMatches(params.FilePaths, pExt) || anyMatches(params.FilePaths, siExt) ||
+			(len(params.Args) == 0 && !oneMatches(params.FilePaths, "-")))) ||
+		// whiteboard mode only with system instruction files, argument, no system instruction flag,
+		// chat mode, json output or stdin
+		(params.WhiteboardMode && (params.SystemInstruction ||
+			params.JSON || params.ChatMode || params.Stdin ||
+			!allMatch(params.FilePaths, siExt) || len(params.Args) == 0)) ||
 		// simultaneous use of -code and -tool
-		(flags.Code && flags.Tool) ||
+		(params.Code && params.Tool) ||
 		// tool registration with json output
-		(flags.Tool && flags.JSON) ||
+		(params.Tool && params.JSON) ||
 		// code execution with json output
-		(flags.Code && flags.JSON) ||
+		(params.Code && params.JSON) ||
 		// invalid k values
-		(flags.K < 0 || flags.K > 10) ||
+		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
-		(flags.Lambda < 0 || flags.Lambda > 1) ||
+		(params.Lambda < 0 || params.Lambda > 1) ||
 		// invalid temperature values
-		(flags.Temp < 0 || flags.Temp > 2) ||
+		(params.Temp < 0 || params.Temp > 2) ||
 		// invalid topP values
-		(flags.TopP < 0 || flags.TopP > 1) ||
+		(params.TopP < 0 || params.TopP > 1) ||
 		// lack of /dev/tty on Windows prevents this flag combination
-		(runtime.GOOS == "windows" && flags.Stdin && flags.ChatMode) ||
+		(runtime.GOOS == "windows" && params.Stdin && params.ChatMode) ||
 		// stdin set but neither used as file nor as argument
-		(flags.Stdin && !(len(flag.Args()) == 1 && flag.Args()[0] == "-") &&
-			!oneMatches(flags.FilePaths, "-")) ||
+		(params.Stdin && !(len(params.Args) == 1 && params.Args[0] == "-") &&
+			!oneMatches(params.FilePaths, "-")) ||
 		// one of file or argument as system instruction - look for a prompt
-		(flags.SystemInstruction &&
+		(params.SystemInstruction &&
 			// no stdin, no argument
-			((!flags.Stdin && len(flag.Args()) == 0) ||
+			((!params.Stdin && len(params.Args) == 0) ||
 				// no stdin, argument as system instruction, no prompt as file, no chat mode
-				(!flags.Stdin && len(flag.Args()) > 0 && !anyMatches(flags.FilePaths, pExt) && !flags.ChatMode) ||
+				(!params.Stdin && len(params.Args) > 0 && !anyMatches(params.FilePaths, pExt) && !params.ChatMode) ||
 				// stdin as file, no prompt as file or argument
-				(flags.Stdin && oneMatches(flags.FilePaths, "-") && len(flag.Args()) == 0 && !oneMatches(flags.FilePaths, pExt)) ||
+				(params.Stdin && oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt)) ||
 				// stdin as argument, no prompt as file
-				(flags.Stdin && len(flag.Args()) == 1 && flag.Args()[0] == "-" && !oneMatches(flags.FilePaths, pExt) && !flags.ChatMode))) {
+				(params.Stdin && len(params.Args) == 1 && params.Args[0] == "-" && !oneMatches(params.FilePaths, pExt) && !params.ChatMode))) {
 		return false
 	}
 	return true

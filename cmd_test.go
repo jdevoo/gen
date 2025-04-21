@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestFlags(t *testing.T) {
+func TestParams(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -63,45 +63,45 @@ func TestFlags(t *testing.T) {
 		},
 	}
 
-	var flags *Flags
+	var params *Parameters
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset flags for each test case.  Crucial!
+			// Reset params for each test case.
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			flags = &Flags{} // Re-initialize the flags struct
-			flag.BoolVar(&flags.Verbose, "V", false, "")
-			flag.BoolVar(&flags.ChatMode, "c", false, "")
-			flag.BoolVar(&flags.Code, "code", false, "")
-			flags.DigestPaths = ParamArray{}
-			flag.Var(&flags.DigestPaths, "d", "")
-			flag.BoolVar(&flags.Embed, "e", false, "")
-			flags.FilePaths = ParamArray{}
-			flag.Var(&flags.FilePaths, "f", "")
-			flag.BoolVar(&flags.Help, "h", false, "")
-			flag.BoolVar(&flags.JSON, "json", false, "")
-			flag.IntVar(&flags.K, "k", 3, "")
-			flag.Float64Var(&flags.Lambda, "l", 0.5, "")
-			flag.StringVar(&flags.GenModel, "m", "gemini-1.5-flash", "")
-			flag.BoolVar(&flags.OnlyKvs, "o", false, "")
+			params = &Parameters{} // Re-initialize the params struct
+			flag.BoolVar(&params.Verbose, "V", false, "")
+			flag.BoolVar(&params.ChatMode, "c", false, "")
+			flag.BoolVar(&params.Code, "code", false, "")
+			params.DigestPaths = ParamArray{}
+			flag.Var(&params.DigestPaths, "d", "")
+			flag.BoolVar(&params.Embed, "e", false, "")
+			params.FilePaths = ParamArray{}
+			flag.Var(&params.FilePaths, "f", "")
+			flag.BoolVar(&params.Help, "h", false, "")
+			flag.BoolVar(&params.JSON, "json", false, "")
+			flag.IntVar(&params.K, "k", 3, "")
+			flag.Float64Var(&params.Lambda, "l", 0.5, "")
+			flag.StringVar(&params.GenModel, "m", "gemini-1.5-flash", "")
+			flag.BoolVar(&params.OnlyKvs, "o", false, "")
 			keyVals = ParamMap{} // Reset the keyVals map
 			flag.Var(&keyVals, "p", "")
-			flag.BoolVar(&flags.SystemInstruction, "s", false, "")
-			flag.BoolVar(&flags.TokenCount, "t", false, "")
-			flag.Float64Var(&flags.Temp, "temp", 1.0, "")
-			flag.BoolVar(&flags.Tool, "tool", false, "")
-			flag.Float64Var(&flags.TopP, "top_p", 0.95, "")
-			flag.BoolVar(&flags.Unsafe, "unsafe", false, "")
-			flag.BoolVar(&flags.Version, "v", false, "")
+			flag.BoolVar(&params.SystemInstruction, "s", false, "")
+			flag.BoolVar(&params.TokenCount, "t", false, "")
+			flag.Float64Var(&params.Temp, "temp", 1.0, "")
+			flag.BoolVar(&params.Tool, "tool", false, "")
+			flag.Float64Var(&params.TopP, "top_p", 0.95, "")
+			flag.BoolVar(&params.Unsafe, "unsafe", false, "")
+			flag.BoolVar(&params.Version, "v", false, "")
 
 			progName := filepath.Base(t.Name())
 			os.Args = []string{progName}
 			os.Args = append(os.Args, tc.args...)
 			err := flag.CommandLine.Parse(os.Args[1:])
 			if err != nil {
-				t.Fatalf("Error parsing flags: %v", err)
+				t.Fatalf("Error parsing params: %v", err)
 			}
-
-			actual := isValidFlagSet(flags)
+			params.Args = flag.CommandLine.Args()
+			actual := isParamsValid(params)
 			if actual != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)
 			}

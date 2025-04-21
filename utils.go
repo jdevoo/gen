@@ -421,22 +421,3 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 	}
 	return nil
 }
-
-// deepCopyFlags creates a deep copy of the Flags struct.
-// Crucially, it copies the nested ParamArray and the string pointers within it.
-func deepCopyFlags(flags *Flags) Flags {
-	// Create a new Flags struct
-	newFlags := *flags // Start with a shallow copy
-
-	// Deep copy ParamArray FilePaths
-	newFilePaths := make(ParamArray, len(flags.FilePaths))
-	copy(newFilePaths, flags.FilePaths)
-	newFlags.FilePaths = newFilePaths
-
-	// Deep copy ParamArray DigestPaths
-	newDigestPaths := make(ParamArray, len(flags.DigestPaths))
-	copy(newDigestPaths, flags.DigestPaths)
-	newFlags.DigestPaths = newDigestPaths
-
-	return newFlags
-}
