@@ -8,7 +8,7 @@ import (
 )
 
 // In extracts a tuple from the tuple space.
-// The parameter must be a pointer so the value will be overwritten.
+// The parameter must be a pointer so the value can be overwritten.
 // It blocks until a matching value is found in the tuple space.
 // The matching tuple is removed from the space.
 func (a *Amanda) In(m Tuple) {

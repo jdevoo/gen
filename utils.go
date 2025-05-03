@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -212,17 +213,23 @@ func invokeTool(fc genai.FunctionCall) string {
 	return vals[0].String()
 }
 
-// hasInvokedTool checks for function call and response to be sent back to Gemini
-func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, string) {
+// hasInvokedTool checks for a function call request, invokes tool and wraps response for model
+// TODO tool error handling
+func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, genai.FunctionResponse) {
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return false, ""
+		return false, genai.FunctionResponse{}
 	}
 	part := resp.Candidates[0].Content.Parts[0]
 	if fc, ok := part.(genai.FunctionCall); ok {
 		res := invokeTool(fc)
-		return true, res
+		return true, genai.FunctionResponse{
+			Name: fc.Name,
+			Response: map[string]any{
+				"Response": res,
+			},
+		}
 	}
-	return false, ""
+	return false, genai.FunctionResponse{}
 }
 
 // printGeneratedResponse emits LLM content, invokes tool if FunctionCall found.
@@ -382,6 +389,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		}
 		*parts = append(*parts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
 		defer func() {
+			fmt.Println("DEFER")
 			err := client.DeleteFile(ctx, file.Name)
 			if err != nil {
 				genLogFatal(err)
@@ -420,4 +428,35 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 		}
 	}
 	return nil
+}
+
+func lastWord(buf *bytes.Buffer) string {
+	str := buf.String()
+	str = strings.TrimSpace(str)
+	if str == "" {
+		return ""
+	}
+
+	lines := strings.Split(str, "\n")
+	if len(lines) < 2 {
+		return ""
+	}
+
+	lastLine := lines[len(lines)-1]
+	prevLine := lines[len(lines)-2]
+	if prevLine != "" || len(strings.Fields(lastLine)) != 1 {
+		return ""
+	}
+
+	words := strings.Fields(lastLine)
+	if len(words) == 0 {
+		return ""
+	}
+
+	last := words[0]
+	rest := strings.Join(lines[:len(lines)-2], "\n")
+
+	buf.Reset()
+	buf.WriteString(rest)
+	return last
 }

@@ -19,17 +19,30 @@ func amandaGen(in io.Reader, out io.Writer, params *Parameters) int {
 	for {
 		var buf bytes.Buffer
 		var e Env
-		ts.In(&e)
+		// fetch tuple from whiteboard
+		params.Whiteboard.In(&e)
 		params.Args = []string{e.Card.String()}
-		res := emitGen(in, &buf, params) // Stdin false
+		res := emitGen(in, &buf, params) // params.Stdin false
 		if res != 0 {
 			return res
 		}
+		// TODO revisit convention
+		// determine next role from last line in buf
+		next := lastWord(&buf)
+		// determine current role from prompt filename
 		_, file := filepath.Split(params.FilePaths[0])
-		fmt.Fprintf(out, "[%s] \033[97m%s\033[0m\n", strings.TrimSuffix(file, siExt), buf.String())
-		ts.Out(Env{
-			Card: &buf,
-		})
+		fmt.Fprintf(out, "[\033[36m%s\033[0m] \033[97m%s\033[0m\n", strings.TrimSuffix(file, siExt), buf.String())
+		// put result back on whiteboard
+		if next != "" {
+			params.Whiteboard.Out(Env{
+				Card: &buf,
+				Next: &next,
+			})
+		} else {
+			params.Whiteboard.Out(Env{
+				Card: &buf,
+			})
+		}
 	}
 }
 
@@ -173,7 +186,8 @@ func emitGen(in io.Reader, out io.Writer, params *Parameters) int {
 
 	// Allow code execution
 	if params.Code {
-		model.(*genai.GenerativeModel).Tools = []*genai.Tool{{CodeExecution: &genai.CodeExecution{}}}
+		model.(*genai.GenerativeModel).Tools =
+			[]*genai.Tool{{CodeExecution: &genai.CodeExecution{}}}
 	}
 
 	// Handle unsafe parameter
@@ -210,7 +224,7 @@ func emitGen(in io.Reader, out io.Writer, params *Parameters) int {
 		}
 	}
 
-	// Set system parts
+	// Set system prompt parts
 	if len(sysParts) > 0 {
 		model.(*genai.GenerativeModel).SystemInstruction = &genai.Content{
 			Parts: sysParts,
@@ -222,32 +236,37 @@ func emitGen(in io.Reader, out io.Writer, params *Parameters) int {
 	}
 
 	// Main chat loop
-	for {
-		if len(parts) > 0 {
-			iter := sess.SendMessageStream(ctx, parts...)
-			if params.TokenCount {
-				res, err := model.(*genai.GenerativeModel).CountTokens(ctx, parts...)
-				if err != nil {
-					genLogFatal(err)
-				}
-				tokenCount += res.TotalTokens
+	for len(parts) > 0 {
+		iter := sess.SendMessageStream(ctx, parts...)
+		parts = []genai.Part{}
+		for {
+			resp, err := iter.Next()
+			if err == iterator.Done {
+				break
 			}
-			for {
-				resp, err := iter.Next()
-				if err == iterator.Done {
-					break
+			if err != nil {
+				fmt.Fprintf(out, "\n")
+				genLogFatal(err)
+			}
+			if ok, res := hasInvokedTool(resp); ok {
+				if params.ChatMode {
+					// send response to Gemini
+					parts = append(parts, res)
 				}
-				if err != nil {
-					fmt.Fprintf(out, "\n")
-					genLogFatal(err)
+				resp = &genai.GenerateContentResponse{
+					Candidates: []*genai.Candidate{
+						{
+							Index: 0,
+							Content: &genai.Content{
+								Parts: []genai.Part{res},
+							},
+						},
+					},
 				}
-				if ok, res := hasInvokedTool(resp); ok {
-					// send response to Gemini and resume generation
-					parts = []genai.Part{genai.Text(res)}
-					iter = sess.SendMessageStream(ctx, parts...)
-					continue
-				}
-				emitGeneratedResponse(out, resp)
+			}
+			emitGeneratedResponse(out, resp)
+			if params.TokenCount {
+				tokenCount = resp.UsageMetadata.TotalTokenCount
 			}
 		}
 		if params.Verbose {
@@ -278,7 +297,7 @@ func emitGen(in io.Reader, out io.Writer, params *Parameters) int {
 				break // exit chat mode
 			}
 		}
-		parts = []genai.Part{genai.Text(input)}
+		parts = append(parts, genai.Text(input))
 	}
 
 	if params.TokenCount {

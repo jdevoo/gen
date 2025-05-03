@@ -27,7 +27,7 @@ func TestParams(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "system flag no prompt",
+			name:     "system flag no prompt, no stdin",
 			args:     []string{"-s"},
 			expected: false,
 		},

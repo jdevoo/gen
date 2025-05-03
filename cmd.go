@@ -20,7 +20,6 @@ var (
 	githash    string
 	tokenCount int32
 	keyVals    ParamMap
-	ts         *Amanda
 )
 
 const (
@@ -54,10 +53,12 @@ type Parameters struct {
 	Version           bool
 	WhiteboardMode    bool
 	Args              []string
+	Whiteboard        *Amanda
 }
 
 type Env struct {
 	Card *bytes.Buffer
+	Next *string
 }
 
 func main() {
@@ -118,7 +119,7 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// handle whiteboarding by multiple gen instances
+	// handle multiple gen instances whiteboarding
 	if params.WhiteboardMode {
 		var text bytes.Buffer
 		for i, arg := range params.Args {
@@ -127,17 +128,17 @@ func main() {
 				text.WriteString(" ")
 			}
 		}
-		ts = TupleSpace()
-		ts.Out(Env{
+		params.Whiteboard = TupleSpace()
+		params.Whiteboard.Out(Env{
 			Card: &text,
 		})
 		for _, thisPath := range params.FilePaths {
 			thisParams := *params // deep copy, ignore DigestPaths
 			thisParams.FilePaths = ParamArray{thisPath}
 			thisParams.Args = []string{} // arguments are obtain via In()
-			ts.Eval(amandaGen, os.Stdin, os.Stdout, &thisParams)
+			params.Whiteboard.Eval(amandaGen, os.Stdin, os.Stdout, &thisParams)
 		}
-		os.Exit(ts.SecondsTimeout(60))
+		os.Exit(params.Whiteboard.SecondsTimeout(30))
 	} else {
 		os.Exit(emitGen(os.Stdin, os.Stdout, params))
 	}
@@ -167,7 +168,7 @@ func isParamsValid(params *Parameters) bool {
 		!params.Stdin &&
 		len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt) &&
 		!oneMatches(params.FilePaths, siExt)) ||
-		// embeddings with chat, prompts, no files, no argument or various generative settings
+		// embeddings with chat, prompts, no files, no argument or generative settings
 		(params.Embed && (params.WhiteboardMode || params.ChatMode || params.Unsafe ||
 			params.Code || params.Tool || params.JSON ||
 			len(params.DigestPaths) != 1 ||
@@ -175,8 +176,8 @@ func isParamsValid(params *Parameters) bool {
 			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
 			anyMatches(params.FilePaths, pExt) || anyMatches(params.FilePaths, siExt) ||
 			(len(params.Args) == 0 && !oneMatches(params.FilePaths, "-")))) ||
-		// whiteboard mode only with system instruction files, argument, no system instruction flag,
-		// chat mode, json output or stdin
+		// whiteboard mode only with system instruction files, argument,
+		// no system instruction flag, chat mode, json output or stdin
 		(params.WhiteboardMode && (params.SystemInstruction ||
 			params.JSON || params.ChatMode || params.Stdin ||
 			!allMatch(params.FilePaths, siExt) || len(params.Args) == 0)) ||
