@@ -10,7 +10,7 @@ import (
 	"math"
 	"os"
 
-	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/genai"
 )
 
 type Document struct {
@@ -25,7 +25,7 @@ type QueryResult struct {
 }
 
 // AppendToDigest saves embedding and content to the digest folder.
-func AppendToDigest(path string, embedding []float32, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...genai.Part) error {
+func AppendToDigest(path string, embedding *genai.ContentEmbedding, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
 	d, err := Open(path, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -39,7 +39,7 @@ func AppendToDigest(path string, embedding []float32, keyVals ParamMap, onlyKvs 
 		}
 		doc.content = content
 	}
-	doc.embedding = embedding
+	doc.embedding = embedding.Values
 	doc.metadata = keyVals
 	data, err := serializeDoc(doc)
 	if err != nil {
@@ -55,7 +55,7 @@ func AppendToDigest(path string, embedding []float32, keyVals ParamMap, onlyKvs 
 }
 
 // QueryDigest returns up to k documents from digest for a given query embedding based on MMR.
-func QueryDigest(path string, queryEmbedding []float32, cand []QueryResult, k int, lambda float32, verbose bool) ([]QueryResult, error) {
+func QueryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []QueryResult, k int, lambda float32, verbose bool) ([]QueryResult, error) {
 	var selection []QueryResult
 	d, err := Open(path, nil)
 	if err != nil {
@@ -83,7 +83,7 @@ func QueryDigest(path string, queryEmbedding []float32, cand []QueryResult, k in
 			for _, cs := range cand {
 				sim2 = math.Max(sim2, float64(dotProduct(doc.embedding, cs.doc.embedding)))
 			}
-			mmr := lambda*dotProduct(queryEmbedding, doc.embedding) - (1-lambda)*float32(sim2)
+			mmr := lambda*dotProduct(queryEmbedding.Values, doc.embedding) - (1-lambda)*float32(sim2)
 			selection = appendToSelection(selection, QueryResult{doc, mmr}, k)
 		}
 	}

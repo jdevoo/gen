@@ -20,8 +20,8 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/genai"
 )
 
 // ParamMap holds key-value pairs for string replacement.
@@ -93,41 +93,30 @@ func searchReplace(prompt string, pm ParamMap) string {
 }
 
 // partWithKey searches prompt parts for occurrence of key and returns index.
-func partWithKey(parts []genai.Part, key string) int {
+func partWithKey(parts []*genai.Part, key string) int {
 	for idx, part := range parts {
-		if text, ok := part.(genai.Text); ok {
-			if strings.Contains(string(text), key) {
-				return idx
-			}
+		if strings.Contains(string(part.Text), key) {
+			return idx
 		}
 	}
 	return -1
 }
 
 // replacePart returns new array with updated entry at idx.
-func replacePart(parts []genai.Part, idx int, key string, selection []QueryResult) []genai.Part {
-	var res []genai.Part
+func replacePart(parts []*genai.Part, idx int, key string, selection []QueryResult) {
 	var keyVal string
 	for _, s := range selection {
 		keyVal += s.doc.content
 	}
-	if text, ok := parts[idx].(genai.Text); ok {
-		newPart := genai.Text(strings.Replace(string(text), key, keyVal, 1))
-		if idx > 0 {
-			res = append(parts[:idx], newPart)
-		} else {
-			res = append(res, newPart)
-		}
-		return append(res, parts[idx+1:]...)
-	}
-	return parts
+	text := parts[idx].Text
+	parts[idx] = &genai.Part{Text: strings.Replace(string(text), key, keyVal, 1)}
 }
 
 // prependToParts extends prompts with digest selection.
-func prependToParts(parts []genai.Part, selection []QueryResult) []genai.Part {
-	var res []genai.Part
+func prependToParts(parts []*genai.Part, selection []QueryResult) []*genai.Part {
+	var res []*genai.Part
 	for _, s := range selection {
-		res = append(res, genai.Text(s.doc.content))
+		res = append(res, &genai.Part{Text: s.doc.content})
 	}
 	return append(res, parts...)
 }
@@ -157,7 +146,7 @@ func knownTools() string {
 
 // registerTools declares functions of Tool in genai.FunctionDeclaration format.
 // TODO support other argument types than string
-func registerTools(model *genai.GenerativeModel) {
+func registerTools(config *genai.GenerateContentConfig) {
 	genTool := reflect.TypeOf(Tool{})
 	n := genTool.NumMethod()
 	funDecl := make([]*genai.FunctionDeclaration, n)
@@ -186,8 +175,8 @@ func registerTools(model *genai.GenerativeModel) {
 			}
 		}
 	}
-	model.Tools = make([]*genai.Tool, 1)
-	model.Tools[0] = &genai.Tool{
+	config.Tools = make([]*genai.Tool, 1)
+	config.Tools[0] = &genai.Tool{
 		FunctionDeclarations: funDecl,
 	}
 }
@@ -219,9 +208,10 @@ func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, genai.FunctionRe
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return false, genai.FunctionResponse{}
 	}
-	part := resp.Candidates[0].Content.Parts[0]
-	if fc, ok := part.(genai.FunctionCall); ok {
-		res := invokeTool(fc)
+	//part := resp.Candidates[0].Content.Parts[0]
+	//if fc, ok := part.(genai.FunctionCall); ok {
+	for _, fc := range resp.FunctionCalls() {
+		res := invokeTool(*fc)
 		return true, genai.FunctionResponse{
 			Name: fc.Name,
 			Response: map[string]any{
@@ -261,14 +251,14 @@ func genLogFatal(err error) {
 
 // uploadFile tracks state until FileStateActive reached.
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
-	file, err := client.UploadFileFromPath(ctx, path, nil)
+	file, err := client.Files.UploadFromPath(ctx, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("uploading file '%s': %w", path, err)
 	}
 
 	for file.State == genai.FileStateProcessing {
 		time.Sleep(1 * time.Second)
-		file, err = client.GetFile(ctx, file.Name)
+		file, err = client.Files.Get(ctx, file.Name, nil)
 		if err != nil {
 			return nil, fmt.Errorf("processing state for '%s': %w", file.Name, err)
 		}
@@ -363,7 +353,8 @@ func isFlagSet(name string) bool {
 }
 
 // filePathHandler processes a single file path.
-func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]genai.Part, sysParts *[]genai.Part, keyVals ParamMap) error {
+// parts and sysParts are extended with file content.
+func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, keyVals ParamMap) error {
 	f, err := os.Open(filePathVal)
 	if err != nil {
 		return fmt.Errorf("opening file '%s': %w", filePathVal, err)
@@ -377,9 +368,9 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 			return fmt.Errorf("reading file '%s': %w", filePathVal, err)
 		}
 		if path.Ext(filePathVal) == siExt {
-			*sysParts = append(*sysParts, genai.Text(searchReplace(string(data), keyVals)))
+			*sysParts = append(*sysParts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 		} else {
-			*parts = append(*parts, genai.Text(searchReplace(string(data), keyVals)))
+			*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 		}
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp",
 		".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
@@ -387,10 +378,9 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if err != nil {
 			return fmt.Errorf("uploading file '%s': %w", filePathVal, err)
 		}
-		*parts = append(*parts, genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], URI: file.URI})
+		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], FileURI: file.URI}})
 		defer func() {
-			fmt.Println("DEFER")
-			err := client.DeleteFile(ctx, file.Name)
+			_, err := client.Files.Delete(ctx, file.Name, nil)
 			if err != nil {
 				genLogFatal(err)
 			}
@@ -400,13 +390,13 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", filePathVal, err)
 		}
-		*parts = append(*parts, genai.Text(searchReplace(string(data), keyVals)))
+		*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 	}
 
 	return nil
 }
 
-func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]genai.Part, sysParts *[]genai.Part, keyVals ParamMap) error {
+func glob(ctx context.Context, client *genai.Client, filePathVal string, parts []*genai.Part, sysParts []*genai.Part, keyVals ParamMap) error {
 	fileInfo, err := os.Stat(filePathVal)
 	if err == nil && fileInfo.IsDir() {
 		filePathVal = filepath.Join(filePathVal, "**/*")
@@ -422,7 +412,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 	}
 	// Iterate over the matches and process each file
 	for _, match := range matches {
-		err := filePathHandler(ctx, client, match, parts, sysParts, keyVals)
+		err := filePathHandler(ctx, client, match, &parts, &sysParts, keyVals)
 		if err != nil {
 			return err
 		}

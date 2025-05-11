@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 type Tool struct{}
@@ -18,17 +15,11 @@ type Tool struct{}
 func (t Tool) ListKnownGeminiModels() (string, error) {
 	var res string
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		return "", err
 	}
-	defer client.Close()
-	iter := client.ListModels(ctx)
-	for {
-		m, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
+	for m, err := range client.Models.All(ctx) {
 		if err != nil {
 			return "", err
 		}

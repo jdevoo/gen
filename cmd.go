@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -62,6 +63,12 @@ type Env struct {
 }
 
 func main() {
+	// Check for API key
+	if val, ok := os.LookupEnv("GEMINI_API_KEY"); !ok || len(val) == 0 {
+		fmt.Fprintf(os.Stderr, "Environment variable GEMINI_API_KEY not set!\n")
+		os.Exit(1)
+	}
+
 	// Define parameter map
 	keyVals = ParamMap{}
 
@@ -74,6 +81,7 @@ func main() {
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", embModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
+	// TODO add -i for image generation
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -tool and -code)")
 	flag.IntVar(&params.K, "k", 3, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")
@@ -108,6 +116,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TODO use context WithValue for retrieving values
+	// TODO replace Background() with WithCancel()
+	ctx := context.Background()
+
 	// Handle token count as separate Go routine
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
@@ -136,11 +148,11 @@ func main() {
 			thisParams := *params // deep copy, ignore DigestPaths
 			thisParams.FilePaths = ParamArray{thisPath}
 			thisParams.Args = []string{} // arguments are obtain via In()
-			params.Whiteboard.Eval(amandaGen, os.Stdin, os.Stdout, &thisParams)
+			params.Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
 		}
 		os.Exit(params.Whiteboard.SecondsTimeout(30))
 	} else {
-		os.Exit(emitGen(os.Stdin, os.Stdout, params))
+		os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
 	}
 }
 
