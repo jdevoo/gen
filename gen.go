@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"google.golang.org/api/iterator"
 	"google.golang.org/genai"
 )
 
@@ -50,7 +49,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	var parts []*genai.Part
 	var sysParts []*genai.Part
 	var stdinData []byte
-	var config interface{}
 
 	// Handle stdin data
 	if params.Stdin {
@@ -100,22 +98,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	/*
-		// Set embedding model if -e or -d are used
-		if params.Embed || len(params.DigestPaths) > 0 {
-			if isFlagSet("m") {
-				model = client.EmbeddingModel(params.GenModel)
-			} else {
-				model = client.EmbeddingModel(embModel)
-			}
-		} else {
-			model = client.GenerativeModel(params.GenModel)
-		}
-	*/
-
 	// Handle embed parameter and exit
 	if params.Embed {
-		//res, err := model.(*genai.EmbeddingModel).EmbedContent(ctx, parts...)
 		res, err := client.Models.EmbedContent(ctx, embModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
 			genLogFatal(err)
@@ -130,7 +114,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	if len(params.DigestPaths) > 0 {
 		var res []QueryResult
 		for _, digestPathVal := range params.DigestPaths {
-			//query, err := client.Models.EmbedContent(ctx, embModel,
 			query, err := client.Models.EmbedContent(ctx, embModel, []*genai.Content{{Parts: parts}}, nil)
 			if err != nil {
 				genLogFatal(err)
@@ -155,30 +138,30 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Set temperature and top_p from args or model defaults
-	config = &genai.GenerateContentConfig{
+	config := &genai.GenerateContentConfig{
 		Temperature: genai.Ptr[float32](float32(params.Temp)),
 		TopP:        genai.Ptr[float32](float32(params.TopP)),
 	}
 
 	// Handle json parameter
 	if params.JSON {
-		config.(*genai.GenerateContentConfig).ResponseMIMEType = "application/json"
+		config.ResponseMIMEType = "application/json"
 	}
 
 	// Register tools declared in the tools.go file
 	if params.Tool {
-		registerTools(config.(*genai.GenerateContentConfig)) // FunctionCallingAny
+		registerTools(config) // FunctionCallingAny
 	}
 
 	// Allow code execution
 	if params.Code {
-		config.(*genai.GenerateContentConfig).Tools =
+		config.Tools =
 			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
 	}
 
 	// Handle unsafe parameter
 	if params.Unsafe {
-		config.(*genai.GenerateContentConfig).SafetySettings = []*genai.SafetySetting{
+		config.SafetySettings = []*genai.SafetySetting{
 			{
 				Category:  genai.HarmCategoryDangerousContent,
 				Threshold: genai.HarmBlockThresholdBlockNone,
@@ -198,29 +181,23 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	/*
-		// Handle verbose parameter
-		if params.Verbose {
-			var config genai.GetModelConfig
-			if params.Embed || len(params.DigestPaths) > 0 {
-				if isFlagSet("m") {
-					_, err = client.Models.Get(ctx, params.GenModel, &config)
-				} else {
-					_, err = client.Models.Get(ctx, embModel, &config)
-				}
-			} else {
-				_, err = client.Models.Get(ctx, params.GenModel, &config)
-			}
-			if err != nil {
-				genLogFatal(err)
-			}
-			fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d | %.2f | %.2f | %d\033[0m\n\n", info.Name, info.InputTokenLimit, info.OutputTokenLimit, params.Temp, params.TopP, info.TopK)
+	// Handle verbose parameter
+	if params.Verbose {
+		var m *genai.Model
+		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
+			m, err = client.Models.Get(ctx, embModel, nil)
+		} else {
+			m, err = client.Models.Get(ctx, params.GenModel, nil)
 		}
-	*/
+		if err != nil {
+			genLogFatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d\033[0m\n\n", m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+	}
 
-	// Start chat session
+	// Start chat
 	// TODO add history
-	sess, err := client.Chats.Create(ctx, params.GenModel, config.(*genai.GenerateContentConfig), nil)
+	chat, err := client.Chats.Create(ctx, params.GenModel, config, nil)
 	if err != nil {
 		genLogFatal(err)
 	}
@@ -236,34 +213,27 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 
 	// Set system prompt parts
 	if len(sysParts) > 0 {
-		config.(*genai.GenerateContentConfig).SystemInstruction = &genai.Content{
+		config.SystemInstruction = &genai.Content{
 			Parts: sysParts,
 			Role:  "model",
 		}
 		if params.Verbose {
-			fmt.Fprintf(os.Stderr, "\033[36m%+v\033[0m\n\n", *config.(*genai.GenerateContentConfig).SystemInstruction)
+			fmt.Fprintf(os.Stderr, "\033[36m%+v\033[0m\n\n", *config)
 		}
 	}
 
-	// Main chat loop
+	// Main gen loop
 	for len(parts) > 0 {
-		iter := sess.SendStream(ctx, parts...)
-		parts = []*genai.Part{}
-		for {
-			resp, err := iter.Next()
-			if err == iterator.Done {
-				break
-			}
+		for resp, err := range chat.SendMessageStream(ctx, derefParts(parts)...) {
+			parts = []*genai.Part{}
 			if err != nil {
 				fmt.Fprintf(out, "\n")
 				genLogFatal(err)
 			}
 			if ok, res := hasInvokedTool(resp); ok {
-				//if params.ChatMode {
-				// send response to Gemini
+				// if chat mode, send response to Gemini
 				parts = append(parts, &genai.Part{FunctionResponse: &res})
-				//}
-				resp = &genai.GenerateContentResponse{
+				emitGeneratedResponse(out, &genai.GenerateContentResponse{
 					Candidates: []*genai.Candidate{
 						{
 							Index: 0,
@@ -272,18 +242,17 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 							},
 						},
 					},
-				}
+				})
 			}
-			emitGeneratedResponse(out, resp)
 			if params.TokenCount {
 				tokenCount = resp.UsageMetadata.TotalTokenCount
 			}
 		}
 		if params.Verbose {
 			fmt.Fprintf(os.Stderr, "\n\033[36m")
-			content := sess.History(false)
-			pen := len(content) - 1
-			for i, c := range content {
+			hist := chat.History(false)
+			pen := len(hist) - 1
+			for i, c := range hist {
 				if i == pen {
 					break
 				}

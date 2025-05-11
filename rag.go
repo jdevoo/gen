@@ -35,7 +35,7 @@ func AppendToDigest(path string, embedding *genai.ContentEmbedding, keyVals Para
 	if !onlyKvs {
 		var content string
 		for _, part := range parts {
-			content += fmt.Sprintf("%s", part)
+			content += (*part).Text
 		}
 		doc.content = content
 	}

@@ -11,7 +11,7 @@ import (
 
 type Tool struct{}
 
-// ListKnownGeminiModels retrieves the list of available generative models
+// ListKnownGeminiModels retrieves the list of available Gemini models
 func (t Tool) ListKnownGeminiModels() (string, error) {
 	var res string
 	ctx := context.Background()

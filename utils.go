@@ -52,6 +52,15 @@ func (a *ParamArray) Set(val string) error {
 	return nil
 }
 
+// derefParts is a kludge for SendMessageStream
+func derefParts(parts []*genai.Part) []genai.Part {
+	res := []genai.Part{}
+	for _, p := range parts {
+		res = append(res, *p)
+	}
+	return res
+}
+
 // hasInputFromPipe checks if input is being piped to the program.
 func hasInputFromStdin(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
@@ -208,8 +217,6 @@ func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, genai.FunctionRe
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return false, genai.FunctionResponse{}
 	}
-	//part := resp.Candidates[0].Content.Parts[0]
-	//if fc, ok := part.(genai.FunctionCall); ok {
 	for _, fc := range resp.FunctionCalls() {
 		res := invokeTool(*fc)
 		return true, genai.FunctionResponse{
@@ -228,7 +235,7 @@ func emitGeneratedResponse(out io.Writer, resp *genai.GenerateContentResponse) {
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
-				res += fmt.Sprintf("%s", part)
+				res += (*part).Text
 			}
 			if !hasOutputRedirected(out) {
 				fmt.Fprintf(out, "\033[97m%s\033[0m", res)
