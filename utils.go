@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -112,22 +113,22 @@ func partWithKey(parts []*genai.Part, key string) int {
 }
 
 // replacePart returns new array with updated entry at idx.
-func replacePart(parts []*genai.Part, idx int, key string, selection []QueryResult) {
+func replacePart(parts *[]*genai.Part, idx int, key string, selection []QueryResult) {
 	var keyVal string
 	for _, s := range selection {
 		keyVal += s.doc.content
 	}
-	text := parts[idx].Text
-	parts[idx] = &genai.Part{Text: strings.Replace(string(text), key, keyVal, 1)}
+	text := (*parts)[idx].Text
+	(*parts)[idx] = &genai.Part{Text: strings.Replace(string(text), key, keyVal, 1)}
 }
 
 // prependToParts extends prompts with digest selection.
-func prependToParts(parts []*genai.Part, selection []QueryResult) []*genai.Part {
+func prependToParts(parts *[]*genai.Part, selection []QueryResult) {
 	var res []*genai.Part
 	for _, s := range selection {
 		res = append(res, &genai.Part{Text: s.doc.content})
 	}
-	return append(res, parts...)
+	*parts = append(res, (*parts)...)
 }
 
 // appendToSelection extends selection with a query result in decreasing order of MMR up to k chunks.
@@ -213,37 +214,57 @@ func invokeTool(fc genai.FunctionCall) string {
 
 // hasInvokedTool checks for a function call request, invokes tool and wraps response for model
 // TODO tool error handling
-func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, genai.FunctionResponse) {
+func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, *genai.FunctionResponse) {
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return false, genai.FunctionResponse{}
+		return false, &genai.FunctionResponse{}
 	}
 	for _, fc := range resp.FunctionCalls() {
 		res := invokeTool(*fc)
-		return true, genai.FunctionResponse{
+		return true, &genai.FunctionResponse{
 			Name: fc.Name,
 			Response: map[string]any{
 				"Response": res,
 			},
 		}
 	}
-	return false, genai.FunctionResponse{}
+	return false, &genai.FunctionResponse{}
 }
 
-// printGeneratedResponse emits LLM content, invokes tool if FunctionCall found.
-func emitGeneratedResponse(out io.Writer, resp *genai.GenerateContentResponse) {
+// emitCandidates prints LLM response candidates from GenerateContent
+func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 	var res string
-	for _, cand := range resp.Candidates {
-		if cand.Content != nil {
-			for _, part := range cand.Content.Parts {
-				res += (*part).Text
-			}
-			if !hasOutputRedirected(out) {
-				fmt.Fprintf(out, "\033[97m%s\033[0m", res)
-			} else {
-				fmt.Fprintf(out, "%s", res)
+	for _, cand := range resp {
+		if cand != nil && cand.Content != nil {
+			for _, p := range cand.Content.Parts {
+				if p.Text != "" {
+					if !hasOutputRedirected(out) {
+						fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
+					} else {
+						fmt.Fprintf(out, "%s", p.Text)
+					}
+					res += p.Text
+				}
+				if p.FunctionResponse != nil {
+					res += fmt.Sprintf("%+v", p.FunctionResponse)
+				}
+				if p.InlineData != nil {
+					fmt.Fprint(out, p.InlineData.Data)
+				}
 			}
 		}
 	}
+}
+
+// emitHistory prints the chat history
+// TODO improve layout
+func emitHistory(out io.Writer, hist []*genai.Content) {
+	var res string
+	for _, c := range hist {
+		for _, p := range c.Parts {
+			res += p.Text
+		}
+	}
+	fmt.Fprintf(out, "%s\n", res)
 }
 
 // genLogFatal refines the error if available.
@@ -385,13 +406,10 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if err != nil {
 			return fmt.Errorf("uploading file '%s': %w", filePathVal, err)
 		}
-		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{MIMEType: strings.Split(file.MIMEType, ";")[0], FileURI: file.URI}})
-		defer func() {
-			_, err := client.Files.Delete(ctx, file.Name, nil)
-			if err != nil {
-				genLogFatal(err)
-			}
-		}()
+		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
+			FileURI:  file.URI,
+			MIMEType: strings.Split(file.MIMEType, ";")[0],
+		}})
 	default:
 		data, err := io.ReadAll(f)
 		if err != nil {
@@ -403,7 +421,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	return nil
 }
 
-func glob(ctx context.Context, client *genai.Client, filePathVal string, parts []*genai.Part, sysParts []*genai.Part, keyVals ParamMap) error {
+func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, keyVals ParamMap) error {
 	fileInfo, err := os.Stat(filePathVal)
 	if err == nil && fileInfo.IsDir() {
 		filePathVal = filepath.Join(filePathVal, "**/*")
@@ -419,7 +437,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts [
 	}
 	// Iterate over the matches and process each file
 	for _, match := range matches {
-		err := filePathHandler(ctx, client, match, &parts, &sysParts, keyVals)
+		err := filePathHandler(ctx, client, match, parts, sysParts, keyVals)
 		if err != nil {
 			return err
 		}
@@ -456,4 +474,20 @@ func lastWord(buf *bytes.Buffer) string {
 	buf.Reset()
 	buf.WriteString(rest)
 	return last
+}
+
+func retrieveHistory(hist *[]*genai.Content) error {
+	*hist = nil
+	return nil
+}
+
+func persistChat(chat *genai.Chat) error {
+	file, _ := os.OpenFile(".gen", os.O_CREATE, os.ModePerm)
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	hist := chat.History(false)
+	if err := encoder.Encode(hist); err != nil {
+		return err
+	}
+	return nil
 }

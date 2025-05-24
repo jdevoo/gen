@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Paramet
 		var buf bytes.Buffer
 		var e Env
 		// fetch tuple from whiteboard
-		params.Whiteboard.In(&e)
+		Whiteboard.In(&e)
 		params.Args = []string{e.Card.String()}
 		res := emitGen(ctx, in, &buf, params) // params.Stdin false
 		if res != 0 {
@@ -32,12 +31,12 @@ func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Paramet
 		fmt.Fprintf(out, "[\033[36m%s\033[0m] \033[97m%s\033[0m\n", strings.TrimSuffix(file, siExt), buf.String())
 		// put result back on whiteboard
 		if next != "" {
-			params.Whiteboard.Out(Env{
+			Whiteboard.Out(Env{
 				Card: &buf,
 				Next: &next,
 			})
 		} else {
-			params.Whiteboard.Out(Env{
+			Whiteboard.Out(Env{
 				Card: &buf,
 			})
 		}
@@ -48,18 +47,21 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	var err error
 	var parts []*genai.Part
 	var sysParts []*genai.Part
+	var history []*genai.Content
 	var stdinData []byte
+	var mediaAssets []string
 
 	// Handle stdin data
 	if params.Stdin {
 		stdinData, err = io.ReadAll(in)
 		if err != nil {
-			log.Fatal(err)
+			genLogFatal(err)
 		}
 		params.Stdin = len(stdinData) > 0
 	}
 
 	// Create a genai client
+	// TODO add support for VertexAI backend
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  os.Getenv("GEMINI_API_KEY"),
 		Backend: genai.BackendGeminiAPI,
@@ -71,6 +73,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Handle file option
 	if len(params.FilePaths) > 0 {
 		for _, filePathVal := range params.FilePaths {
+			// stdin passed as file
 			if filePathVal == "-" {
 				if params.SystemInstruction {
 					sysParts = append(sysParts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
@@ -79,7 +82,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				}
 				continue
 			}
-			if err := glob(ctx, client, filePathVal, parts, sysParts, keyVals); err != nil {
+			// possible uploads include regular file, .prompt, .sprompt or directory
+			if err = glob(ctx, client, filePathVal, &parts, &sysParts, keyVals); err != nil {
 				genLogFatal(err)
 			}
 		}
@@ -98,9 +102,17 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	// Handle embed parameter and exit
+	// Handle TokenCount
+	if params.TokenCount {
+		defer func() {
+			fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", tokenCount)
+		}()
+	}
+
+	// Handle embed parameter then exit
+	// TODO test with embed and image
 	if params.Embed {
-		res, err := client.Models.EmbedContent(ctx, embModel, []*genai.Content{{Parts: parts}}, nil)
+		res, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
 			genLogFatal(err)
 		}
@@ -114,7 +126,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	if len(params.DigestPaths) > 0 {
 		var res []QueryResult
 		for _, digestPathVal := range params.DigestPaths {
-			query, err := client.Models.EmbedContent(ctx, embModel, []*genai.Content{{Parts: parts}}, nil)
+			query, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 			if err != nil {
 				genLogFatal(err)
 			}
@@ -126,39 +138,37 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		if len(res) > 0 {
 			// inject digest into a prompt or append as text
 			if idx := partWithKey(sysParts, digestKey); idx != -1 {
-				replacePart(sysParts, idx, digestKey, res)
+				replacePart(&sysParts, idx, digestKey, res)
 			} else if idx := partWithKey(parts, digestKey); idx != -1 {
-				replacePart(parts, idx, digestKey, res)
+				replacePart(&parts, idx, digestKey, res)
 			} else {
-				parts = prependToParts(parts, res)
+				prependToParts(&parts, res)
 			}
 		}
-		// Switch to generative model for the remainder of this program
-		//model = client.GenerativeModel(params.GenModel)
 	}
 
 	// Set temperature and top_p from args or model defaults
 	config := &genai.GenerateContentConfig{
-		Temperature: genai.Ptr[float32](float32(params.Temp)),
-		TopP:        genai.Ptr[float32](float32(params.TopP)),
+		Temperature: genai.Ptr(float32(params.Temp)),
+		TopP:        genai.Ptr(float32(params.TopP)),
 	}
-
+	// Handle ImgModality
+	if params.ImgModality {
+		config.ResponseModalities = []string{"IMAGE"}
+	}
 	// Handle json parameter
 	if params.JSON {
 		config.ResponseMIMEType = "application/json"
 	}
-
 	// Register tools declared in the tools.go file
 	if params.Tool {
-		registerTools(config) // FunctionCallingAny
+		registerTools(config) // FunctionCallingConfig.Mode ANY
 	}
-
 	// Allow code execution
 	if params.Code {
 		config.Tools =
 			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
 	}
-
 	// Handle unsafe parameter
 	if params.Unsafe {
 		config.SafetySettings = []*genai.SafetySetting{
@@ -180,38 +190,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 			},
 		}
 	}
-
-	// Handle verbose parameter
-	if params.Verbose {
-		var m *genai.Model
-		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
-			m, err = client.Models.Get(ctx, embModel, nil)
-		} else {
-			m, err = client.Models.Get(ctx, params.GenModel, nil)
-		}
-		if err != nil {
-			genLogFatal(err)
-		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d\033[0m\n\n", m.Name, m.InputTokenLimit, m.OutputTokenLimit)
-	}
-
-	// Start chat
-	// TODO add history
-	chat, err := client.Chats.Create(ctx, params.GenModel, config, nil)
-	if err != nil {
-		genLogFatal(err)
-	}
-	tty := in
-
-	// Set file descriptor for chat input
-	if params.Stdin && params.ChatMode {
-		tty, err = os.Open("/dev/tty")
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Set system prompt parts
+	// Set system instruction
 	if len(sysParts) > 0 {
 		config.SystemInstruction = &genai.Content{
 			Parts: sysParts,
@@ -222,57 +201,114 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	// Main gen loop
-	for len(parts) > 0 {
-		for resp, err := range chat.SendMessageStream(ctx, derefParts(parts)...) {
-			parts = []*genai.Part{}
-			if err != nil {
-				fmt.Fprintf(out, "\n")
-				genLogFatal(err)
-			}
-			if ok, res := hasInvokedTool(resp); ok {
-				// if chat mode, send response to Gemini
-				parts = append(parts, &genai.Part{FunctionResponse: &res})
-				emitGeneratedResponse(out, &genai.GenerateContentResponse{
-					Candidates: []*genai.Candidate{
-						{
-							Index: 0,
-							Content: &genai.Content{
-								Parts: parts,
-							},
-						},
-					},
-				})
-			}
-			if params.TokenCount {
-				tokenCount = resp.UsageMetadata.TotalTokenCount
+	// Handle verbose parameter
+	if params.Verbose {
+		var m *genai.Model
+		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
+			m, err = client.Models.Get(ctx, params.EmbModel, nil)
+		} else if params.ImgModality {
+			m, err = client.Models.Get(ctx, params.ImgModel, nil)
+		} else {
+			m, err = client.Models.Get(ctx, params.GenModel, nil)
+		}
+		if err != nil {
+			genLogFatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d\033[0m\n\n", m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+	}
+
+	history = nil
+	if params.ChatMode {
+		if err = retrieveHistory(&history); err != nil {
+			genLogFatal(err)
+		}
+	}
+
+	// Start chat
+	chat, err := client.Chats.Create(ctx, params.GenModel, config, history)
+	if err != nil {
+		genLogFatal(err)
+	}
+	tty := in
+
+	// Set file descriptor for chat input
+	if params.Stdin && params.ChatMode {
+		tty, err = os.Open("/dev/tty")
+		if err != nil {
+			genLogFatal(err)
+		}
+	}
+
+	// Remove any uploaded media assets on exit
+	if len(params.FilePaths) > 0 {
+		for _, p := range parts {
+			if p.FileData != nil {
+				mediaAssets = append(mediaAssets, p.FileData.FileURI)
 			}
 		}
-		if params.Verbose {
-			fmt.Fprintf(os.Stderr, "\n\033[36m")
-			hist := chat.History(false)
-			pen := len(hist) - 1
-			for i, c := range hist {
-				if i == pen {
-					break
+		if len(mediaAssets) > 0 {
+			defer func() {
+				for _, fileURI := range mediaAssets {
+					_, err := client.Files.Delete(ctx, fileURI, nil)
+					if err != nil {
+						genLogFatal(err)
+					}
 				}
-				fmt.Fprintf(os.Stderr, "\033[97m%02d:\033[36m %+v\n", i, c)
+			}()
+		}
+	}
+
+	// Main chat loop
+	for {
+		if len(parts) > 0 {
+			for resp, err := range chat.SendMessageStream(ctx, derefParts(parts)...) {
+				// emtpy parts for next iteration, if any
+				parts = []*genai.Part{}
+				if err != nil {
+					fmt.Fprintf(out, "\n")
+					genLogFatal(err)
+				}
+				if ok, res := hasInvokedTool(resp); ok {
+					fmt.Printf("%+v\n", resp.Candidates[0].Content.Parts[0].FunctionCall)
+					// if chat mode, send response to Gemini
+					// TODO send function invoked
+					parts = append(parts, &genai.Part{FunctionResponse: res})
+					resp = &genai.GenerateContentResponse{
+						Candidates: []*genai.Candidate{
+							{
+								Content: &genai.Content{
+									Parts: parts,
+								},
+								Index: 0,
+							},
+						},
+					}
+				}
+				emitCandidates(out, resp.Candidates)
+				if params.TokenCount && resp.UsageMetadata != nil {
+					tokenCount = resp.UsageMetadata.TotalTokenCount
+				}
 			}
-			fmt.Fprintf(os.Stderr, "\033[0m")
 		}
 		fmt.Fprint(out, "\n")
 		if !params.ChatMode {
 			break
 		}
+		if params.Verbose {
+			fmt.Fprintf(os.Stderr, "\033[36m")
+			hist := chat.History(false)
+			emitHistory(os.Stderr, hist)
+			fmt.Fprintf(os.Stderr, "\033[0m")
+		}
 		input, err := readLine(tty)
 		if err != nil {
-			log.Fatal(err)
+			genLogFatal(err)
 		}
 		// Check for double blank line exit condition
 		if input == "" {
 			input, err = readLine(tty)
 			if err != nil {
-				log.Fatal(err)
+				genLogFatal(err)
 			}
 			if input == "" {
 				break // exit chat mode
@@ -281,8 +317,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		parts = append(parts, &genai.Part{Text: input})
 	}
 
-	if params.TokenCount {
-		fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", tokenCount)
+	if err = persistChat(chat); err != nil {
+		genLogFatal(err)
 	}
 
 	return 0

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"os"
 
@@ -28,7 +27,7 @@ type QueryResult struct {
 func AppendToDigest(path string, embedding *genai.ContentEmbedding, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
 	d, err := Open(path, nil)
 	if err != nil {
-		log.Fatal(err)
+		genLogFatal(err)
 	}
 	defer d.Close()
 	doc := Document{}
@@ -59,7 +58,7 @@ func QueryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []Que
 	var selection []QueryResult
 	d, err := Open(path, nil)
 	if err != nil {
-		log.Fatal(err)
+		genLogFatal(err)
 	}
 	defer d.Close()
 	segs := d.Segments()

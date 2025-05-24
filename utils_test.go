@@ -228,23 +228,23 @@ func TestPartHasKey(t *testing.T) {
 	}{
 		{
 			inputParts: []*genai.Part{
-				&genai.Part{Text: "some prompt without key"},
-				&genai.Part{Text: "some other prompt without key"},
+				{Text: "some prompt without key"},
+				{Text: "some other prompt without key"},
 			},
 			inputKey: "{digest}",
 			wantRes:  -1,
 		},
 		{
 			inputParts: []*genai.Part{
-				&genai.Part{Text: "some prompt with {digest}"},
+				{Text: "some prompt with {digest}"},
 			},
 			inputKey: "{digest}",
 			wantRes:  0,
 		},
 		{
 			inputParts: []*genai.Part{
-				&genai.Part{Text: "some prompt without key}"},
-				&genai.Part{Text: "some prompt with {digest}"},
+				{Text: "some prompt without key}"},
+				{Text: "some prompt with {digest}"},
 			},
 			inputKey: "{digest}",
 			wantRes:  1,
@@ -319,7 +319,7 @@ func TestReplacePart(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		replacePart(test.inputParts, test.inputIdx, test.inputKey, test.inputVal)
+		replacePart(&test.inputParts, test.inputIdx, test.inputKey, test.inputVal)
 		for idx := range test.inputParts {
 			if test.inputParts[idx].Text != test.wantRes[idx].Text {
 				t.Errorf("Expected '%s', got '%s'", test.wantRes[idx].Text, test.inputParts[idx].Text)

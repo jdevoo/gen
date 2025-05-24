@@ -21,12 +21,12 @@ var (
 	githash    string
 	tokenCount int32
 	keyVals    ParamMap
+	Whiteboard *Amanda
 )
 
 const (
 	siExt     = ".sprompt"
 	pExt      = ".prompt"
-	embModel  = "text-embedding-004"
 	digestKey = "{digest}"
 )
 
@@ -36,9 +36,12 @@ type Parameters struct {
 	Code              bool
 	DigestPaths       ParamArray
 	Embed             bool
+	EmbModel          string
 	FilePaths         ParamArray
 	GenModel          string
 	Help              bool
+	ImgModality       bool
+	ImgModel          string
 	JSON              bool
 	K                 int
 	Lambda            float64
@@ -54,7 +57,6 @@ type Parameters struct {
 	Version           bool
 	WhiteboardMode    bool
 	Args              []string
-	Whiteboard        *Amanda
 }
 
 type Env struct {
@@ -63,7 +65,7 @@ type Env struct {
 }
 
 func main() {
-	// Check for API key
+	// Look for API key
 	if val, ok := os.LookupEnv("GEMINI_API_KEY"); !ok || len(val) == 0 {
 		fmt.Fprintf(os.Stderr, "Environment variable GEMINI_API_KEY not set!\n")
 		os.Exit(1)
@@ -73,16 +75,19 @@ func main() {
 	keyVals = ParamMap{}
 
 	// Define params
-	params := &Parameters{}
+	params := &Parameters{
+		EmbModel: "text-embedding-004",
+		ImgModel: "imagen-3.0-generate-002",
+	}
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
-	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation")
-	flag.BoolVar(&params.Code, "code", false, "allow code execution (incompatible with -json and -tool)")
+	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -img)")
+	flag.BoolVar(&params.Code, "code", false, "allow code execution (incompatible with -img, -json and -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
-	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", embModel))
+	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
-	// TODO add -i for image generation
-	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -tool and -code)")
+	flag.BoolVar(&params.ImgModality, "img", false, "generate an image instead of text")
+	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -img, -tool and -code)")
 	flag.IntVar(&params.K, "k", 3, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")
 	flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "embedding or generative model name")
@@ -91,7 +96,7 @@ func main() {
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system instruction")
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
 	flag.Float64Var(&params.Temp, "temp", 1.0, "changes sampling during response generation [0.0,2.0]")
-	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -json and -code)")
+	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -img, -json and -code)")
 	flag.Float64Var(&params.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
@@ -116,22 +121,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO use context WithValue for retrieving values
 	// TODO replace Background() with WithCancel()
 	ctx := context.Background()
 
-	// Handle token count as separate Go routine
+	// Handle token count in case of CTRL-C
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-done
-		if tokenCount > 0 {
+		if params.TokenCount {
 			fmt.Printf("\n\033[31m%d tokens\033[0m\n", tokenCount)
 		}
 		os.Exit(1)
 	}()
 
-	// handle multiple gen instances whiteboarding
+	// handle multiple gen instances
 	if params.WhiteboardMode {
 		var text bytes.Buffer
 		for i, arg := range params.Args {
@@ -140,17 +144,17 @@ func main() {
 				text.WriteString(" ")
 			}
 		}
-		params.Whiteboard = TupleSpace()
-		params.Whiteboard.Out(Env{
+		Whiteboard = TupleSpace()
+		Whiteboard.Out(Env{
 			Card: &text,
 		})
 		for _, thisPath := range params.FilePaths {
 			thisParams := *params // deep copy, ignore DigestPaths
 			thisParams.FilePaths = ParamArray{thisPath}
 			thisParams.Args = []string{} // arguments are obtain via In()
-			params.Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
+			Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
 		}
-		os.Exit(params.Whiteboard.SecondsTimeout(30))
+		os.Exit(Whiteboard.SecondsTimeout(30))
 	} else {
 		os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
 	}
@@ -173,16 +177,17 @@ func emitUsage(out io.Writer) {
 	flag.PrintDefaults()
 }
 
+// TODO check -i with other flags
 func isParamsValid(params *Parameters) bool {
-	// Handle invalid arguments/option combinations, starting with no embed flag,
-	// prompt as stdin, argument or file
+	// Handle invalid arguments/option combinations
+	// starting with no embed flag and no prompt as stdin, argument or file
 	if (!params.Embed &&
 		!params.Stdin &&
 		len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt) &&
 		!oneMatches(params.FilePaths, siExt)) ||
 		// embeddings with chat, prompts, no files, no argument or generative settings
 		(params.Embed && (params.WhiteboardMode || params.ChatMode || params.Unsafe ||
-			params.Code || params.Tool || params.JSON ||
+			params.Code || params.Tool || params.JSON || params.ImgModality ||
 			len(params.DigestPaths) != 1 ||
 			(params.OnlyKvs && len(keyVals) == 0) ||
 			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
@@ -191,14 +196,16 @@ func isParamsValid(params *Parameters) bool {
 		// whiteboard mode only with system instruction files, argument,
 		// no system instruction flag, chat mode, json output or stdin
 		(params.WhiteboardMode && (params.SystemInstruction ||
-			params.JSON || params.ChatMode || params.Stdin ||
+			params.JSON || params.ChatMode || params.ImgModality || params.Stdin ||
 			!allMatch(params.FilePaths, siExt) || len(params.Args) == 0)) ||
-		// simultaneous use of -code and -tool
+		// tool registration with code execution
 		(params.Code && params.Tool) ||
-		// tool registration with json output
+		// json output with tool registration
 		(params.Tool && params.JSON) ||
-		// code execution with json output
+		// json output with code execution
 		(params.Code && params.JSON) ||
+		// image mode with tool registration, json output, code execution or chat mode
+		(params.ImgModality && (params.Code || params.Tool || params.JSON || params.ChatMode)) ||
 		// invalid k values
 		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
@@ -212,7 +219,7 @@ func isParamsValid(params *Parameters) bool {
 		// stdin set but neither used as file nor as argument
 		(params.Stdin && !(len(params.Args) == 1 && params.Args[0] == "-") &&
 			!oneMatches(params.FilePaths, "-")) ||
-		// one of file or argument as system instruction - look for a prompt
+		// one of file or argument as system instruction - looking for a prompt
 		(params.SystemInstruction &&
 			// no stdin, no argument
 			((!params.Stdin && len(params.Args) == 0) ||
