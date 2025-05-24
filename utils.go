@@ -245,7 +245,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 					res += p.Text
 				}
 				if p.FunctionResponse != nil {
-					res += fmt.Sprintf("%+v", p.FunctionResponse)
+					fmt.Fprintf(out, "\033[97m%+v\033[0m", p.FunctionResponse)
 				}
 				if p.InlineData != nil {
 					fmt.Fprint(out, p.InlineData.Data)
@@ -445,6 +445,9 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 	return nil
 }
 
+// lastWord returns the only word of the last line of a bytes buffer
+// the last line can only have a single word
+// the second to last line must be empty
 func lastWord(buf *bytes.Buffer) string {
 	str := buf.String()
 	str = strings.TrimSpace(str)
@@ -476,13 +479,27 @@ func lastWord(buf *bytes.Buffer) string {
 	return last
 }
 
+// retrieveHistory reads content from .gen if it exists
 func retrieveHistory(hist *[]*genai.Content) error {
-	*hist = nil
+	if _, err := os.Stat(dotGen); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	dat, err := os.ReadFile(dotGen)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(dat, hist); err != nil {
+		return err
+	}
 	return nil
 }
 
+// persistChat saves chat history to .gen in the current directory
 func persistChat(chat *genai.Chat) error {
-	file, _ := os.OpenFile(".gen", os.O_CREATE, os.ModePerm)
+	file, err := os.Create(dotGen)
+	if err != nil {
+		return err
+	}
 	defer file.Close()
 	encoder := json.NewEncoder(file)
 	hist := chat.History(false)

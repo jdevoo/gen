@@ -47,7 +47,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	var err error
 	var parts []*genai.Part
 	var sysParts []*genai.Part
-	var history []*genai.Content
 	var stdinData []byte
 	var mediaAssets []string
 
@@ -61,11 +60,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Create a genai client
-	// TODO add support for VertexAI backend
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  os.Getenv("GEMINI_API_KEY"),
-		Backend: genai.BackendGeminiAPI,
-	})
+	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		genLogFatal(err)
 	}
@@ -110,7 +105,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Handle embed parameter then exit
-	// TODO test with embed and image
+	// TODO test embed with image
 	if params.Embed {
 		res, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
@@ -152,9 +147,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		Temperature: genai.Ptr(float32(params.Temp)),
 		TopP:        genai.Ptr(float32(params.TopP)),
 	}
-	// Handle ImgModality
+	// Handle Modality
 	if params.ImgModality {
 		config.ResponseModalities = []string{"IMAGE"}
+	} else {
+		config.ResponseModalities = []string{"TEXT"}
 	}
 	// Handle json parameter
 	if params.JSON {
@@ -162,7 +159,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 	// Register tools declared in the tools.go file
 	if params.Tool {
-		registerTools(config) // FunctionCallingConfig.Mode ANY
+		registerTools(config) // genai.FunctionCallingConfigModeAny
 	}
 	// Allow code execution
 	if params.Code {
@@ -204,20 +201,24 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Handle verbose parameter
 	if params.Verbose {
 		var m *genai.Model
+		var backend string
 		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
 			m, err = client.Models.Get(ctx, params.EmbModel, nil)
-		} else if params.ImgModality {
-			m, err = client.Models.Get(ctx, params.ImgModel, nil)
 		} else {
 			m, err = client.Models.Get(ctx, params.GenModel, nil)
 		}
 		if err != nil {
 			genLogFatal(err)
 		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s | %d | %d\033[0m\n\n", m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+		if client.ClientConfig().Backend == genai.BackendVertexAI {
+			backend = "VertexAI"
+		} else {
+			backend = "GeminiAPI"
+		}
+		fmt.Fprintf(os.Stderr, "\033[36m%s | %s | %d | %d\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
 	}
 
-	history = nil
+	history := []*genai.Content{}
 	if params.ChatMode {
 		if err = retrieveHistory(&history); err != nil {
 			genLogFatal(err)
@@ -269,7 +270,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 					genLogFatal(err)
 				}
 				if ok, res := hasInvokedTool(resp); ok {
-					fmt.Printf("%+v\n", resp.Candidates[0].Content.Parts[0].FunctionCall)
 					// if chat mode, send response to Gemini
 					// TODO send function invoked
 					parts = append(parts, &genai.Part{FunctionResponse: res})
@@ -311,14 +311,13 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				genLogFatal(err)
 			}
 			if input == "" {
+				if err = persistChat(chat); err != nil {
+					genLogFatal(err)
+				}
 				break // exit chat mode
 			}
 		}
 		parts = append(parts, &genai.Part{Text: input})
-	}
-
-	if err = persistChat(chat); err != nil {
-		genLogFatal(err)
 	}
 
 	return 0

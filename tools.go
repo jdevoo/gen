@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -16,10 +15,7 @@ type Tool struct{}
 func (t Tool) ListKnownGeminiModels() (string, error) {
 	var res string
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  os.Getenv("GEMINI_API_KEY"),
-		Backend: genai.BackendGeminiAPI,
-	})
+	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		genLogFatal(err)
 	}
