@@ -61,8 +61,8 @@ type Parameters struct {
 }
 
 type Env struct {
-	Card *bytes.Buffer
-	Next *string
+	Args     *bytes.Buffer
+	Receiver *string
 }
 
 func main() {
@@ -133,11 +133,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	// if VertexAI project ID, then look for cloud location
 	if val, ok := os.LookupEnv("GOOGLE_CLOUD_PROJECT"); ok && len(val) != 0 {
 		if val, ok := os.LookupEnv("GOOGLE_CLOUD_LOCATION"); !ok || len(val) == 0 {
 			fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_CLOUD_LOCATION not set!\n")
 			os.Exit(1)
 		}
+		// if both backends are possible, chose which one is to be used
 		if val, ok := os.LookupEnv("GOOGLE_API_KEY"); ok && len(val) != 0 {
 			if val, ok := os.LookupEnv("GOOGLE_GENAI_USE_VERTEXAI"); !ok || len(val) == 0 {
 				fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_GENAI_USE_VERTEXAI not set!\n")
@@ -160,8 +162,8 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// handle multiple gen instances
 	if params.WhiteboardMode {
+		// handle multiple gen instances
 		var text bytes.Buffer
 		for i, arg := range params.Args {
 			text.WriteString(arg)
@@ -170,19 +172,33 @@ func main() {
 			}
 		}
 		Whiteboard = TupleSpace()
+		// place args in a first tuple on whiteboard
 		Whiteboard.Out(Env{
-			Card: &text,
+			Args: &text,
+			// Next nil i.e. anyone can pick it up
 		})
+		// one gen instance per system prompt file
 		for _, thisPath := range params.FilePaths {
 			thisParams := *params // deep copy, ignore DigestPaths
 			thisParams.FilePaths = ParamArray{thisPath}
 			thisParams.Args = []string{} // arguments are obtain via In()
 			Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
 		}
-		os.Exit(Whiteboard.SecondsTimeout(30))
-	} else {
-		os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
+		// add a code instance
+		codeParams := *params
+		codeParams.Args = []string{}
+		codeParams.Code = true
+		Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &codeParams)
+		// add a tool instance
+		toolParams := *params
+		toolParams.Args = []string{}
+		toolParams.Tool = true
+		Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &toolParams)
+		// FIXME hardcoded timeout
+		os.Exit(Whiteboard.StartWithSecondsTimeout(30))
 	}
+	// regular gen usage
+	os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
 }
 
 // Usage overrides PrintDefaults to provide custom usage information.

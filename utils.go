@@ -259,7 +259,12 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 // TODO improve layout
 func emitHistory(out io.Writer, hist []*genai.Content) {
 	var res string
+	var prev string
 	for _, c := range hist {
+		if prev != c.Role {
+			res += fmt.Sprintf("\n%s\n", c.Role)
+			prev = c.Role
+		}
 		for _, p := range c.Parts {
 			res += p.Text
 		}

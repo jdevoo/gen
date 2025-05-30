@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// In extracts a tuple from the tuple space.
+// In extracts a tuple from the tuple space using `m` as template.
 // The parameter must be a pointer so the value can be overwritten.
 // It blocks until a matching value is found in the tuple space.
 // The matching tuple is removed from the space.
@@ -71,11 +71,12 @@ func (a *Amanda) Eval(fn interface{}, args ...interface{}) {
 	}()
 }
 
-// match compares two values (`m` template and `t` tuple) for equality.
+// match compares template `m` and tuple `t` for equality.
 // It recursively handles nested structs, arrays and slices.
 // Ensure the fields of structs are exported.
-// `nil` acts as wildcard (aka formal), matching any value in that position.
-// The order of fields in structs is significant and ignores their names.
+// `nil` acts as wildcard (aka formal in Linda), matching any
+// value in that position. The order of fields in structs is
+// significant but ignores their names.
 func match(m, t interface{}) bool {
 	mVal := reflect.ValueOf(m)
 	tVal := reflect.ValueOf(t)
@@ -163,7 +164,7 @@ func assign(dest, src interface{}) {
 	assignRecur(destVal, srcVal)
 }
 
-// assignRecur performs the deep copy of the `src` value into the `dest` value.
+// assignRecur performs a deep copy of the `src` value into the `dest` value.
 // The function handles various data types including structs, slices, and
 // pointers, ensuring type safety and correctly handling nested structures.
 // Type mismatch will trigger a panic.
@@ -226,9 +227,8 @@ func assignRecur(dest, src reflect.Value) {
 	}
 }
 
-func (a *Amanda) SecondsTimeout(timeout int) int {
+func (a *Amanda) StartWithSecondsTimeout(timeout int) int {
 	a.Timeout = time.After(time.Duration(timeout) * time.Second)
-
 	select {
 	case <-a.Timeout:
 		return 1

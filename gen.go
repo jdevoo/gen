@@ -12,37 +12,58 @@ import (
 	"google.golang.org/genai"
 )
 
+// amandaGen is a wrapper for emitGen
+// TODO revisit convention
+// sequential: next role from last line in buf
+// parallel execution: no next role found
+// termination condition met vs timeout e.g. count words reached
 func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameters) int {
+	var this string
+	if params.Tool {
+		this = "Tool"
+	}
+	if params.Code {
+		this = "Code"
+	}
 	for {
-		var buf bytes.Buffer
+		// determine current role from prompt filename
+		_, file := filepath.Split(params.FilePaths[0])
+		prompt := strings.TrimSuffix(file, siExt)
+		// fetch tuple from whiteboard, first time ignore receiver
 		var e Env
-		// fetch tuple from whiteboard
+		if this != "" {
+			e.Receiver = &this
+		}
 		Whiteboard.In(&e)
-		params.Args = []string{e.Card.String()}
-		res := emitGen(ctx, in, &buf, params) // params.Stdin false
+		// set args from tuple data
+		params.Args = []string{e.Args.String()}
+		var buf bytes.Buffer
+		res := emitGen(ctx, in, &buf, params)
 		if res != 0 {
 			return res
 		}
-		// TODO revisit convention
-		// determines next role from last line in buf
+		fmt.Fprintf(out, "[\033[36m%s\033[0m] \033[97m%s\033[0m\n", prompt, buf.String())
 		next := lastWord(&buf)
-		// determine current role from prompt filename
-		_, file := filepath.Split(params.FilePaths[0])
-		fmt.Fprintf(out, "[\033[36m%s\033[0m] \033[97m%s\033[0m\n", strings.TrimSuffix(file, siExt), buf.String())
 		// put result back on whiteboard
 		if next != "" {
 			Whiteboard.Out(Env{
-				Card: &buf,
-				Next: &next,
+				Args:     &buf,
+				Receiver: &next,
 			})
 		} else {
 			Whiteboard.Out(Env{
-				Card: &buf,
+				Args: &buf,
+				// Receiver nil i.e. any
 			})
+		}
+		// following iterations, request tuples for this receiver
+		if this == "" {
+			this = prompt
 		}
 	}
 }
 
+// emitGen is the main gen content generator
 func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameters) int {
 	var err error
 	var parts []*genai.Part
@@ -65,6 +86,19 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		genLogFatal(err)
 	}
 
+	// Handle argument
+	if len(params.Args) > 0 {
+		text := searchReplace(strings.Join(params.Args, " "), keyVals)
+		if params.Stdin && text == "-" {
+			text = string(stdinData)
+		}
+		if params.SystemInstruction && !(params.Stdin && oneMatches(params.FilePaths, "-")) {
+			sysParts = append(sysParts, &genai.Part{Text: text})
+		} else {
+			parts = append(parts, &genai.Part{Text: text})
+		}
+	}
+
 	// Handle file option
 	if len(params.FilePaths) > 0 {
 		for _, filePathVal := range params.FilePaths {
@@ -84,19 +118,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	// Handle argument
-	if len(params.Args) > 0 {
-		text := searchReplace(strings.Join(params.Args, " "), keyVals)
-		if params.Stdin && text == "-" {
-			text = string(stdinData)
-		}
-		if params.SystemInstruction && !(params.Stdin && oneMatches(params.FilePaths, "-")) {
-			sysParts = append(sysParts, &genai.Part{Text: text})
-		} else {
-			parts = append(parts, &genai.Part{Text: text})
-		}
-	}
-
 	// Handle TokenCount
 	if params.TokenCount {
 		defer func() {
@@ -105,7 +126,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Handle embed parameter then exit
-	// TODO test embed with image
 	if params.Embed {
 		res, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
@@ -270,8 +290,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 					genLogFatal(err)
 				}
 				if ok, res := hasInvokedTool(resp); ok {
-					// if chat mode, send response to Gemini
-					// TODO send function invoked
+					// if chat mode, send response to model
 					parts = append(parts, &genai.Part{FunctionResponse: res})
 					resp = &genai.GenerateContentResponse{
 						Candidates: []*genai.Candidate{

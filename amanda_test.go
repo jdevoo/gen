@@ -24,6 +24,13 @@ func TestMatch(t *testing.T) {
 		{[]interface{}{1, nil}, []interface{}{1, "hello"}, true},
 		{struct {
 			A *string
+			B *int
+		}{String("hello"), nil}, struct {
+			A *string
+			B *int
+		}{String("hello"), Decimal(2)}, true},
+		{struct {
+			A *string
 			B int
 		}{nil, 2}, struct {
 			A *string
@@ -183,7 +190,7 @@ func TestPhilosophers(t *testing.T) {
 			ts.Out(ticket{})
 		}
 	}
-	res := ts.SecondsTimeout(5)
+	res := ts.StartWithSecondsTimeout(5)
 	if res != 1 {
 		t.Errorf("expected timeout, got %d", res)
 	}
@@ -235,7 +242,7 @@ func TestWorkflow(t *testing.T) {
 	ts.Eval(task, "Dave", t)
 	ts.Eval(task, "Master", t)
 
-	res := ts.SecondsTimeout(30)
+	res := ts.StartWithSecondsTimeout(30)
 	if res != 0 {
 		t.Errorf("expected done, got %d", res)
 	}
@@ -302,7 +309,7 @@ func TestQueens(t *testing.T) {
 			t,
 		)
 	}
-	res := ts.SecondsTimeout(timeout)
+	res := ts.StartWithSecondsTimeout(timeout)
 	if res != 0 {
 		t.Errorf("expected done, got %d", res)
 	}
@@ -363,4 +370,8 @@ func (b board) print(t *testing.T) {
 
 func String(s string) *string {
 	return &s
+}
+
+func Decimal(d int) *int {
+	return &d
 }
