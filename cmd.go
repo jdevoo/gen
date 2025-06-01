@@ -116,7 +116,7 @@ func main() {
 				}
 			}
 		}
-		fmt.Fprintf(os.Stdout, "gen version %s (%s %s %s)\n", version, golang, githash, m.Version)
+		fmt.Fprintf(os.Stdout, "gen version %s (%s %s sdk %s)\n", version, golang, githash, m.Version)
 		os.Exit(0)
 	}
 
@@ -162,8 +162,8 @@ func main() {
 		os.Exit(1)
 	}()
 
+	// Handle multiple gen instances
 	if params.WhiteboardMode {
-		// handle multiple gen instances
 		var text bytes.Buffer
 		for i, arg := range params.Args {
 			text.WriteString(arg)
@@ -172,32 +172,23 @@ func main() {
 			}
 		}
 		Whiteboard = TupleSpace()
-		// place args in a first tuple on whiteboard
+		// Place args in tuple on the whiteboard
 		Whiteboard.Out(Env{
 			Args: &text,
 			// Next nil i.e. anyone can pick it up
+			// Done false
 		})
-		// one gen instance per system prompt file
+		// Start one gen instance per system prompt file
 		for _, thisPath := range params.FilePaths {
-			thisParams := *params // deep copy, ignore DigestPaths
+			thisParams := *params        // deep copy ignoring DigestPaths and FilePaths
+			thisParams.Args = []string{} // arguments are obtained via Amanda's In()
 			thisParams.FilePaths = ParamArray{thisPath}
-			thisParams.Args = []string{} // arguments are obtain via In()
 			Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
 		}
-		// add a code instance
-		codeParams := *params
-		codeParams.Args = []string{}
-		codeParams.Code = true
-		Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &codeParams)
-		// add a tool instance
-		toolParams := *params
-		toolParams.Args = []string{}
-		toolParams.Tool = true
-		Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &toolParams)
 		// FIXME hardcoded timeout
 		os.Exit(Whiteboard.StartWithSecondsTimeout(30))
 	}
-	// regular gen usage
+	// Handle regular gen usage
 	os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
 }
 

@@ -119,9 +119,10 @@ func match(m, t interface{}) bool {
 		//fmt.Printf("struct case %v\n", mVal.Type())
 		if mVal.Type() == reflect.TypeOf(bytes.Buffer{}) {
 			//fmt.Println("bytes.Buffer case")
+			// if template is an empty bytes.Buffer, match anything
 			mBuffer, ok1 := m.(*bytes.Buffer)
 			tBuffer, ok2 := t.(*bytes.Buffer)
-			//fmt.Printf("ok? %v %v\n", ok1, ok2)
+			fmt.Printf("ok? %v %v\n", ok1, ok2)
 			if !ok1 || !ok2 {
 				return false
 			}

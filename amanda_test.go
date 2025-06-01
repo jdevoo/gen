@@ -17,11 +17,16 @@ func TestMatch(t *testing.T) {
 		t      interface{}
 		expect bool
 	}{
+		// template, tuple, outcome
 		{nil, nil, true},
 		{nil, 1, true},
+		{1, 1, true},
 		{nil, "hello", true},
-		{[]interface{}{1, nil, 3}, []interface{}{1, "x", 3}, true},
+		{1, nil, false},
 		{[]interface{}{1, nil}, []interface{}{1, "hello"}, true},
+		{[]interface{}{nil, "hello"}, []interface{}{2, "world"}, false},
+		{[]interface{}{nil, "x", nil}, []interface{}{1, "x", 3}, true},
+		{[]interface{}{1, 2}, []interface{}{3, 4}, false},
 		{struct {
 			A *string
 			B *int
@@ -31,21 +36,18 @@ func TestMatch(t *testing.T) {
 		}{String("hello"), Decimal(2)}, true},
 		{struct {
 			A *string
-			B int
-		}{nil, 2}, struct {
+			B *int
+		}{nil, nil}, struct {
 			A *string
-			B int
-		}{String("hello"), 2}, true},
-		{[]interface{}{1, 2}, []interface{}{3, 4}, false},
-		{[]interface{}{nil, "hello"}, []interface{}{2, "world"}, false},
-		{1, nil, false},
+			B *int
+		}{String("hello"), Decimal(2)}, true},
 		{"hello", nil, false},
-		{nil, &bytes.Buffer{}, true},
 		// NewBufferString returns *bytes.Buffer
+		{nil, bytes.NewBufferString("foo"), true},
+		{bytes.Buffer{}, bytes.NewBufferString("world"), false},
 		{bytes.NewBufferString("hello"), bytes.NewBufferString("hello"), true},
 		{bytes.NewBufferString("hello"), bytes.NewBufferString("world"), false},
-		{bytes.NewBufferString("hello"), bytes.Buffer{}, false},
-		{&bytes.Buffer{}, bytes.NewBufferString("world"), false},
+		{nil, bytes.NewBufferString("world"), true},
 	}
 
 	for i, tc := range tests {
