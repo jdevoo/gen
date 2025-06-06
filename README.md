@@ -89,7 +89,10 @@ Query digest and read out loud using TTS system
 `echo you understand french but always reply in english | gen -s -f - -d digest liste les 30 principales propositions de Jacques Attali | ../Downloads/piper/piper --model ../Downloads/voices/en_US-hfc_female-medium.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -`
 
 ## Whiteboard Mode
-Experimental mode that runs a separate copy of `gen` for each system prompt provided. Each `gen` instance collaborates through a whiteboard based on Amanda, a shared tuple space that supports a basic set of operations inspired by David Gelernter's Linda.
+Experimental mode that runs separate copies of `gen` per system prompt provided. Each `gen` instance collaborates through a whiteboard based on Amanda, a shared tuple space that supports a basic set of operations inspired by David Gelernter's Linda.
+
+A storyteller and an editor collaborate to generate a story using word count tool to stop at a given count of words  
+`gen -w  -f prompts/storyteller.sprompt -f prompts/editor.sprompt -f prompts/tool.sprompt -f prompts/sentinel.sprompt The year is 1788. France is in turmoil.`
 
 ## Usage
 ```

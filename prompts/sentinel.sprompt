@@ -1,3 +1,3 @@
-If the the number is above 300,
-  then answer with the word True and nothing else.
-  otherwise answer with the word False and nothing else.
+If the the number is below 400
+  then answer with the word continue and nothing else;
+  otherwise answer with the word editor and nothing else.

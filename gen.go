@@ -1,101 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"google.golang.org/genai"
 )
-
-// amandaGen is a wrapper for emitGen
-// FIXME experimental setup involving 2 instances and a word counting tool
-// sequential: next role from last line in buf
-// parallel execution of tool sets exit condition before timeout
-func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameters) int {
-	var this string
-	for {
-		// determine current role from prompt filename
-		_, file := filepath.Split(params.FilePaths[0])
-		prompt := strings.TrimSuffix(file, siExt)
-		var e Env
-		var buf bytes.Buffer
-		switch prompt {
-		case "tool":
-			Whiteboard.Rd(&e)
-			if e.Receiver != nil && *e.Receiver == "sentinel" {
-				continue
-			}
-			// set args from tuple data
-			params.Args = []string{e.Args.String()}
-			params.Tool = true
-			// capture gen out in buffer
-			res := emitGen(ctx, in, &buf, params)
-			if res != 0 {
-				return res
-			}
-			dest := "sentinel"
-			Whiteboard.Out(Env{
-				Args:     &buf,
-				Receiver: &dest,
-			})
-		case "sentinel":
-			if this == "" {
-				this = prompt
-			}
-			e.Receiver = &this
-			Whiteboard.In(&e)
-			// set args from tuple data
-			params.Args = []string{e.Args.String()}
-			// capture gen out in buffer
-			res := emitGen(ctx, in, &buf, params)
-			if res != 0 {
-				return res
-			}
-			if strings.ToLower(strings.TrimSpace(buf.String())) == "true" {
-				return 0
-			}
-		case "code":
-			// TODO
-			continue
-		default:
-			// fetch tuple for this receiver; any on first iteration
-			if this != "" {
-				e.Receiver = &this
-			}
-			Whiteboard.In(&e)
-			// set args from tuple data
-			params.Args = []string{e.Args.String()}
-			// capture gen out in buffer
-			res := emitGen(ctx, in, &buf, params)
-			if res != 0 {
-				return res
-			}
-			next := lastWord(&buf)
-			// put result back on whiteboard
-			if next != "" {
-				Whiteboard.Out(Env{
-					Args:     &buf,
-					Receiver: &next,
-				})
-			} else {
-				Whiteboard.Out(Env{
-					Args: &buf,
-					// Receiver nil i.e. any
-				})
-			}
-			// for following iterations, request tuples for this receiver
-			if this == "" {
-				this = prompt
-			}
-		}
-		fmt.Fprintf(out, "[\033[36m%s\033[0m] \033[97m%s\033[0m\n", prompt, strings.TrimSpace(buf.String()))
-	}
-}
 
 // emitGen is the main gen content generator
 func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameters) int {

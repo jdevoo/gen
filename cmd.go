@@ -25,11 +25,12 @@ var (
 	Whiteboard *Amanda
 )
 
+// gen constants
 const (
-	siExt     = ".sprompt"
-	pExt      = ".prompt"
-	digestKey = "{digest}"
-	dotGen    = ".gen"
+	siExt     = ".sprompt" // system prompt extension
+	pExt      = ".prompt"  // regular prompt extension
+	digestKey = "{digest}" // key to replace with embedded content
+	dotGen    = ".gen"     // name of chat history file
 )
 
 // Parameters holds gen flag values
@@ -60,16 +61,17 @@ type Parameters struct {
 	Args              []string
 }
 
+// Env is the tuple shape used for whiteboard mode
 type Env struct {
 	Args     *bytes.Buffer
 	Receiver *string
 }
 
 func main() {
-	// Define parameter map
+	// Define parameter map for variable substitutions in prompts
 	keyVals = ParamMap{}
 
-	// Define params
+	// Define gen parameters
 	params := &Parameters{
 		EmbModel: "text-embedding-004",
 	}
@@ -105,10 +107,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Handle version option
 	if params.Version {
 		var m debug.Module
-		binfo, ok := debug.ReadBuildInfo()
-		if ok {
+		if binfo, ok := debug.ReadBuildInfo(); ok {
 			for _, dep := range binfo.Deps {
 				if dep.Path == "google.golang.org/genai" {
 					m = *dep
@@ -126,7 +128,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Look for API key
+	// Look for API key staring with VertexAI followed by Google AI Studio
 	if val, ok := os.LookupEnv("GOOGLE_CLOUD_PROJECT"); !ok || len(val) == 0 {
 		if val, ok := os.LookupEnv("GOOGLE_API_KEY"); !ok || len(val) == 0 {
 			fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_API_KEY not set!\n")
@@ -148,7 +150,7 @@ func main() {
 		}
 	}
 
-	// TODO replace Background() with WithCancel()
+	// Create a root context
 	ctx := context.Background()
 
 	// Handle token count in case of CTRL-C
@@ -175,8 +177,7 @@ func main() {
 		// Place args in tuple on the whiteboard
 		Whiteboard.Out(Env{
 			Args: &text,
-			// Next nil i.e. anyone can pick it up
-			// Done false
+			// Receiver nil i.e. anyone can pick it up
 		})
 		// Start one gen instance per system prompt file
 		for _, thisPath := range params.FilePaths {
@@ -186,7 +187,7 @@ func main() {
 			Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
 		}
 		// FIXME hardcoded timeout
-		os.Exit(Whiteboard.StartWithSecondsTimeout(30))
+		os.Exit(Whiteboard.StartWithSecondsTimeout(300))
 	}
 	// Handle regular gen usage
 	os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
