@@ -99,10 +99,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 		if len(res) > 0 {
 			// inject digest into a prompt or append as text
-			if idx := partWithKey(sysParts, digestKey); idx != -1 {
-				replacePart(&sysParts, idx, digestKey, res)
-			} else if idx := partWithKey(parts, digestKey); idx != -1 {
-				replacePart(&parts, idx, digestKey, res)
+			if idx := partWithKey(sysParts, DigestKey); idx != -1 {
+				replacePart(&sysParts, idx, DigestKey, res)
+			} else if idx := partWithKey(parts, DigestKey); idx != -1 {
+				replacePart(&parts, idx, DigestKey, res)
 			} else {
 				prependToParts(&parts, res)
 			}
@@ -238,7 +238,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				}
 				if ok, res := hasInvokedTool(resp); ok {
 					// if chat mode, send response to model
-					//parts = append(parts, &genai.Part{FunctionResponse: res})
 					parts = append(parts, &genai.Part{Text: res.Response["Response"].(string)})
 					resp = &genai.GenerateContentResponse{
 						Candidates: []*genai.Candidate{

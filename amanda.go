@@ -11,6 +11,7 @@ import (
 // The parameter must be a pointer so the value can be overwritten.
 // It blocks until a matching value is found in the tuple space.
 // The matching tuple is removed from the space.
+// TODO handle `Input` channel closed; add Context support
 func (a *Amanda) In(m Tuple) {
 	for t := range a.Input {
 		if match(m, t) {
@@ -24,6 +25,7 @@ func (a *Amanda) In(m Tuple) {
 
 // Rd is similar to In, except that it does not remove the matched tuple
 // from the tuple space.
+// TODO handle `Input` channel closed; add Context support
 func (a *Amanda) Rd(m Tuple) {
 	for t := range a.Input {
 		if match(m, t) {
@@ -64,6 +66,7 @@ func (a *Amanda) Eval(fn interface{}, args ...interface{}) {
 		default:
 			results := fnVal.Call(argVals)
 			for _, result := range results {
+				// TODO handle channel full
 				a.Output <- result.Interface()
 			}
 			a.Done <- struct{}{}

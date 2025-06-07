@@ -27,10 +27,13 @@ var (
 
 // gen constants
 const (
-	siExt     = ".sprompt" // system prompt extension
-	pExt      = ".prompt"  // regular prompt extension
-	digestKey = "{digest}" // key to replace with embedded content
-	dotGen    = ".gen"     // name of chat history file
+	SPExt      = ".sprompt"  // system prompt extension
+	PExt       = ".prompt"   // regular prompt extension
+	DigestKey  = "{digest}"  // key to replace with embedded content
+	DotGen     = ".gen"      // name of chat history file
+	ClearLine  = "\r\033[K"  // ANSI escape sequence
+	HideCursor = "\033[?25l" // ANSI escape sequence
+	ShowCursor = "\033[?25h" // ANSI escape sequence
 )
 
 // Parameters holds gen flag values
@@ -118,7 +121,7 @@ func main() {
 				}
 			}
 		}
-		fmt.Fprintf(os.Stdout, "gen version %s (%s %s sdk %s)\n", version, golang, githash, m.Version)
+		fmt.Fprintf(os.Stdout, "gen %s (%s sdk %s %s)\n", version, githash, m.Version, golang)
 		os.Exit(0)
 	}
 
@@ -217,21 +220,21 @@ func isParamsValid(params *Parameters) bool {
 	// starting with no embed flag and no prompt as stdin, argument or file
 	if (!params.Embed &&
 		!params.Stdin &&
-		len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt) &&
-		!oneMatches(params.FilePaths, siExt)) ||
+		len(params.Args) == 0 && !oneMatches(params.FilePaths, PExt) &&
+		!oneMatches(params.FilePaths, SPExt)) ||
 		// embeddings with chat, prompts, no files, no argument or generative settings
 		(params.Embed && (params.WhiteboardMode || params.ChatMode || params.Unsafe ||
 			params.Code || params.Tool || params.JSON || params.ImgModality ||
 			len(params.DigestPaths) != 1 ||
 			(params.OnlyKvs && len(keyVals) == 0) ||
 			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
-			anyMatches(params.FilePaths, pExt) || anyMatches(params.FilePaths, siExt) ||
+			anyMatches(params.FilePaths, PExt) || anyMatches(params.FilePaths, SPExt) ||
 			(len(params.Args) == 0 && !oneMatches(params.FilePaths, "-")))) ||
 		// whiteboard mode only with system instruction files, argument,
 		// no system instruction flag, chat mode, image modality, json output or stdin
 		(params.WhiteboardMode && (params.SystemInstruction ||
 			params.JSON || params.ChatMode || params.ImgModality || params.Stdin ||
-			!allMatch(params.FilePaths, siExt) || len(params.Args) == 0)) ||
+			!allMatch(params.FilePaths, SPExt) || len(params.Args) == 0)) ||
 		// tool registration with code execution
 		(params.Code && params.Tool) ||
 		// json output with tool registration
@@ -258,11 +261,11 @@ func isParamsValid(params *Parameters) bool {
 			// no stdin, no argument
 			((!params.Stdin && len(params.Args) == 0) ||
 				// no stdin, argument as system instruction, no prompt as file, no chat mode
-				(!params.Stdin && len(params.Args) > 0 && !anyMatches(params.FilePaths, pExt) && !params.ChatMode) ||
+				(!params.Stdin && len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode) ||
 				// stdin as file, no prompt as file or argument
-				(params.Stdin && oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !oneMatches(params.FilePaths, pExt)) ||
+				(params.Stdin && oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !oneMatches(params.FilePaths, PExt)) ||
 				// stdin as argument, no prompt as file
-				(params.Stdin && len(params.Args) == 1 && params.Args[0] == "-" && !oneMatches(params.FilePaths, pExt) && !params.ChatMode))) {
+				(params.Stdin && len(params.Args) == 1 && params.Args[0] == "-" && !oneMatches(params.FilePaths, PExt) && !params.ChatMode))) {
 		return false
 	}
 	return true

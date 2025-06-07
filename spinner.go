@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// ClearLine go to the beginning of the line and clear it
-const ClearLine = "\r\033[K"
-
 // Spinner main type
 type Spinner struct {
 	frames []rune
@@ -48,6 +45,13 @@ func WithFrames(frames string) SpinnerOption {
 	}
 }
 
+// WithWriter sets the io.Writer.
+func WithWriter(writer io.Writer) SpinnerOption {
+	return func(s *Spinner) {
+		s.writer = writer
+	}
+}
+
 // Set frames to the given string which must not use spaces.
 func (s *Spinner) Set(frames string) {
 	s.frames = []rune(frames)
@@ -59,6 +63,7 @@ func (s *Spinner) Start() *Spinner {
 		return s
 	}
 	atomic.StoreUint64(&s.active, 1)
+	fmt.Fprint(s.writer, HideCursor)
 	go func() {
 		for atomic.LoadUint64(&s.active) > 0 {
 			fmt.Fprintf(s.writer, s.text, s.next())
@@ -71,7 +76,7 @@ func (s *Spinner) Start() *Spinner {
 // Stop hides the spinner.
 func (s *Spinner) Stop() bool {
 	if x := atomic.SwapUint64(&s.active, 0); x > 0 {
-		fmt.Fprint(s.writer, ClearLine)
+		fmt.Fprint(s.writer, ClearLine, ShowCursor)
 		return true
 	}
 	return false

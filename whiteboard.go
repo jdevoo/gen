@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -18,9 +19,10 @@ func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Paramet
 	var this string
 	// determine current role from prompt filename
 	_, file := filepath.Split(params.FilePaths[0])
-	prompt := strings.TrimSuffix(file, siExt)
-	s := NewSpinner("%s "+prompt, WithFrames(`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`))
+	prompt := strings.TrimSuffix(file, SPExt)
+	s := NewSpinner("%s "+prompt, WithWriter(os.Stderr), WithFrames(`⣾⣽⣻⢿⡿⣟⣯⣷`))
 	s.Start()
+	defer s.Stop()
 	for {
 		// fresh Env at each iteration
 		var e Env
@@ -36,11 +38,12 @@ func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Paramet
 			// set args from tuple data
 			params.Args = []string{e.Args.String()}
 			params.Tool = true
-			// invoke tool and capture gen out in buffer
+			// invoke tool and capture gen out
 			res := emitGen(ctx, in, &buf, params)
 			if res != 0 {
 				return res
-			} // create tuple for sentinel
+			}
+			// create tuple for sentinel
 			rcv := "sentinel"
 			Whiteboard.Out(Env{
 				Args:     &buf,
@@ -63,8 +66,7 @@ func amandaGen(ctx context.Context, in io.Reader, out io.Writer, params *Paramet
 				var final Env
 				final.Receiver = &rcv
 				Whiteboard.Rd(&final)
-				s.Stop()
-				fmt.Fprintf(out, "\033[97m%s\033[0m\n", final.Args.String())
+				fmt.Fprintf(out, ShowCursor+ClearLine+"\033[97m%s\033[0m\n", final.Args.String())
 				return 0
 			}
 		case "code":

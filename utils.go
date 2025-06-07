@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"io"
 	"log"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	_ "image/jpeg"
 
 	_ "github.com/lib/pq"
 
@@ -243,12 +246,28 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 						fmt.Fprintf(out, "%s", p.Text)
 					}
 					res += p.Text
+					continue
 				}
 				if p.FunctionResponse != nil {
-					fmt.Fprintf(out, "\033[97m%+v\033[0m", p.FunctionResponse)
+					if !hasOutputRedirected(out) {
+						fmt.Fprintf(out, "\033[97m%+v\033[0m", p.FunctionResponse)
+					} else {
+						fmt.Fprintf(out, "%+v", p.FunctionResponse)
+					}
+					res += fmt.Sprintf("%+v", p.FunctionResponse)
+					continue
 				}
 				if p.InlineData != nil {
-					fmt.Fprint(out, p.InlineData.Data)
+					reader := bytes.NewReader(p.InlineData.Data)
+					img, _, err := image.Decode(reader)
+					if err != nil {
+						continue
+					}
+					sixbuf := bufio.NewWriter(os.Stdout)
+					defer sixbuf.Flush()
+					enc := SixelEncoder(sixbuf)
+					enc.Dither = true
+					_ = enc.Encode(img)
 				}
 			}
 		}
@@ -395,12 +414,12 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	defer f.Close()
 
 	switch path.Ext(filePathVal) {
-	case pExt, siExt:
+	case PExt, SPExt:
 		data, err := io.ReadAll(f)
 		if err != nil {
 			return fmt.Errorf("reading file '%s': %w", filePathVal, err)
 		}
-		if path.Ext(filePathVal) == siExt {
+		if path.Ext(filePathVal) == SPExt {
 			*sysParts = append(*sysParts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 		} else {
 			*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})
@@ -486,10 +505,10 @@ func lastWord(buf *bytes.Buffer) string {
 
 // retrieveHistory reads content from .gen if it exists
 func retrieveHistory(hist *[]*genai.Content) error {
-	if _, err := os.Stat(dotGen); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(DotGen); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	dat, err := os.ReadFile(dotGen)
+	dat, err := os.ReadFile(DotGen)
 	if err != nil {
 		return err
 	}
@@ -501,7 +520,7 @@ func retrieveHistory(hist *[]*genai.Content) error {
 
 // persistChat saves chat history to .gen in the current directory
 func persistChat(chat *genai.Chat) error {
-	file, err := os.Create(dotGen)
+	file, err := os.Create(DotGen)
 	if err != nil {
 		return err
 	}
