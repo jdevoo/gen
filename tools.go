@@ -40,3 +40,18 @@ func (t Tool) CountWords(s string) (string, error) {
 	res := strconv.Itoa(count)
 	return res, nil
 }
+
+func (t Tool) WriteToFile(filename string) (string, error) {
+	// TODO
+	return fmt.Sprintf("TODO %s", filename), nil
+}
+
+func (t Tool) LookAtMyScreen() (string, error) {
+	// TODO
+	return "TODO", nil
+}
+
+func (t Tool) SubmitSparqlQueryToDbpedia(query string) (string, error) {
+	// TODO
+	return fmt.Sprintf("TODO %s", query), nil
+}

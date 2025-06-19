@@ -85,7 +85,7 @@ func main() {
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
-	flag.BoolVar(&params.ImgModality, "img", false, "generate an image instead of text")
+	flag.BoolVar(&params.ImgModality, "img", false, "generate a jpeg image instead of text (ensure you use a supported model)")
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -img, -tool and -code)")
 	flag.IntVar(&params.K, "k", 3, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")

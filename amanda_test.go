@@ -263,6 +263,7 @@ type board struct {
 // In `main` a goroutine is launched that expires after a set duration. After this delay,
 // it sends a signal to the `done` channel. When `main` receives this signal
 // agents will stop exploring options.
+// FIXME some times outputs 2 boards instead of one
 func TestQueens(t *testing.T) {
 	var crewSize = 5
 	var n = 6

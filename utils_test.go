@@ -392,27 +392,43 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 0HwyBXGeRjmrcUhMg2ghezd//rUUVcTKW5s2jZtY/QDaOKKKK8ip8bPRj8KP/9k=
 `
 	imgBytes, _ := base64.StdEncoding.DecodeString(base64Data)
-	parts := map[string]genai.Part{
-		"Text": {
-			Text: "Text Part",
-		},
-		"FunctionResponse": {
-			FunctionResponse: &genai.FunctionResponse{
-				Name:     "Function Name",
-				Response: map[string]any{"Response": "Function Response"},
+	tests := []struct {
+		name        string
+		part        genai.Part
+		imgModality bool
+	}{
+		{
+			name: "Text",
+			part: genai.Part{
+				Text: "Text Part",
 			},
+			imgModality: false,
 		},
-		"InlineData": {
-			InlineData: &genai.Blob{
-				Data:     imgBytes,
-				MIMEType: "image/jpeg",
+		{
+			name: "FunctionResponse",
+			part: genai.Part{
+				FunctionResponse: &genai.FunctionResponse{
+					Name:     "Function Name",
+					Response: map[string]any{"Response": "Function Response"},
+				},
 			},
+			imgModality: false,
+		},
+		{
+			name: "InlineData",
+			part: genai.Part{
+				InlineData: &genai.Blob{
+					Data:     imgBytes,
+					MIMEType: "image/jpeg",
+				},
+			},
+			imgModality: true,
 		},
 	}
-	for name, p := range parts {
-		t.Run(name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			cp := make([]*genai.Part, 1)
-			cp[0] = &p
+			cp[0] = &test.part
 			c := make([]*genai.Candidate, 1)
 			c[0] = &genai.Candidate{
 				Content: &genai.Content{
@@ -420,7 +436,7 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 				},
 				Index: 1,
 			}
-			emitCandidates(os.Stdout, c)
+			_ = emitCandidates(os.Stdout, c, test.imgModality)
 			fmt.Println()
 		})
 	}

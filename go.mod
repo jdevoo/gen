@@ -6,8 +6,9 @@ toolchain go1.23.3
 
 require (
 	github.com/lib/pq v1.10.9
-	google.golang.org/api v0.236.0
-	google.golang.org/genai v1.10.0
+	github.com/soniakeys/quant v1.0.0
+	google.golang.org/api v0.237.0
+	google.golang.org/genai v1.11.1
 )
 
 require (
@@ -22,7 +23,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/soniakeys/quant v1.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
 	go.opentelemetry.io/otel v1.36.0 // indirect

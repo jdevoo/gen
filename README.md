@@ -55,7 +55,7 @@ Basic information extraction (Google Gemini [cookbook example](https://github.co
 `gen -f extract.sprompt -f extract.prompt | gen -f format.sprompt -`
 
 Generate an image  
-`GOOGLE_GENAI_USE_VERTEXAI=true GOOGLE_CLOUD_PROJECT=project-name-12345.json GOOGLE_CLOUD_LOCATION=us-east1 gen -m imagen-3.0-generate-002 -img An umbrella in the foreground, and a rainy night sky in the background`
+`gen -img -m gemini-2.0-flash-preview-image-generation An umbrella in the foreground, and a rainy night sky in the background`
 
 ## Multi-turn Examples
 Set a system instruction from argument and enter chat  

@@ -20,7 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"image/jpeg"
 	_ "image/jpeg"
+	_ "image/png"
 
 	_ "github.com/lib/pq"
 
@@ -215,7 +217,7 @@ func invokeTool(fc genai.FunctionCall) string {
 	return vals[0].String()
 }
 
-// hasInvokedTool checks for a function call request, invokes tool and wraps response for model
+// hasInvokedTool checks for a function call request, invokes tool and wraps response for model.
 // TODO tool error handling
 func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, *genai.FunctionResponse) {
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
@@ -233,9 +235,8 @@ func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, *genai.FunctionR
 	return false, &genai.FunctionResponse{}
 }
 
-// emitCandidates prints LLM response candidates from GenerateContent
-func emitCandidates(out io.Writer, resp []*genai.Candidate) {
-	var res string
+// emitCandidates prints LLM response candidates.
+func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool) error {
 	for _, cand := range resp {
 		if cand != nil && cand.Content != nil {
 			for _, p := range cand.Content.Parts {
@@ -243,9 +244,12 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 					if !hasOutputRedirected(out) {
 						fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
 					} else {
-						fmt.Fprintf(out, "%s", p.Text)
+						if imgModality {
+							fmt.Fprintf(os.Stderr, "\033[97m%s\033[0m", p.Text)
+						} else {
+							fmt.Fprintf(out, "%s", p.Text)
+						}
 					}
-					res += p.Text
 					continue
 				}
 				if p.FunctionResponse != nil {
@@ -254,27 +258,34 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate) {
 					} else {
 						fmt.Fprintf(out, "%+v", p.FunctionResponse)
 					}
-					res += fmt.Sprintf("%+v", p.FunctionResponse)
 					continue
 				}
 				if p.InlineData != nil {
 					reader := bytes.NewReader(p.InlineData.Data)
 					img, _, err := image.Decode(reader)
 					if err != nil {
-						continue
+						return err
 					}
-					sixbuf := bufio.NewWriter(os.Stdout)
-					defer sixbuf.Flush()
-					enc := SixelEncoder(sixbuf)
-					enc.Dither = true
-					_ = enc.Encode(img)
+					if hasOutputRedirected(out) {
+						// Encode to jpeg file
+						if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
+							return err
+						}
+					}
+					// encode to Sixel format
+					senc := SixelEncoder(os.Stderr)
+					senc.Dither = true
+					if err := senc.Encode(img); err != nil {
+						return err
+					}
 				}
 			}
 		}
 	}
+	return nil
 }
 
-// emitHistory prints the chat history
+// emitHistory prints the chat history.
 // TODO improve layout
 func emitHistory(out io.Writer, hist []*genai.Content) {
 	var res string

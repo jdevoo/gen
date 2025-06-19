@@ -125,7 +125,7 @@ func match(m, t interface{}) bool {
 			// if template is an empty bytes.Buffer, match anything
 			mBuffer, ok1 := m.(*bytes.Buffer)
 			tBuffer, ok2 := t.(*bytes.Buffer)
-			fmt.Printf("ok? %v %v\n", ok1, ok2)
+			//fmt.Printf("ok? %v %v\n", ok1, ok2)
 			if !ok1 || !ok2 {
 				return false
 			}

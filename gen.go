@@ -116,7 +116,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 	// Handle Modality
 	if params.ImgModality {
-		config.ResponseModalities = []string{"IMAGE"}
+		config.ResponseModalities = []string{"TEXT", "IMAGE"}
 	} else {
 		config.ResponseModalities = []string{"TEXT"}
 	}
@@ -250,7 +250,9 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 						},
 					}
 				}
-				emitCandidates(out, resp.Candidates)
+				if err := emitCandidates(out, resp.Candidates, params.ImgModality); err != nil {
+					genLogFatal(err)
+				}
 				if params.TokenCount && resp.UsageMetadata != nil {
 					tokenCount = resp.UsageMetadata.TotalTokenCount
 				}
