@@ -199,7 +199,7 @@ func TestPhilosophers(t *testing.T) {
 }
 
 // This test uses Amanda to pass work from agent to agent.
-// Tuple space is populated with instruction structs that can
+// The tuple space is populated with instruction structs that can
 // be picked up by specific agents.
 func TestWorkflow(t *testing.T) {
 	type Instructions struct {
@@ -268,6 +268,7 @@ func TestQueens(t *testing.T) {
 	var crewSize = 5
 	var n = 6
 	var timeout = 120
+	var mu sync.Mutex
 
 	t.Logf("Solving for %d queens with a crew of %d for %ds...\n", n, crewSize, timeout)
 	ts := TupleSpace()
@@ -288,19 +289,15 @@ func TestQueens(t *testing.T) {
 					// pick any board from the blackboard
 					var b board
 					ts.In(&b)
-					/*
-						if *b.Fixed == want {
-							b.print(t)
-							return
-						}
-					*/
 					// consider zapping queens from the board
 					if *b.Fixed > 3 && rand.Float32() < 0.1 {
 						b.zapQueens(rand.IntN(2))
 					}
 					if b.foundAcceptableHint() {
 						if *b.Fixed == want {
+							mu.Lock()
 							b.print(t)
+							mu.Unlock()
 							return
 						}
 					}

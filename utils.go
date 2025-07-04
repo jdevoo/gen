@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -102,7 +103,8 @@ func readLine(r io.Reader) (string, error) {
 func searchReplace(prompt string, pm ParamMap) string {
 	res := prompt
 	for k, v := range pm {
-		res = strings.ReplaceAll(res, "{"+k+"}", v) // all occurrences
+		searchRegex := regexp.MustCompile("(?i){" + k + "}")
+		res = searchRegex.ReplaceAllString(res, v)
 	}
 	return res
 }

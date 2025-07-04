@@ -97,9 +97,9 @@ func TestSearchReplace(t *testing.T) {
 		want   string
 	}{
 		{
-			prompt: "Hello {name}, how are you?",
+			prompt: "Hello {NAME}, how are you? Long live {name}!",
 			params: ParamMap{"name": "World"},
-			want:   "Hello World, how are you?",
+			want:   "Hello World, how are you? Long live World!",
 		},
 		{
 			prompt: "This is a {adjective} {noun}.",

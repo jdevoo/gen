@@ -71,7 +71,7 @@ Tree of thought
 `gen -c -f tot.sprompt -f tot.prompt`
 
 > [!NOTE]
-Chat mode saves history in a `.gen` file in the current directory; remove it to start a new session.
+Exit chat mode with two consecutive blank lines. Chat mode saves history in a `.gen` file in the current directory; remove it to start an empty session.
 
 ## Retrieval Augmented Generation
 Use Gemini embedding models to encode text chunks for retrieval augmented generation. [Maximal marginal relevance](mmr.pdf) is used to rank chunks up to a default limit. The text retrieved is prepended to prompts. Altnernatively, use the digest key inside the prompt to position retrieved chunks. Digest files are append-only named `00000000000000000001` and incremented as soon as the limit of 20MB is reached. Persistence logic is adapted from Farhan's [aol](https://github.com/arriqaaq/aol).
@@ -111,41 +111,42 @@ Tools:
 
 Parameters:
 
-  -V	output model details, system instructions and chat history
-  -c	enter chat mode after content generation (incompatible with -img)
+  -V    output model details, system instructions and chat history
+  -c    enter chat mode after content generation (incompatible with -img, -code or -g)
   -code
-    	allow code execution (incompatible with -img, -json and -tool)
+        allow code execution (incompatible with -g, -img or -tool)
   -d value
-    	path to a digest folder
-  -e	write embeddings to digest (default model "text-embedding-004")
+        path to a digest folder
+  -e    write embeddings to digest (default model "text-embedding-004")
   -f value
-    	file, directory or quoted matching pattern of files to attach
-  -h	show this help message and exit
+        file, directory or quoted matching pattern of files to attach
+  -g    Google search (incompatible with -code, -img and -tool)
+  -h    show this help message and exit
   -img
-    	generate an image instead of text
+        generate a jpeg image (use -m with a supported model)
   -json
-    	response in JavaScript Object Notation (incompatible with -img, -tool and -code)
+        response in JavaScript Object Notation (incompatible with -img and -tool)
   -k int
-    	maximum number of entries from digest to retrieve (default 3)
+        maximum number of entries from digest to retrieve (default 3)
   -l float
-    	trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
+        trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
   -m string
-    	embedding or generative model name (default "gemini-2.0-flash")
-  -o	only store metadata with embeddings and ignore the content
+        embedding or generative model name (default "gemini-2.0-flash")
+  -o    only store metadata with embeddings and ignore the content
   -p value
-    	prompt parameter value in format key=val
-  -s	treat argument as system instruction
-  -t	output total number of tokens
+        prompt parameter value in format key=val
+  -s    treat argument as system instruction
+  -t    output total number of tokens
   -temp float
-    	changes sampling during response generation [0.0,2.0] (default 1)
+        changes sampling during response generation [0.0,2.0] (default 1)
   -tool
-    	invoke one of the tools (incompatible with -img, -json and -code)
+        invoke one of the tools (incompatible with -g, -img or -code)
   -top_p float
-    	changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
-    	force generation when gen aborts with FinishReasonSafety
-  -v	show version and exit
-  -w	enter whiteboard mode for content generation
+        force generation when gen aborts with FinishReasonSafety
+  -v    show version and exit
+  -w    enter whiteboard mode for content generation (experimental)
 ```
 
 ## License

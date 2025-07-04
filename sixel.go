@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/draw"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/soniakeys/quant/median"
+	"golang.org/x/image/draw"
 )
 
 // Encoder encodes an image to the VT300 sixel format.
@@ -81,6 +82,13 @@ func (e *Encoder) Encode(img image.Image) error {
 	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 	if width == 0 || height == 0 {
 		return nil
+	}
+	if height > 320 {
+		ratio := float64(width) / float64(height)
+		width = int(math.Round(320.0 * ratio))
+		simg := image.NewRGBA(image.Rect(0, 0, width, 320))
+		draw.CatmullRom.Scale(simg, simg.Bounds(), img, img.Bounds(), draw.Over, nil)
+		img = simg
 	}
 
 	// Create paletted image

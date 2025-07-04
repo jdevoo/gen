@@ -133,6 +133,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		config.Tools =
 			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
 	}
+	// Enable Google search retrieval
+	if params.GoogleSearch {
+		config.Tools =
+			[]*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}}
+	}
 	// Handle unsafe parameter
 	if params.Unsafe {
 		config.SafetySettings = []*genai.SafetySetting{
