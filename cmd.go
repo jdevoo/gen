@@ -81,11 +81,11 @@ func main() {
 	}
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
 	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
-	flag.BoolVar(&params.Code, "code", false, "allow code execution (incompatible with -g, -json, -img or -tool)")
+	flag.BoolVar(&params.Code, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
-	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search (incompatible with -code, -json, -img and -tool)")
+	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -json, -img and -tool)")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
 	flag.BoolVar(&params.ImgModality, "img", false, "generate a jpeg image (use -m with a supported model)")
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
@@ -97,7 +97,7 @@ func main() {
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system instruction")
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
 	flag.Float64Var(&params.Temp, "temp", 1.0, "changes sampling during response generation [0.0,2.0]")
-	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -g, -json, -img or -code)")
+	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -json, -img or -code)")
 	flag.Float64Var(&params.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
@@ -240,7 +240,7 @@ func isParamsValid(params *Parameters) bool {
 		// code execution with tool registration or search
 		(params.Code && (params.JSON || params.Tool || params.GoogleSearch)) ||
 		// tool registration with code execution or search
-		(params.Tool && (params.JSON || params.Code || params.GoogleSearch)) ||
+		(params.Tool && (params.JSON || params.Code || params.GoogleSearch || params.SystemInstruction)) ||
 		// search with tool or code
 		(params.GoogleSearch && (params.JSON || params.Tool || params.Code)) ||
 		// image modality with tool registration, json output, code execution or chat mode

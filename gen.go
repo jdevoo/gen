@@ -33,25 +33,27 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		genLogFatal(err)
 	}
 
-	// Handle argument
+	// First, handle argument
 	if len(params.Args) > 0 {
 		text := searchReplace(strings.Join(params.Args, " "), keyVals)
 		if params.Stdin && text == "-" {
 			text = string(stdinData)
 		}
 		if params.SystemInstruction && !(params.Stdin && oneMatches(params.FilePaths, "-")) {
+			// argument used as system prompt for chat session unless `-f -` is set
 			sysParts = append(sysParts, &genai.Part{Text: text})
 		} else {
 			parts = append(parts, &genai.Part{Text: text})
 		}
 	}
 
-	// Handle file option
+	// Next, handle file options
 	if len(params.FilePaths) > 0 {
 		for _, filePathVal := range params.FilePaths {
 			// stdin passed as file
 			if filePathVal == "-" {
 				if params.SystemInstruction {
+					// `-f -` takes precedence with `-s`
 					sysParts = append(sysParts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
 				} else {
 					parts = append(parts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
@@ -127,6 +129,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Register tools declared in the tools.go file
 	if params.Tool {
 		registerTools(config) // genai.FunctionCallingConfigModeAny
+		conjTexts(&parts)
 	}
 	// Allow code execution
 	if params.Code {
@@ -235,12 +238,12 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	for {
 		if len(parts) > 0 {
 			for resp, err := range chat.SendMessageStream(ctx, derefParts(parts)...) {
-				// emtpy parts for next iteration, if any
-				parts = []*genai.Part{}
 				if err != nil {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
+				// emtpy parts for next iteration, if any
+				parts = []*genai.Part{}
 				if ok, res := hasInvokedTool(resp); ok {
 					// if chat mode, send response to model
 					parts = append(parts, &genai.Part{Text: res.Response["Response"].(string)})

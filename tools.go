@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -28,7 +29,7 @@ func (t Tool) ListKnownGeminiModels() (string, error) {
 	return res, nil
 }
 
-// ListAWSServices returns a list of services via steampipe
+// ListAWSServices returns a list of services via Steampipe
 func (t Tool) ListAWSServices() (string, error) {
 	return queryPostgres("SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'")
 }
@@ -39,4 +40,13 @@ func (t Tool) CountWords(s string) (string, error) {
 	count := len(words)
 	res := strconv.Itoa(count)
 	return res, nil
+}
+
+// GetWorkingDirectory returns the current directory
+func (t Tool) GetWorkingDirectory() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return wd, nil
 }
