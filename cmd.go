@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -22,24 +21,21 @@ var (
 	githash    string
 	tokenCount int32
 	keyVals    ParamMap
-	Whiteboard *Amanda
 )
 
 // gen constants
 const (
-	SPExt      = ".sprompt"  // system prompt extension
-	PExt       = ".prompt"   // regular prompt extension
-	DigestKey  = "{digest}"  // key to replace with embedded content
-	DotGen     = ".gen"      // name of chat history file
-	ClearLine  = "\r\033[K"  // ANSI escape sequence
-	HideCursor = "\033[?25l" // ANSI escape sequence
-	ShowCursor = "\033[?25h" // ANSI escape sequence
+	SPExt     = ".sprompt" // system prompt extension
+	PExt      = ".prompt"  // regular prompt extension
+	DigestKey = "{digest}" // key to replace with embedded content
+	DotGen    = ".gen"     // name of chat history file
 )
 
 // Parameters holds gen flag values
 type Parameters struct {
+	Args              []string
 	ChatMode          bool
-	Code              bool
+	CodeGen           bool
 	DigestPaths       ParamArray
 	Embed             bool
 	EmbModel          string
@@ -61,14 +57,6 @@ type Parameters struct {
 	Unsafe            bool
 	Verbose           bool
 	Version           bool
-	WhiteboardMode    bool
-	Args              []string
-}
-
-// Env is the tuple shape used for whiteboard mode
-type Env struct {
-	Args     *bytes.Buffer
-	Receiver *string
 }
 
 func main() {
@@ -81,7 +69,7 @@ func main() {
 	}
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
 	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
-	flag.BoolVar(&params.Code, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
+	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
@@ -101,7 +89,6 @@ func main() {
 	flag.Float64Var(&params.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
-	flag.BoolVar(&params.WhiteboardMode, "w", false, "enter whiteboard mode for content generation (experimental)")
 	flag.Parse()
 	params.Args = flag.Args()
 	params.Stdin = hasInputFromStdin(os.Stdin)
@@ -169,32 +156,6 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// Handle multiple gen instances
-	if params.WhiteboardMode {
-		var text bytes.Buffer
-		for i, arg := range params.Args {
-			text.WriteString(arg)
-			if i < len(params.Args)-1 {
-				text.WriteString(" ")
-			}
-		}
-		Whiteboard = TupleSpace()
-		// Place args in tuple on the whiteboard
-		Whiteboard.Out(Env{
-			Args: &text,
-			// Receiver nil i.e. anyone can pick it up
-		})
-		// Start one gen instance per system prompt file
-		for _, thisPath := range params.FilePaths {
-			thisParams := *params        // deep copy ignoring DigestPaths and FilePaths
-			thisParams.Args = []string{} // arguments are obtained via Amanda's In()
-			thisParams.FilePaths = ParamArray{thisPath}
-			Whiteboard.Eval(amandaGen, ctx, os.Stdin, os.Stdout, &thisParams)
-		}
-		// FIXME hardcoded timeout
-		os.Exit(Whiteboard.StartWithSecondsTimeout(300))
-	}
-	// Handle regular gen usage
 	os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
 }
 
@@ -225,26 +186,21 @@ func isParamsValid(params *Parameters) bool {
 		len(params.Args) == 0 && !oneMatches(params.FilePaths, PExt) &&
 		!oneMatches(params.FilePaths, SPExt)) ||
 		// embeddings with chat, prompts, no files, no argument or generative settings
-		(params.Embed && (params.WhiteboardMode || params.ChatMode || params.Unsafe ||
-			params.Code || params.Tool || params.JSON || params.ImgModality || params.GoogleSearch ||
+		(params.Embed && (params.ChatMode || params.Unsafe ||
+			params.CodeGen || params.Tool || params.JSON || params.ImgModality || params.GoogleSearch ||
 			len(params.DigestPaths) != 1 ||
 			(params.OnlyKvs && len(keyVals) == 0) ||
 			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
 			anyMatches(params.FilePaths, PExt) || anyMatches(params.FilePaths, SPExt) ||
 			(len(params.Args) == 0 && !oneMatches(params.FilePaths, "-")))) ||
-		// whiteboard mode only with system instruction files, argument,
-		// no system instruction flag, chat mode, image modality, json output, search or stdin
-		(params.WhiteboardMode && (params.SystemInstruction || params.GoogleSearch ||
-			params.JSON || params.ChatMode || params.ImgModality || params.Stdin ||
-			!allMatch(params.FilePaths, SPExt) || len(params.Args) == 0)) ||
 		// code execution with tool registration or search
-		(params.Code && (params.JSON || params.Tool || params.GoogleSearch)) ||
+		(params.CodeGen && (params.JSON || params.Tool || params.GoogleSearch)) ||
 		// tool registration with code execution or search
-		(params.Tool && (params.JSON || params.Code || params.GoogleSearch || params.SystemInstruction)) ||
+		(params.Tool && (params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction)) ||
 		// search with tool or code
-		(params.GoogleSearch && (params.JSON || params.Tool || params.Code)) ||
+		(params.GoogleSearch && (params.JSON || params.Tool || params.CodeGen)) ||
 		// image modality with tool registration, json output, code execution or chat mode
-		(params.ImgModality && (params.GoogleSearch || params.Code || params.Tool || params.JSON || params.ChatMode)) ||
+		(params.ImgModality && (params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode)) ||
 		// invalid k values
 		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
@@ -259,7 +215,7 @@ func isParamsValid(params *Parameters) bool {
 		(params.Stdin && !(len(params.Args) == 1 && params.Args[0] == "-") &&
 			!oneMatches(params.FilePaths, "-")) ||
 		// chat with code or search
-		(params.ChatMode && (params.JSON || params.GoogleSearch || params.Code)) ||
+		(params.ChatMode && (params.JSON || params.GoogleSearch || params.CodeGen)) ||
 		// one of file or argument as system instruction - looking for a prompt
 		(params.SystemInstruction &&
 			// no stdin, no argument

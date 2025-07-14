@@ -88,12 +88,6 @@ Add document to digest
 Query digest and read out loud using TTS system  
 `echo you understand french but always reply in english | gen -s -f - -d digest liste les 30 principales propositions de Jacques Attali | ../Downloads/piper/piper --model ../Downloads/voices/en_US-hfc_female-medium.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -`
 
-## Whiteboard Mode
-Experimental mode that runs separate copies of `gen` per system prompt provided. Each `gen` instance collaborates through a whiteboard based on Amanda, a shared tuple space that supports a basic set of operations inspired by David Gelernter's Linda.
-
-A storyteller and an editor collaborate to generate a story using word count tool to stop at a given count of words  
-`gen -w  -f prompts/storyteller.sprompt -f prompts/editor.sprompt -f prompts/tool.sprompt -f prompts/sentinel.sprompt The year is 1788. France is in turmoil.`
-
 ## Usage
 ```
 Usage: gen [options] <prompt>
@@ -105,27 +99,26 @@ Command-line interface to Google Gemini large language models
   Use - to assign stdin as prompt argument or as attached file.
 
 Tools:
-  * CountWords
   * ListAWSServices
   * ListKnownGeminiModels
 
 Parameters:
 
   -V    output model details, system instructions and chat history
-  -c    enter chat mode after content generation (incompatible with -img, -code or -g)
+  -c    enter chat mode after content generation (incompatible with -json, -img, -code or -g)
   -code
-        allow code execution (incompatible with -g, -img or -tool)
+        code execution tool (incompatible with -g, -json, -img or -tool)
   -d value
         path to a digest folder
   -e    write embeddings to digest (default model "text-embedding-004")
   -f value
         file, directory or quoted matching pattern of files to attach
-  -g    Google search (incompatible with -code, -img and -tool)
+  -g    Google search tool (incompatible with -code, -json, -img and -tool)
   -h    show this help message and exit
   -img
         generate a jpeg image (use -m with a supported model)
   -json
-        response in JavaScript Object Notation (incompatible with -img and -tool)
+        response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)
   -k int
         maximum number of entries from digest to retrieve (default 3)
   -l float
@@ -140,13 +133,12 @@ Parameters:
   -temp float
         changes sampling during response generation [0.0,2.0] (default 1)
   -tool
-        invoke one of the tools (incompatible with -g, -img or -code)
+        invoke one of the tools (incompatible with -s, -g, -json, -img or -code)
   -top_p float
         changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit
-  -w    enter whiteboard mode for content generation (experimental)
 ```
 
 ## License

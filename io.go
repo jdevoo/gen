@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -217,6 +218,21 @@ func persistChat(chat *genai.Chat) error {
 	encoder := json.NewEncoder(file)
 	hist := chat.History(false)
 	if err := encoder.Encode(hist); err != nil {
+		return err
+	}
+	return nil
+}
+
+// retrieveHistory reads content from .gen if it exists
+func retrieveHistory(hist *[]*genai.Content) error {
+	if _, err := os.Stat(DotGen); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	dat, err := os.ReadFile(DotGen)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(dat, hist); err != nil {
 		return err
 	}
 	return nil

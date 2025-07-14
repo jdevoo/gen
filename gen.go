@@ -132,7 +132,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		conjTexts(&parts)
 	}
 	// Allow code execution
-	if params.Code {
+	if params.CodeGen {
 		config.Tools =
 			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
 	}

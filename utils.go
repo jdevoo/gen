@@ -3,12 +3,10 @@ package main
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"reflect"
 	"regexp"
 	"sort"
@@ -307,52 +305,4 @@ func isFlagSet(name string) bool {
 		}
 	})
 	return res
-}
-
-// the last line can only have a single word
-// the second to last line must be empty
-func lastWord(buf *bytes.Buffer) string {
-	str := buf.String()
-	str = strings.TrimSpace(str)
-	if str == "" {
-		return ""
-	}
-
-	lines := strings.Split(str, "\n")
-	if len(lines) < 2 {
-		return ""
-	}
-
-	lastLine := lines[len(lines)-1]
-	prevLine := lines[len(lines)-2]
-	if prevLine != "" || len(strings.Fields(lastLine)) != 1 {
-		return ""
-	}
-
-	words := strings.Fields(lastLine)
-	if len(words) == 0 {
-		return ""
-	}
-
-	last := words[0]
-	rest := strings.Join(lines[:len(lines)-2], "\n")
-
-	buf.Reset()
-	buf.WriteString(rest)
-	return last
-}
-
-// retrieveHistory reads content from .gen if it exists
-func retrieveHistory(hist *[]*genai.Content) error {
-	if _, err := os.Stat(DotGen); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	dat, err := os.ReadFile(DotGen)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(dat, hist); err != nil {
-		return err
-	}
-	return nil
 }

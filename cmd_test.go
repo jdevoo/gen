@@ -69,21 +69,23 @@ func TestParams(t *testing.T) {
 			// Reset params for each test case.
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 			params = &Parameters{} // Re-initialize the params struct
+			keyVals = ParamMap{}   // Reset the keyVals map
+			params.FilePaths = ParamArray{}
+			params.DigestPaths = ParamArray{}
 			flag.BoolVar(&params.Verbose, "V", false, "")
 			flag.BoolVar(&params.ChatMode, "c", false, "")
-			flag.BoolVar(&params.Code, "code", false, "")
-			params.DigestPaths = ParamArray{}
+			flag.BoolVar(&params.CodeGen, "code", false, "")
 			flag.Var(&params.DigestPaths, "d", "")
 			flag.BoolVar(&params.Embed, "e", false, "")
-			params.FilePaths = ParamArray{}
 			flag.Var(&params.FilePaths, "f", "")
+			flag.BoolVar(&params.GoogleSearch, "g", false, "")
 			flag.BoolVar(&params.Help, "h", false, "")
+			flag.BoolVar(&params.ImgModality, "img", false, "")
 			flag.BoolVar(&params.JSON, "json", false, "")
 			flag.IntVar(&params.K, "k", 3, "")
 			flag.Float64Var(&params.Lambda, "l", 0.5, "")
 			flag.StringVar(&params.GenModel, "m", "gemini-1.5-flash", "")
 			flag.BoolVar(&params.OnlyKvs, "o", false, "")
-			keyVals = ParamMap{} // Reset the keyVals map
 			flag.Var(&keyVals, "p", "")
 			flag.BoolVar(&params.SystemInstruction, "s", false, "")
 			flag.BoolVar(&params.TokenCount, "t", false, "")

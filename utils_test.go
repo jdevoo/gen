@@ -9,46 +9,46 @@ import (
 // TestParamMapSet tests setting prompt parameter.
 func TestParamMapSet(t *testing.T) {
 	tests := []struct {
-		arg     string
-		want    ParamMap
-		wantErr bool
+		arg         string
+		expected    ParamMap
+		expectedErr bool
 	}{
 		{
-			arg:     "name=John",
-			want:    ParamMap{"name": "John"},
-			wantErr: false,
+			arg:         "name=John",
+			expected:    ParamMap{"name": "John"},
+			expectedErr: false,
 		},
 		{
-			arg:     "invalid",
-			want:    ParamMap{},
-			wantErr: true,
+			arg:         "invalid",
+			expected:    ParamMap{},
+			expectedErr: true,
 		},
 		{
-			arg:     "missing equal",
-			want:    ParamMap{},
-			wantErr: true,
+			arg:         "missing equal",
+			expected:    ParamMap{},
+			expectedErr: true,
 		},
 		{
-			arg:     "name==",
-			want:    ParamMap{"name": "="},
-			wantErr: false,
+			arg:         "name==",
+			expected:    ParamMap{"name": "="},
+			expectedErr: false,
 		},
 		{
-			arg:     "blank=",
-			want:    ParamMap{"blank": ""},
-			wantErr: false,
+			arg:         "blank=",
+			expected:    ParamMap{"blank": ""},
+			expectedErr: false,
 		},
 	}
 
 	for _, test := range tests {
 		res := ParamMap{}
 		err := res.Set(test.arg)
-		if (err != nil) != test.wantErr {
-			t.Errorf("Set(%q) error = %v, wantErr %v", test.arg, err, test.wantErr)
+		if (err != nil) != test.expectedErr {
+			t.Errorf("Set(%q) error = %v, expectedErr %v", test.arg, err, test.expectedErr)
 			continue
 		}
-		if test.want["name"] != res["name"] {
-			t.Errorf("Expected 'name' to be '%s', got '%s'", test.want["name"], res["name"])
+		if test.expected["name"] != res["name"] {
+			t.Errorf("Expected 'name' to be '%s', got '%s'", test.expected["name"], res["name"])
 		}
 	}
 }
@@ -56,36 +56,36 @@ func TestParamMapSet(t *testing.T) {
 // TestSearchReplace tests the searchReplace function.
 func TestSearchReplace(t *testing.T) {
 	tests := []struct {
-		prompt string
-		params ParamMap
-		want   string
+		prompt   string
+		params   ParamMap
+		expected string
 	}{
 		{
-			prompt: "Hello {NAME}, how are you? Long live {name}!",
-			params: ParamMap{"name": "World"},
-			want:   "Hello World, how are you? Long live World!",
+			prompt:   "Hello {NAME}, how are you? Long live {name}!",
+			params:   ParamMap{"name": "World"},
+			expected: "Hello World, how are you? Long live World!",
 		},
 		{
-			prompt: "This is a {adjective} {noun}.",
-			params: ParamMap{"adjective": "beautiful", "noun": "day"},
-			want:   "This is a beautiful day.",
+			prompt:   "This is a {adjective} {noun}.",
+			params:   ParamMap{"adjective": "beautiful", "noun": "day"},
+			expected: "This is a beautiful day.",
 		},
 		{
-			prompt: "This is a test string.",
-			params: ParamMap{},
-			want:   "This is a test string.",
+			prompt:   "This is a test string.",
+			params:   ParamMap{},
+			expected: "This is a test string.",
 		},
 		{
-			prompt: "This is a {empty} test string.",
-			params: ParamMap{"empty": ""},
-			want:   "This is a  test string.",
+			prompt:   "This is a {empty} test string.",
+			params:   ParamMap{"empty": ""},
+			expected: "This is a  test string.",
 		},
 	}
 
 	for _, test := range tests {
 		result := searchReplace(test.prompt, test.params)
-		if result != test.want {
-			t.Errorf("Expected '%s', got '%s'", test.want, result)
+		if result != test.expected {
+			t.Errorf("Expected '%s', got '%s'", test.expected, result)
 		}
 	}
 }
@@ -95,29 +95,29 @@ func TestAnyMatches(t *testing.T) {
 	tests := []struct {
 		inputArray []string
 		inputCand  []string
-		wantRes    bool
+		expected   bool
 	}{
 		{
 			inputArray: []string{},
 			inputCand:  []string{".prompt"},
-			wantRes:    false,
+			expected:   false,
 		},
 		{
 			inputArray: []string{"image.png", "my.prompt"},
 			inputCand:  []string{".prompt"},
-			wantRes:    true,
+			expected:   true,
 		},
 		{
 			inputArray: []string{"my.sprompt"},
 			inputCand:  []string{".prompt"},
-			wantRes:    false,
+			expected:   false,
 		},
 	}
 
 	for _, test := range tests {
 		res := anyMatches(test.inputArray, test.inputCand...)
-		if test.wantRes != res {
-			t.Errorf("Expected %t, got %t", test.wantRes, res)
+		if test.expected != res {
+			t.Errorf("Expected %t, got %t", test.expected, res)
 		}
 	}
 }
@@ -127,29 +127,29 @@ func TestAllMatch(t *testing.T) {
 	tests := []struct {
 		inputArray []string
 		inputCand  string
-		wantRes    bool
+		expected   bool
 	}{
 		{
 			inputArray: []string{},
 			inputCand:  ".prompt",
-			wantRes:    false,
+			expected:   false,
 		},
 		{
 			inputArray: []string{"image.png", "my.prompt"},
 			inputCand:  ".prompt",
-			wantRes:    false,
+			expected:   false,
 		},
 		{
 			inputArray: []string{"my.sprompt"},
 			inputCand:  ".sprompt",
-			wantRes:    true,
+			expected:   true,
 		},
 	}
 
 	for _, test := range tests {
 		res := allMatch(test.inputArray, test.inputCand)
-		if test.wantRes != res {
-			t.Errorf("Expected %t, got %t for %v", test.wantRes, res, test.inputArray)
+		if test.expected != res {
+			t.Errorf("Expected %t, got %t for %v", test.expected, res, test.inputArray)
 		}
 	}
 }
@@ -159,29 +159,29 @@ func TestOneMatches(t *testing.T) {
 	tests := []struct {
 		inputArray []string
 		inputCand  string
-		wantRes    bool
+		expected   bool
 	}{
 		{
 			inputArray: []string{},
 			inputCand:  "-",
-			wantRes:    false,
+			expected:   false,
 		},
 		{
 			inputArray: []string{"-", "my.prompt"},
 			inputCand:  ".prompt",
-			wantRes:    true,
+			expected:   true,
 		},
 		{
 			inputArray: []string{"my.sprompt"},
 			inputCand:  "-",
-			wantRes:    false,
+			expected:   false,
 		},
 	}
 
 	for _, test := range tests {
 		res := oneMatches(test.inputArray, test.inputCand)
-		if test.wantRes != res {
-			t.Errorf("Expected %t, got %t for %v", test.wantRes, res, test.inputArray)
+		if test.expected != res {
+			t.Errorf("Expected %t, got %t for %v", test.expected, res, test.inputArray)
 		}
 	}
 }
@@ -191,7 +191,7 @@ func TestPartHasKey(t *testing.T) {
 	tests := []struct {
 		inputParts []*genai.Part
 		inputKey   string
-		wantRes    int
+		expected   int
 	}{
 		{
 			inputParts: []*genai.Part{
@@ -199,14 +199,14 @@ func TestPartHasKey(t *testing.T) {
 				{Text: "some other prompt without key"},
 			},
 			inputKey: "{digest}",
-			wantRes:  -1,
+			expected: -1,
 		},
 		{
 			inputParts: []*genai.Part{
 				{Text: "some prompt with {digest}"},
 			},
 			inputKey: "{digest}",
-			wantRes:  0,
+			expected: 0,
 		},
 		{
 			inputParts: []*genai.Part{
@@ -214,14 +214,14 @@ func TestPartHasKey(t *testing.T) {
 				{Text: "some prompt with {digest}"},
 			},
 			inputKey: "{digest}",
-			wantRes:  1,
+			expected: 1,
 		},
 	}
 
 	for _, test := range tests {
 		res := partWithKey(test.inputParts, test.inputKey)
-		if test.wantRes != res {
-			t.Errorf("Expected %d, got %d for %v", test.wantRes, res, test.inputParts)
+		if test.expected != res {
+			t.Errorf("Expected %d, got %d for %v", test.expected, res, test.inputParts)
 		}
 	}
 }
@@ -233,7 +233,7 @@ func TestReplacePart(t *testing.T) {
 		inputIdx   int
 		inputKey   string
 		inputVal   []QueryResult
-		wantRes    []*genai.Part
+		expected   []*genai.Part
 	}{
 		{
 			inputParts: []*genai.Part{
@@ -253,7 +253,7 @@ func TestReplacePart(t *testing.T) {
 					0,
 				},
 			},
-			wantRes: []*genai.Part{
+			expected: []*genai.Part{
 				{Text: "prompt with key in first position bla"},
 				{Text: "other prompt without key"},
 				{Text: "yet another prompt without key"},
@@ -277,7 +277,7 @@ func TestReplacePart(t *testing.T) {
 					0,
 				},
 			},
-			wantRes: []*genai.Part{
+			expected: []*genai.Part{
 				{Text: "other prompt without key"},
 				{Text: "yet another prompt without key"},
 				{Text: "prompt with key in last position bla"},
@@ -288,8 +288,8 @@ func TestReplacePart(t *testing.T) {
 	for _, test := range tests {
 		replacePart(&test.inputParts, test.inputIdx, test.inputKey, test.inputVal)
 		for idx := range test.inputParts {
-			if test.inputParts[idx].Text != test.wantRes[idx].Text {
-				t.Errorf("Expected '%s', got '%s'", test.wantRes[idx].Text, test.inputParts[idx].Text)
+			if test.inputParts[idx].Text != test.expected[idx].Text {
+				t.Errorf("Expected '%s', got '%s'", test.expected[idx].Text, test.inputParts[idx].Text)
 				break
 			}
 		}
