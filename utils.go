@@ -12,9 +12,6 @@ import (
 	"sort"
 	"strings"
 
-	_ "image/jpeg"
-	_ "image/png"
-
 	_ "github.com/lib/pq"
 
 	"google.golang.org/api/googleapi"
@@ -214,7 +211,7 @@ func hasInvokedTool(resp *genai.GenerateContentResponse) (bool, *genai.FunctionR
 	return false, &genai.FunctionResponse{}
 }
 
-// genLogFatal refines the error if available.
+// genLogFatal refines the error if available and exits with 1
 func genLogFatal(err error) {
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {

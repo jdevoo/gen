@@ -84,7 +84,7 @@ func TestParams(t *testing.T) {
 			flag.BoolVar(&params.JSON, "json", false, "")
 			flag.IntVar(&params.K, "k", 3, "")
 			flag.Float64Var(&params.Lambda, "l", 0.5, "")
-			flag.StringVar(&params.GenModel, "m", "gemini-1.5-flash", "")
+			flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
 			flag.BoolVar(&params.OnlyKvs, "o", false, "")
 			flag.Var(&keyVals, "p", "")
 			flag.BoolVar(&params.SystemInstruction, "s", false, "")
@@ -103,6 +103,7 @@ func TestParams(t *testing.T) {
 				t.Fatalf("Error parsing params: %v", err)
 			}
 			params.Args = flag.CommandLine.Args()
+			params.Interactive = true
 			actual := isParamsValid(params)
 			if actual != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)

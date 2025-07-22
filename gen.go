@@ -18,13 +18,13 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	var stdinData []byte
 	var mediaAssets []string
 
-	// Handle stdin data
-	if params.Stdin {
+	// Handle redirect/piped data
+	if !params.Interactive {
 		stdinData, err = io.ReadAll(in)
 		if err != nil {
 			genLogFatal(err)
 		}
-		params.Stdin = len(stdinData) > 0
+		params.Interactive = len(stdinData) == 0 // ignore redirect
 	}
 
 	// Create a genai client
@@ -36,10 +36,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// First, handle argument
 	if len(params.Args) > 0 {
 		text := searchReplace(strings.Join(params.Args, " "), keyVals)
-		if params.Stdin && text == "-" {
+		if !params.Interactive && text == "-" {
 			text = string(stdinData)
 		}
-		if params.SystemInstruction && !(params.Stdin && oneMatches(params.FilePaths, "-")) {
+		if params.SystemInstruction && (params.Interactive || !oneMatches(params.FilePaths, "-")) {
 			// argument used as system prompt for chat session unless `-f -` is set
 			sysParts = append(sysParts, &genai.Part{Text: text})
 		} else {
@@ -50,7 +50,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Next, handle file options
 	if len(params.FilePaths) > 0 {
 		for _, filePathVal := range params.FilePaths {
-			// stdin passed as file
+			// redirect passed as file
 			if filePathVal == "-" {
 				if params.SystemInstruction {
 					// `-f -` takes precedence with `-s`
@@ -67,7 +67,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		}
 	}
 
-	// Handle TokenCount
+	// Handle token count
 	if params.TokenCount {
 		defer func() {
 			fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", tokenCount)
@@ -116,7 +116,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		Temperature: genai.Ptr(float32(params.Temp)),
 		TopP:        genai.Ptr(float32(params.TopP)),
 	}
-	// Handle Modality
+	// Handle modality
 	if params.ImgModality {
 		config.ResponseModalities = []string{"TEXT", "IMAGE"}
 	} else {
@@ -205,11 +205,12 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	if err != nil {
 		genLogFatal(err)
 	}
-	tty := in
 
-	// Set file descriptor for chat input
-	if params.Stdin && params.ChatMode {
-		tty, err = os.Open("/dev/tty")
+	tty := in // assume in is terminal for chat
+
+	if !params.Interactive && params.ChatMode {
+		// in is a redirect, look for a terminal to open
+		tty, err = openConsole()
 		if err != nil {
 			genLogFatal(err)
 		}

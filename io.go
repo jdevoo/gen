@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,48 +11,63 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
 	"image/jpeg"
-	_ "image/jpeg"
-	_ "image/png"
-
-	_ "github.com/lib/pq"
 
 	"google.golang.org/genai"
 )
 
-// hasInputFromPipe checks if input is being piped to the program.
-func hasInputFromStdin(in io.Reader) bool {
+// hasInteractiveInput checks if `in` is a terminal
+func hasInteractiveInput(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
 		fileInfo, _ := f.Stat()
-		return fileInfo.Mode()&os.ModeCharDevice == 0
-	} else {
-		// avoid destructive io function call
-		r := reflect.ValueOf(in)
-		v := reflect.Indirect(r).FieldByName("s")
-		return len(v.String()) > 0
-	}
-}
-
-// hasOutputRedirected checks if ok to emit non-printable characters.
-func hasOutputRedirected(out io.Writer) bool {
-	if f, ok := out.(*os.File); ok {
-		fileInfo, _ := f.Stat()
-		return fileInfo.Mode()&os.ModeCharDevice == 0
+		return fileInfo.Mode()&os.ModeCharDevice == os.ModeCharDevice
 	}
 	return true
 }
 
-// readLine reads a line from standard input.
-func readLine(r io.Reader) (string, error) {
-	scanner := bufio.NewScanner(r)
-	if scanner.Scan() {
-		return scanner.Text(), nil
+// hasOutputRedirected checks if `out` supports non-printable characters.
+func hasOutputRedirected(out io.Writer) bool {
+	if f, ok := out.(*os.File); ok {
+		fileInfo, _ := f.Stat()
+		return fileInfo.Mode()&os.ModeCharDevice != os.ModeCharDevice
 	}
-	return "", scanner.Err()
+	return false
+}
+
+// readLine reads a line from standard input on Linux, Mac or Windows
+func readLine(r io.Reader) (string, error) {
+	/*
+		scanner := bufio.NewScanner(r)
+		if scanner.Scan() {
+			return scanner.Text(), nil
+		}
+		return "", scanner.Err()
+	*/
+	var buffer []byte
+	for {
+		var b [1]byte
+		_, err := r.Read(b[:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return "", err
+		}
+		if b[0] == '\r' || b[0] == '\n' { // Windows and Unix line endings
+			break
+		} else if b[0] == 8 { // Backspace
+			if len(buffer) > 0 {
+				buffer = buffer[:len(buffer)-1]
+			}
+		} else {
+			buffer = append(buffer, b[0])
+		}
+	}
+	return string(buffer), nil
+
 }
 
 // emitCandidates prints LLM response candidates.

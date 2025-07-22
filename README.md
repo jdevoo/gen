@@ -1,4 +1,4 @@
-To use `gen`, you will need a valid Gemini API key set in the `GEMINI_API_KEY` environment variable.
+To use `gen`, you will need a valid Gemini API key set in the `GOOGLE_API_KEY` environment variable.
 > [!NOTE]
 If you don't already have one, go to [Google AI Studio](https://ai.google.dev/tutorials/setup) to create a key.
 
