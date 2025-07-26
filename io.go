@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,12 +16,13 @@ import (
 	"time"
 
 	"image/jpeg"
+	_ "image/png"
 
 	"google.golang.org/genai"
 )
 
-// hasInteractiveInput checks if `in` is a terminal
-func hasInteractiveInput(in io.Reader) bool {
+// hasInteractive checks if `in` is a terminal
+func isInteractive(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
 		fileInfo, _ := f.Stat()
 		return fileInfo.Mode()&os.ModeCharDevice == os.ModeCharDevice
@@ -28,8 +30,8 @@ func hasInteractiveInput(in io.Reader) bool {
 	return true
 }
 
-// hasOutputRedirected checks if `out` supports non-printable characters.
-func hasOutputRedirected(out io.Writer) bool {
+// isRedirected checks if `out` supports non-printable characters.
+func isRedirected(out io.Writer) bool {
 	if f, ok := out.(*os.File); ok {
 		fileInfo, _ := f.Stat()
 		return fileInfo.Mode()&os.ModeCharDevice != os.ModeCharDevice
@@ -39,35 +41,34 @@ func hasOutputRedirected(out io.Writer) bool {
 
 // readLine reads a line from standard input on Linux, Mac or Windows
 func readLine(r io.Reader) (string, error) {
-	/*
-		scanner := bufio.NewScanner(r)
-		if scanner.Scan() {
-			return scanner.Text(), nil
-		}
-		return "", scanner.Err()
-	*/
-	var buffer []byte
-	for {
-		var b [1]byte
-		_, err := r.Read(b[:])
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return "", err
-		}
-		if b[0] == '\r' || b[0] == '\n' { // Windows and Unix line endings
-			break
-		} else if b[0] == 8 { // Backspace
-			if len(buffer) > 0 {
-				buffer = buffer[:len(buffer)-1]
-			}
-		} else {
-			buffer = append(buffer, b[0])
-		}
+	scanner := bufio.NewScanner(r)
+	if scanner.Scan() {
+		return scanner.Text(), nil
 	}
-	return string(buffer), nil
-
+	return "", scanner.Err()
+	/*
+		var buffer []byte
+		for {
+			var b [1]byte
+			_, err := r.Read(b[:])
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return "", err
+			}
+			if b[0] == '\r' || b[0] == '\n' { // Windows and Unix line endings
+				break
+			} else if b[0] == 8 { // Backspace
+				if len(buffer) > 0 {
+					buffer = buffer[:len(buffer)-1]
+				}
+			} else {
+				buffer = append(buffer, b[0])
+			}
+		}
+		return string(buffer), nil
+	*/
 }
 
 // emitCandidates prints LLM response candidates.
@@ -76,7 +77,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool) er
 		if cand != nil && cand.Content != nil {
 			for _, p := range cand.Content.Parts {
 				if p.Text != "" {
-					if !hasOutputRedirected(out) {
+					if !isRedirected(out) {
 						fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
 					} else {
 						if imgModality {
@@ -88,7 +89,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool) er
 					continue
 				}
 				if p.FunctionResponse != nil {
-					if !hasOutputRedirected(out) {
+					if !isRedirected(out) {
 						fmt.Fprintf(out, "\033[97m%+v\033[0m", p.FunctionResponse)
 					} else {
 						fmt.Fprintf(out, "%+v", p.FunctionResponse)
@@ -101,7 +102,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool) er
 					if err != nil {
 						return err
 					}
-					if hasOutputRedirected(out) {
+					if isRedirected(out) {
 						// Encode to jpeg file
 						if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
 							return err

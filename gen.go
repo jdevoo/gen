@@ -53,7 +53,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 			// redirect passed as file
 			if filePathVal == "-" {
 				if params.SystemInstruction {
-					// `-f -` takes precedence with `-s`
+					// `-f -` takes precedence over argument with `-s`
 					sysParts = append(sysParts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
 				} else {
 					parts = append(parts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})

@@ -24,7 +24,7 @@ func openConsole() (io.Reader, error) {
 	if fileType != windows.FILE_TYPE_CHAR {
 		consoleFile, err = os.OpenFile("CONIN$", os.O_RDWR, 0)
 		if err != nil {
-			return nil, fmt.Errorf("opening CONIN$: %w", err)
+			return nil, fmt.Errorf("Failed to open CONIN$: %w", err)
 		}
 		return consoleFile, nil
 	}

@@ -90,7 +90,7 @@ func main() {
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
 	flag.Parse()
 	params.Args = flag.Args()
-	params.Interactive = hasInteractiveInput(os.Stdin)
+	params.Interactive = isInteractive(os.Stdin)
 
 	// Handle help and version flags before any further processing
 	if params.Help {
@@ -176,11 +176,32 @@ func emitUsage(out io.Writer) {
 	flag.PrintDefaults()
 }
 
-// isParamsValid looks for invalid params combinations and/or values.
 func isParamsValid(params *Parameters) bool {
 	if
-	// invalid k values
-	(params.K < 0 || params.K > 10) ||
+	// regular interactive (no redirect or piped content)
+	(params.Interactive &&
+		// no regular prompt privided
+		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+			// system instruction
+			(params.SystemInstruction &&
+				// not provided
+				((len(params.Args) == 0 && !anyMatches(params.FilePaths, SPExt)) ||
+					// argument as system instruction but no prompt as file and no chat mode
+					(len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
+
+		// redirected or piped content
+		(!params.Interactive &&
+			// not set as file xor argument
+			((oneMatches(params.FilePaths, "-") && !(len(params.Args) == 1 && params.Args[0] == "-")) &&
+				// system instruction
+				(params.SystemInstruction &&
+					// stdin as file, but no prompt as file or argument
+					((oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+						// stdin as argument, no prompt as file
+						(len(params.Args) == 1 && params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
+
+		// invalid k values
+		(params.K < 0 || params.K > 10) ||
 
 		// invalid lambda values
 		(params.Lambda < 0 || params.Lambda > 1) ||
@@ -193,29 +214,29 @@ func isParamsValid(params *Parameters) bool {
 
 		// code execution with incompatible flags
 		(params.CodeGen &&
-			(params.JSON || params.Tool || params.GoogleSearch)) ||
+			(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
 
 		// tool registration with incompatible flags
 		(params.Tool &&
-			(params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction)) ||
+			(params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction || params.Embed)) ||
 
 		// search with incompatible flags
 		(params.GoogleSearch &&
-			(params.JSON || params.Tool || params.CodeGen)) ||
+			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
 
 		// image modality with incompatible flags
 		(params.ImgModality &&
-			(params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode)) ||
+			(params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
 
-		// chat with incompatible flags
+		// chat mode
 		(params.ChatMode &&
-			(params.JSON || params.GoogleSearch || params.CodeGen)) ||
+			// with incompatible flags
+			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) ||
 
 		// embeddings
 		(params.Embed &&
 			// incompatible flags
-			(params.ChatMode || params.Unsafe || params.CodeGen || params.Tool ||
-				params.JSON || params.ImgModality || params.GoogleSearch ||
+			(params.Unsafe || params.JSON ||
 				isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
 				// no digest set
 				len(params.DigestPaths) != 1 ||
@@ -224,27 +245,8 @@ func isParamsValid(params *Parameters) bool {
 				// prompts set
 				anyMatches(params.FilePaths, PExt) || anyMatches(params.FilePaths, SPExt) ||
 				// no arguments or files to digest
-				(len(params.Args) == 0 && !oneMatches(params.FilePaths, "-")))) ||
-
-		// redirected or piped stdin
-		(!params.Interactive &&
-			// not set as file
-			(!oneMatches(params.FilePaths, "-") ||
-				// not set as argument
-				(len(params.Args) == 1 && params.Args[0] != "-") ||
-				// no embed flag, no regular prompt, argument or file
-				(!params.Embed && len(params.Args) == 0 && !oneMatches(params.FilePaths, PExt)))) ||
-
-		// one of file or argument as system instruction - looking for a prompt
-		(params.SystemInstruction &&
-			// no redirect, no argument
-			((params.Interactive && len(params.Args) == 0) ||
-				// no redirect, argument as system instruction, no prompt as file, no chat mode
-				(params.Interactive && len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode) ||
-				// redirect as file, but no prompt as file or argument
-				(!params.Interactive && oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !oneMatches(params.FilePaths, PExt)) ||
-				// redirect as argument, no prompt as file
-				(!params.Interactive && len(params.Args) == 1 && params.Args[0] == "-" && !oneMatches(params.FilePaths, PExt) && !params.ChatMode))) {
+				(!params.Interactive &&
+					!((len(params.Args) == 1 && params.Args[0] == "-") || oneMatches(params.FilePaths, "-"))))) {
 
 		return false
 	}
