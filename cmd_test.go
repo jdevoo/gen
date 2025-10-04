@@ -18,6 +18,12 @@ func TestParams(t *testing.T) {
 		expected    bool
 	}{
 		{
+			name:        "piped content not referenced",
+			args:        []string{"-f", "example.xml", "what does this code do?"},
+			interactive: false,
+			expected:    false,
+		},
+		{
 			name:        "pipe content into gen",
 			args:        []string{"-f", "-", "what does this code do?"},
 			interactive: false,

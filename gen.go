@@ -126,9 +126,13 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	if params.JSON {
 		config.ResponseMIMEType = "application/json"
 	}
-	// Register tools declared in the tools.go file
+	// Register tools with genai.FunctionCallingConfigModeAny
 	if params.Tool {
-		registerTools(config) // genai.FunctionCallingConfigModeAny
+		config.Tools = []*genai.Tool{}
+		registerGenTools(config)                                     // declared in the tools.go file
+		if err = registerMcpTools(ctx, config, params); err != nil { // declared with -mcp
+			genLogFatal(err)
+		}
 		conjTexts(&parts)
 	}
 	// Allow code execution
@@ -138,8 +142,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 	// Enable Google search retrieval
 	if params.GoogleSearch {
-		config.Tools =
-			[]*genai.Tool{{GoogleSearch: &genai.GoogleSearch{}}}
+		config.Tools = []*genai.Tool{
+			{GoogleSearch: &genai.GoogleSearch{}},
+			{URLContext: &genai.URLContext{}},
+		}
 	}
 	// Handle unsafe parameter
 	if params.Unsafe {
@@ -245,7 +251,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				}
 				// emtpy parts for next iteration, if any
 				parts = []*genai.Part{}
-				if ok, res := hasInvokedTool(resp); ok {
+				if ok, res := hasInvokedTool(ctx, params, resp); ok {
 					// if chat mode, send response to model
 					parts = append(parts, &genai.Part{Text: res.Response["Response"].(string)})
 					resp = &genai.GenerateContentResponse{

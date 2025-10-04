@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Version information, populated by make
@@ -28,6 +32,7 @@ const (
 	PExt      = ".prompt"  // regular prompt extension
 	DigestKey = "{digest}" // key to replace with embedded content
 	DotGen    = ".gen"     // name of chat history file
+	DotGenRc  = ".genrc"   // name of preferences file
 )
 
 // Parameters holds gen flag values
@@ -46,6 +51,8 @@ type Parameters struct {
 	JSON              bool
 	K                 int
 	Lambda            float64
+	McpServers        ParamArray
+	McpSessions       SessionArray
 	OnlyKvs           bool
 	Interactive       bool
 	SystemInstruction bool
@@ -64,37 +71,69 @@ func main() {
 
 	// Define gen parameters
 	params := &Parameters{
-		EmbModel: "text-embedding-004",
+		K:           3,
+		Lambda:      0.5,
+		Temp:        1.0,
+		TopP:        0.95,
+		EmbModel:    "gemini-embedding-001",
+		GenModel:    "gemini-2.5-flash",
+		DigestPaths: ParamArray{},
+		McpServers:  ParamArray{},
+		McpSessions: SessionArray{},
 	}
+
+	if err := loadPrefs(params); err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", DotGenRc, err)
+		os.Exit(1)
+	}
+
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
 	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
 	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
-	flag.Var(&params.FilePaths, "f", "file, directory or quoted matching pattern of files to attach")
+	flag.Var(&params.FilePaths, "f", "file, directory or quoted pattern of files to attach")
 	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -json, -img and -tool)")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
-	flag.BoolVar(&params.ImgModality, "img", false, "generate a jpeg image (use -m with a supported model)")
+	flag.BoolVar(&params.ImgModality, "img", false, "generate a jpeg image (use -m to set a supported model)")
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
-	flag.IntVar(&params.K, "k", 3, "maximum number of entries from digest to retrieve")
-	flag.Float64Var(&params.Lambda, "l", 0.5, "trade off accuracy for diversity when querying digests [0.0,1.0]")
-	flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "embedding or generative model name")
+	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
+	flag.Float64Var(&params.Lambda, "l", params.Lambda, "trade off accuracy for diversity when querying digests [0.0,1.0]")
+	flag.StringVar(&params.GenModel, "m", params.GenModel, "embedding or generative model name")
+	flag.Var(&params.McpServers, "mcp", "mcp server command")
 	flag.BoolVar(&params.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val")
-	flag.BoolVar(&params.SystemInstruction, "s", false, "treat prompt as system instruction")
+	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
-	flag.Float64Var(&params.Temp, "temp", 1.0, "changes sampling during response generation [0.0,2.0]")
+	flag.Float64Var(&params.Temp, "temp", params.Temp, "changes sampling during response generation [0.0,2.0]")
 	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -json, -img or -code)")
-	flag.Float64Var(&params.TopP, "top_p", 0.95, "changes how the model selects tokens for generation [0.0,1.0]")
+	flag.Float64Var(&params.TopP, "top_p", params.TopP, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
 	flag.Parse()
 	params.Args = flag.Args()
 	params.Interactive = isInteractive(os.Stdin)
 
+	// Create a root context
+	ctx := context.Background()
+
+	// stash MCP client sessions
+	for _, s := range params.McpServers {
+		cmd := exec.Command(s)
+		name := filepath.Base(os.Args[0])
+		client := mcp.NewClient(&mcp.Implementation{Name: name, Version: version}, nil)
+		session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "MCP client connect error: %v\n", err)
+			os.Exit(1)
+		}
+		defer session.Close()
+		params.McpSessions = append(params.McpSessions, session)
+	}
+
 	// Handle help and version flags before any further processing
 	if params.Help {
-		emitUsage(os.Stdout)
+		emitUsage(os.Stdout, params)
 		os.Exit(0)
 	}
 
@@ -115,7 +154,7 @@ func main() {
 
 	// Argument validation
 	if !isParamsValid(params) {
-		emitUsage(os.Stderr)
+		emitUsage(os.Stderr, params)
 		os.Exit(1)
 	}
 
@@ -141,9 +180,6 @@ func main() {
 		}
 	}
 
-	// Create a root context
-	ctx := context.Background()
-
 	// Handle token count in case of CTRL-C
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
@@ -159,7 +195,7 @@ func main() {
 }
 
 // Usage overrides PrintDefaults to provide custom usage information.
-func emitUsage(out io.Writer) {
+func emitUsage(out io.Writer, params *Parameters) {
 	fmt.Fprintln(out, "Usage: gen [options] <prompt>")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Command-line interface to Google Gemini large language models")
@@ -169,7 +205,7 @@ func emitUsage(out io.Writer) {
 	fmt.Fprintln(out, "  Use - to assign stdin as prompt or as attached file.")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Tools:")
-	fmt.Fprintln(out, knownTools())
+	fmt.Fprintln(out, knownTools(params))
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Parameters:")
 	fmt.Fprintf(out, "\n")
@@ -184,19 +220,19 @@ func isParamsValid(params *Parameters) bool {
 		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
 			// system instruction
 			(params.SystemInstruction &&
-				// not provided
+				// not provided as file
 				((len(params.Args) == 0 && !anyMatches(params.FilePaths, SPExt)) ||
-					// argument as system instruction but no prompt as file and no chat mode
+					// provided as argument but no prompt as file and no chat mode
 					(len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
 
 		// redirected or piped content
 		(!params.Interactive &&
 			// not set as file xor argument
-			((oneMatches(params.FilePaths, "-") && !(len(params.Args) == 1 && params.Args[0] == "-")) &&
+			((!oneMatches(params.FilePaths, "-") && !(len(params.Args) == 1 && params.Args[0] == "-")) ||
 				// system instruction
 				(params.SystemInstruction &&
 					// stdin as file, but no prompt as file or argument
-					((oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+					((!oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
 						// stdin as argument, no prompt as file
 						(len(params.Args) == 1 && params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
 

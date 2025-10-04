@@ -42,6 +42,9 @@ Solve problem through Python code execution
 Extract entities from text  
 `w3m -dump https://lite.cnn.com/2024/07/27/asia/us-austin-trilateral-japan-south-korea-intl-hnk/index.html | gen -json -f - extract entities`
 
+Google search  
+`gen -g what are the latest news on Europe from https://lite.cnn.com`
+
 System instruction and prompts as files from iterative Prisonner's Dilemma [paper](https://arxiv.org/html/2406.13605v1)  
 `gen -json -f pd.sprompt -f pd.prompt`
 

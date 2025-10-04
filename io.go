@@ -46,29 +46,6 @@ func readLine(r io.Reader) (string, error) {
 		return scanner.Text(), nil
 	}
 	return "", scanner.Err()
-	/*
-		var buffer []byte
-		for {
-			var b [1]byte
-			_, err := r.Read(b[:])
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return "", err
-			}
-			if b[0] == '\r' || b[0] == '\n' { // Windows and Unix line endings
-				break
-			} else if b[0] == 8 { // Backspace
-				if len(buffer) > 0 {
-					buffer = buffer[:len(buffer)-1]
-				}
-			} else {
-				buffer = append(buffer, b[0])
-			}
-		}
-		return string(buffer), nil
-	*/
 }
 
 // emitCandidates prints LLM response candidates.
@@ -114,6 +91,8 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool) er
 					if err := senc.Encode(img); err != nil {
 						return err
 					}
+					fmt.Fprintln(os.Stderr) // blank line to stderr
+					continue
 				}
 			}
 		}
