@@ -198,6 +198,8 @@ func registerGenTools(config *genai.GenerateContentConfig) {
 					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeNumber}
 				case reflect.Bool:
 					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeBoolean}
+				default:
+					panic("unsupported tool type")
 				}
 			}
 			genDecls[i] = &genai.FunctionDeclaration{
@@ -293,28 +295,75 @@ func registerMcpTools(ctx context.Context, config *genai.GenerateContentConfig, 
 
 // invokeTool calls tool identified by genai.FunctionCall using anonymous argument names.
 func invokeTool(ctx context.Context, params *Parameters, fc genai.FunctionCall) string {
+	for _, sess := range params.McpSessions {
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      fc.Name,
+			Arguments: fc.Args,
+		})
+		if err != nil {
+			continue
+		}
+		return res.Content[0].(*mcp.TextContent).Text
+	}
 	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
 	if !f.IsValid() {
-		for _, sess := range params.McpSessions {
-			res, err := sess.CallTool(ctx, &mcp.CallToolParams{
-				Name:      fc.Name,
-				Arguments: fc.Args,
-			})
-			if err != nil {
-				return fmt.Sprintf("%s error: %v", fc.Name, err)
-			}
-			return res.Content[0].(*mcp.TextContent).Text
-		}
-		return "NO TOOL FOUND"
+		return fmt.Sprintf("%s invocation error", fc.Name)
 	}
 	var args []reflect.Value
 	for i := 0; i < len(fc.Args); i++ {
 		t := f.Type().In(i)
 		v := reflect.New(t).Elem()
-		arg := fc.Args[fmt.Sprintf("arg%d", i)]
+		argName := fmt.Sprintf("arg%d", i)
+		argVal, ok := fc.Args[argName]
+		if !ok {
+			args = append(args, v) // arg missing, use zero value
+			continue
+		}
 		switch t.Kind() {
 		case reflect.String:
-			v.SetString(arg.(string))
+			if s, ok := argVal.(string); ok {
+				v.SetString(s)
+			} else {
+				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+			}
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if fv, ok := argVal.(float64); ok {
+				v.SetInt(int64(fv))
+			} else if iv, ok := argVal.(int64); ok {
+				v.SetInt(iv)
+			} else {
+				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			var uintVal uint64
+			if fv, ok := argVal.(float64); ok {
+				if fv < 0 {
+					return fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
+				}
+				uintVal = uint64(fv)
+			} else if iv, ok := argVal.(int64); ok {
+				if iv < 0 {
+					return fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
+				}
+				uintVal = uint64(iv)
+			} else {
+				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+			}
+			v.SetUint(uintVal)
+		case reflect.Float32, reflect.Float64:
+			if fv, ok := argVal.(float64); ok {
+				v.SetFloat(fv)
+			} else if iv, ok := argVal.(int64); ok {
+				v.SetFloat(float64(iv))
+			} else {
+				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+			}
+		case reflect.Bool:
+			if b, ok := argVal.(bool); ok {
+				v.SetBool(b)
+			} else {
+				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+			}
 		}
 		args = append(args, v)
 	}

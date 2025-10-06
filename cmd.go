@@ -127,9 +127,15 @@ func main() {
 			fmt.Fprintf(os.Stderr, "MCP client connect error: %v\n", err)
 			os.Exit(1)
 		}
-		defer session.Close()
 		params.McpSessions = append(params.McpSessions, session)
 	}
+
+	// close any stashed MCP sessions before exit
+	defer func() {
+		for _, sess := range params.McpSessions {
+			sess.Close()
+		}
+	}()
 
 	// Handle help and version flags before any further processing
 	if params.Help {
