@@ -24,7 +24,7 @@ type QueryResult struct {
 }
 
 // AppendToDigest saves embedding and content to the digest folder.
-func AppendToDigest(path string, embedding *genai.ContentEmbedding, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
+func appendToDigest(path string, embedding *genai.ContentEmbedding, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
 	d, err := Open(path, nil)
 	if err != nil {
 		genLogFatal(err)
@@ -54,7 +54,7 @@ func AppendToDigest(path string, embedding *genai.ContentEmbedding, keyVals Para
 }
 
 // QueryDigest returns up to k documents from digest for a given query embedding based on MMR.
-func QueryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []QueryResult, k int, lambda float32, verbose bool) ([]QueryResult, error) {
+func queryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []QueryResult, k int, lambda float32, verbose bool) ([]QueryResult, error) {
 	var selection []QueryResult
 	d, err := Open(path, nil)
 	if err != nil {
@@ -133,7 +133,7 @@ func deserializeDoc(data []byte) (Document, error) {
 	if err := binary.Read(buf, binary.LittleEndian, &metadataLength); err != nil {
 		return doc, fmt.Errorf("error reading metadata length: %w", err)
 	}
-	doc.metadata = make(map[string]string)
+	doc.metadata = map[string]string{}
 	for i := 0; i < int(metadataLength); i++ {
 		var keySize, valueSize uint64
 		if err := binary.Read(buf, binary.LittleEndian, &keySize); err != nil {

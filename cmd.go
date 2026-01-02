@@ -10,20 +10,19 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Version information, populated by make
+// Version, Golang and Githash are populated by make
 // Token count accumulator in case of CTRL-C
-// Parameter map shared with tools
 var (
-	version    string
-	golang     string
-	githash    string
-	tokenCount int32
-	keyVals    ParamMap
+	Version    string
+	Githash    string
+	TokenCount atomic.Int32
 )
 
 // gen constants
@@ -35,13 +34,13 @@ const (
 	DotGenRc  = ".genrc"   // name of preferences file
 )
 
-// Parameters holds gen flag values
+// Parameters holds gen flag values as well as Args and MCP sessions.
 type Parameters struct {
-	Args              []string
+	Args              []string // non-flag command-line arguments i.e. prompt
 	ChatMode          bool
 	CodeGen           bool
-	DigestPaths       ParamArray
-	Embed             bool
+	DigestPaths       ParamArray // RAG
+	Embed             bool       // RAG
 	EmbModel          string
 	FilePaths         ParamArray
 	GenModel          string
@@ -51,10 +50,10 @@ type Parameters struct {
 	JSON              bool
 	K                 int
 	Lambda            float64
-	McpServers        ParamArray
-	McpSessions       SessionArray
-	OnlyKvs           bool
-	Interactive       bool
+	MCPServers        ParamArray
+	MCPSessions       SessionArray
+	OnlyKvs           bool // RAG
+	Interactive       bool // terminal session?
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
@@ -63,11 +62,14 @@ type Parameters struct {
 	Unsafe            bool
 	Verbose           bool
 	Version           bool
+	Walk              bool // used with FilePaths
 }
 
+// main gen entry point.
+// Parameters are stored as `ParamMap` and passed as context values for tool stete injection.
 func main() {
 	// Define parameter map for variable substitutions in prompts
-	keyVals = ParamMap{}
+	keyVals := ParamMap{}
 
 	// Define gen parameters
 	params := &Parameters{
@@ -78,8 +80,8 @@ func main() {
 		EmbModel:    "gemini-embedding-001",
 		GenModel:    "gemini-2.5-flash",
 		DigestPaths: ParamArray{},
-		McpServers:  ParamArray{},
-		McpSessions: SessionArray{},
+		MCPServers:  ParamArray{},
+		MCPSessions: SessionArray{},
 	}
 
 	if err := loadPrefs(params); err != nil {
@@ -100,7 +102,7 @@ func main() {
 	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", params.Lambda, "trade off accuracy for diversity when querying digests [0.0,1.0]")
 	flag.StringVar(&params.GenModel, "m", params.GenModel, "embedding or generative model name")
-	flag.Var(&params.McpServers, "mcp", "mcp server command")
+	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
 	flag.BoolVar(&params.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val")
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
@@ -110,57 +112,83 @@ func main() {
 	flag.Float64Var(&params.TopP, "top_p", params.TopP, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
+	flag.BoolVar(&params.Walk, "w", false, "process directories delcared with -f recursively")
 	flag.Parse()
 	params.Args = flag.Args()
 	params.Interactive = isInteractive(os.Stdin)
 
-	// Create a root context
-	ctx := context.Background()
+	// Create the root context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// stash MCP client sessions
-	for _, s := range params.McpServers {
+	// Handle version option
+	if params.Version {
+		var genaiModule debug.Module
+		var mcpModule debug.Module
+		if binfo, ok := debug.ReadBuildInfo(); ok {
+			for _, dep := range binfo.Deps {
+				if dep.Path == "google.golang.org/genai" {
+					genaiModule = *dep
+					continue
+				}
+				if dep.Path == "github.com/modelcontextprotocol/go-sdk" {
+					mcpModule = *dep
+					continue
+				}
+			}
+		}
+		fmt.Fprintf(os.Stdout, "gen %s (%s sdk %s mcp %s)\n",
+			Version, Githash, genaiModule.Version, mcpModule.Version)
+		os.Exit(0)
+	}
+
+	// store keyVals and params in context
+	ctx = context.WithValue(ctx, "keyVals", keyVals)
+	ctx = context.WithValue(ctx, "params", params)
+
+	// stash MCP client sessions in params.MCPSessions
+	for _, s := range params.MCPServers {
 		cmd := exec.Command(s)
 		name := filepath.Base(os.Args[0])
-		client := mcp.NewClient(&mcp.Implementation{Name: name, Version: version}, nil)
-		session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+		client := mcp.NewClient(
+			&mcp.Implementation{Name: name, Version: Version},
+			&mcp.ClientOptions{
+				CreateMessageHandler:  genSampling,
+				ElicitationHandler:    genElicitation,
+				LoggingMessageHandler: genLoggingHandler,
+			},
+		)
+		mcpCtx, mcpCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer mcpCancel()
+		session, err := client.Connect(mcpCtx, &mcp.CommandTransport{Command: cmd}, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "MCP client connect error: %v\n", err)
 			os.Exit(1)
 		}
-		params.McpSessions = append(params.McpSessions, session)
+		params.MCPSessions = append(params.MCPSessions, session)
 	}
 
 	// close any stashed MCP sessions before exit
 	defer func() {
-		for _, sess := range params.McpSessions {
+		for _, sess := range params.MCPSessions {
 			sess.Close()
+		}
+		if params.TokenCount && ctx.Err() == nil {
+			fmt.Printf("\n\033[31m%d tokens\033[0m\n", TokenCount.Load())
 		}
 	}()
 
 	// Handle help and version flags before any further processing
+	// requires context with params to list known tools
 	if params.Help {
-		emitUsage(os.Stdout, params)
-		os.Exit(0)
-	}
-
-	// Handle version option
-	if params.Version {
-		var m debug.Module
-		if binfo, ok := debug.ReadBuildInfo(); ok {
-			for _, dep := range binfo.Deps {
-				if dep.Path == "google.golang.org/genai" {
-					m = *dep
-					break
-				}
-			}
-		}
-		fmt.Fprintf(os.Stdout, "gen %s (%s sdk %s %s)\n", version, githash, m.Version, golang)
+		emitUsage(ctx, os.Stdout)
 		os.Exit(0)
 	}
 
 	// Argument validation
-	if !isParamsValid(params) {
-		emitUsage(os.Stderr, params)
+	// requires context with params to list known tools
+	if isParamsInvalid(params, keyVals) {
+		emitUsage(ctx, os.Stderr)
 		os.Exit(1)
 	}
 
@@ -186,22 +214,25 @@ func main() {
 		}
 	}
 
-	// Handle token count in case of CTRL-C
+	// handle CTRL-C
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-done
 		if params.TokenCount {
-			fmt.Printf("\n\033[31m%d tokens\033[0m\n", tokenCount)
+			if count := TokenCount.Load(); count > 0 {
+				fmt.Printf("\n\033[31m%d tokens at CTRL-C\033[0m\n", count)
+			}
 		}
+		cancel()
 		os.Exit(1)
 	}()
 
-	os.Exit(emitGen(ctx, os.Stdin, os.Stdout, params))
+	os.Exit(emitGen(ctx, os.Stdin, os.Stdout))
 }
 
 // Usage overrides PrintDefaults to provide custom usage information.
-func emitUsage(out io.Writer, params *Parameters) {
+func emitUsage(ctx context.Context, out io.Writer) {
 	fmt.Fprintln(out, "Usage: gen [options] <prompt>")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Command-line interface to Google Gemini large language models")
@@ -211,87 +242,11 @@ func emitUsage(out io.Writer, params *Parameters) {
 	fmt.Fprintln(out, "  Use - to assign stdin as prompt or as attached file.")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Tools:")
-	fmt.Fprintln(out, knownTools(params))
+	if res, err := knownTools(ctx); err == nil {
+		fmt.Fprintln(out, res)
+	}
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Parameters:")
 	fmt.Fprintf(out, "\n")
 	flag.PrintDefaults()
-}
-
-func isParamsValid(params *Parameters) bool {
-	if
-	// regular interactive (no redirect or piped content)
-	(params.Interactive &&
-		// no regular prompt privided
-		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
-			// system instruction
-			(params.SystemInstruction &&
-				// not provided as file
-				((len(params.Args) == 0 && !anyMatches(params.FilePaths, SPExt)) ||
-					// provided as argument but no prompt as file and no chat mode
-					(len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
-
-		// redirected or piped content
-		(!params.Interactive &&
-			// not set as file xor argument
-			((!oneMatches(params.FilePaths, "-") && !(len(params.Args) == 1 && params.Args[0] == "-")) ||
-				// system instruction
-				(params.SystemInstruction &&
-					// stdin as file, but no prompt as file or argument
-					((!oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
-						// stdin as argument, no prompt as file
-						(len(params.Args) == 1 && params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
-
-		// invalid k values
-		(params.K < 0 || params.K > 10) ||
-
-		// invalid lambda values
-		(params.Lambda < 0 || params.Lambda > 1) ||
-
-		// invalid temperature values
-		(params.Temp < 0 || params.Temp > 2) ||
-
-		// invalid topP values
-		(params.TopP < 0 || params.TopP > 1) ||
-
-		// code execution with incompatible flags
-		(params.CodeGen &&
-			(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
-
-		// tool registration with incompatible flags
-		(params.Tool &&
-			(params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction || params.Embed)) ||
-
-		// search with incompatible flags
-		(params.GoogleSearch &&
-			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
-
-		// image modality with incompatible flags
-		(params.ImgModality &&
-			(params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
-
-		// chat mode
-		(params.ChatMode &&
-			// with incompatible flags
-			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) ||
-
-		// embeddings
-		(params.Embed &&
-			// incompatible flags
-			(params.Unsafe || params.JSON ||
-				isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
-				// no digest set
-				len(params.DigestPaths) != 1 ||
-				// metadata missing
-				(params.OnlyKvs && len(keyVals) == 0) ||
-				// prompts set
-				anyMatches(params.FilePaths, PExt) || anyMatches(params.FilePaths, SPExt) ||
-				// no arguments or files to digest
-				(!params.Interactive &&
-					!((len(params.Args) == 1 && params.Args[0] == "-") || oneMatches(params.FilePaths, "-"))))) {
-
-		return false
-	}
-
-	return true
 }

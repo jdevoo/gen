@@ -6,17 +6,29 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 )
 
 // emitGen is the main gen content generator
-func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameters) int {
+func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
+	var genCtx context.Context
+	var genCancel context.CancelFunc
 	var err error
 	var parts []*genai.Part
 	var sysParts []*genai.Part
 	var stdinData []byte
 	var mediaAssets []string
+
+	params, ok := ctx.Value("params").(*Parameters)
+	if !ok {
+		genLogFatal(fmt.Errorf("emitGen: params not found in context"))
+	}
+	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	if !ok {
+		genLogFatal(fmt.Errorf("emitGen: keyVals not found in context"))
+	}
 
 	// Handle redirect/piped data
 	if !params.Interactive {
@@ -28,7 +40,13 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Create a genai client
-	client, err := genai.NewClient(ctx, nil)
+	if !params.ChatMode {
+		genCtx, genCancel = context.WithTimeout(ctx, 90*time.Second)
+		defer genCancel()
+	} else {
+		genCtx = ctx
+	}
+	client, err := genai.NewClient(genCtx, nil)
 	if err != nil {
 		genLogFatal(err)
 	}
@@ -61,7 +79,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				continue
 			}
 			// possible uploads include regular file, .prompt, .sprompt or directory
-			if err = glob(ctx, client, filePathVal, &parts, &sysParts, keyVals); err != nil {
+			if err = glob(genCtx, client, filePathVal, &parts, &sysParts); err != nil {
 				genLogFatal(err)
 			}
 		}
@@ -70,17 +88,19 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Handle token count
 	if params.TokenCount {
 		defer func() {
-			fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", tokenCount)
+			if params.TokenCount && ctx.Err() == nil {
+				fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", TokenCount.Load())
+			}
 		}()
 	}
 
 	// Handle embed parameter then exit
 	if params.Embed {
-		res, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
+		res, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
 			genLogFatal(err)
 		}
-		if err := AppendToDigest(params.DigestPaths[0], res.Embeddings[0], keyVals, params.OnlyKvs, params.Verbose, parts...); err != nil {
+		if err := appendToDigest(params.DigestPaths[0], res.Embeddings[0], keyVals, params.OnlyKvs, params.Verbose, parts...); err != nil {
 			genLogFatal(err)
 		}
 		return 0
@@ -90,11 +110,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	if len(params.DigestPaths) > 0 {
 		var res []QueryResult
 		for _, digestPathVal := range params.DigestPaths {
-			query, err := client.Models.EmbedContent(ctx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
+			query, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 			if err != nil {
 				genLogFatal(err)
 			}
-			res, err = QueryDigest(digestPathVal, query.Embeddings[0], res, params.K, float32(params.Lambda), params.Verbose)
+			res, err = queryDigest(digestPathVal, query.Embeddings[0], res, params.K, float32(params.Lambda), params.Verbose)
 			if err != nil {
 				genLogFatal(err)
 			}
@@ -129,8 +149,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Register tools with genai.FunctionCallingConfigModeAny
 	if params.Tool {
 		config.Tools = []*genai.Tool{}
-		registerGenTools(config)                                     // declared in the tools.go file
-		if err = registerMcpTools(ctx, config, params); err != nil { // declared with -mcp
+		if err = registerGenTools(config); err != nil { // declared in the tools.go file
+			genLogFatal(err)
+		}
+		if err = registerMCPTools(genCtx, config); err != nil { // declared with -mcp
 			genLogFatal(err)
 		}
 		conjTexts(&parts)
@@ -184,9 +206,9 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		var m *genai.Model
 		var backend string
 		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
-			m, err = client.Models.Get(ctx, params.EmbModel, nil)
+			m, err = client.Models.Get(genCtx, params.EmbModel, nil)
 		} else {
-			m, err = client.Models.Get(ctx, params.GenModel, nil)
+			m, err = client.Models.Get(genCtx, params.GenModel, nil)
 		}
 		if err != nil {
 			genLogFatal(err)
@@ -196,7 +218,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		} else {
 			backend = "GeminiAPI"
 		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s | %s | %d | %d\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
 	}
 
 	history := []*genai.Content{}
@@ -207,7 +229,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	}
 
 	// Start chat
-	chat, err := client.Chats.Create(ctx, params.GenModel, config, history)
+	chat, err := client.Chats.Create(genCtx, params.GenModel, config, history)
 	if err != nil {
 		genLogFatal(err)
 	}
@@ -232,7 +254,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 		if len(mediaAssets) > 0 {
 			defer func() {
 				for _, fileURI := range mediaAssets {
-					_, err := client.Files.Delete(ctx, fileURI, nil)
+					_, err := client.Files.Delete(genCtx, fileURI, nil)
 					if err != nil {
 						genLogFatal(err)
 					}
@@ -244,33 +266,36 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 	// Main chat loop
 	for {
 		if len(parts) > 0 {
-			for resp, err := range chat.SendMessageStream(ctx, derefParts(parts)...) {
+			i := 0
+			sendParts := parts
+			parts = []*genai.Part{} // emtpy parts for next iteration
+			for resp, err := range chat.SendStream(genCtx, sendParts...) {
 				if err != nil {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
-				// emtpy parts for next iteration, if any
-				parts = []*genai.Part{}
-				if ok, res := hasInvokedTool(ctx, params, resp); ok {
-					// if chat mode, send response to model
-					parts = append(parts, &genai.Part{Text: res.Response["Response"].(string)})
+				if res := processFunCalls(genCtx, resp); len(res) > 0 {
+					if params.ChatMode {
+						parts = append(parts, res...)
+					}
 					resp = &genai.GenerateContentResponse{
 						Candidates: []*genai.Candidate{
-							{
+							&genai.Candidate{
 								Content: &genai.Content{
-									Parts: parts,
+									Parts: res,
 								},
 								Index: 0,
 							},
 						},
 					}
 				}
-				if err := emitCandidates(out, resp.Candidates, params.ImgModality); err != nil {
+				if err := emitCandidates(out, resp.Candidates, params.ImgModality, i); err != nil {
 					genLogFatal(err)
 				}
 				if params.TokenCount && resp.UsageMetadata != nil {
-					tokenCount = resp.UsageMetadata.TotalTokenCount
+					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
+				i += 1
 			}
 		}
 		fmt.Fprint(out, "\n")
@@ -300,7 +325,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer, params *Parameter
 				break // exit chat mode
 			}
 		}
-		parts = append(parts, &genai.Part{Text: input})
+		parts = append([]*genai.Part{&genai.Part{Text: input}}, parts...)
 	}
 
 	return 0

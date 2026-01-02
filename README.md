@@ -58,7 +58,7 @@ Basic information extraction (Google Gemini [cookbook example](https://github.co
 `gen -f extract.sprompt -f extract.prompt | gen -f format.sprompt -`
 
 Generate an image  
-`gen -img -m gemini-2.0-flash-preview-image-generation An umbrella in the foreground, and a rainy night sky in the background`
+`gen -m gemini-2.5-flash-image-preview -img une cigogne porte un cuistax en survolant le plat pays`
 
 ## Multi-turn Examples
 Set a system instruction from argument and enter chat  
@@ -91,6 +91,12 @@ Add document to digest
 Query digest and read out loud using TTS system  
 `echo you understand french but always reply in english | gen -s -f - -d digest liste les 30 principales propositions de Jacques Attali | ../Downloads/piper/piper --model ../Downloads/voices/en_US-hfc_female-medium.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -`
 
+## Model Context Protocol
+The following client capabilities are supported:
+- [ ] roots defined by paths set with `-f
+- [x] sampling using the model defined by `-m`
+- [x] elicitation looks for inputs defined by `-p`
+
 ## Usage
 ```
 Usage: gen [options] <prompt>
@@ -102,8 +108,11 @@ Command-line interface to Google Gemini large language models
   Use - to assign stdin as prompt argument or as attached file.
 
 Tools:
+  * GetPrompt
   * ListAWSServices
   * ListKnownGeminiModels
+  * ListPrompts
+  * ListResources
 
 Parameters:
 
@@ -113,13 +122,13 @@ Parameters:
         code execution tool (incompatible with -g, -json, -img or -tool)
   -d value
         path to a digest folder
-  -e    write embeddings to digest (default model "text-embedding-004")
+  -e    write embeddings to digest (default model "gemini-embedding-001")
   -f value
-        file, directory or quoted matching pattern of files to attach
+        file, directory or quoted pattern of files to attach
   -g    Google search tool (incompatible with -code, -json, -img and -tool)
   -h    show this help message and exit
   -img
-        generate a jpeg image (use -m with a supported model)
+        generate a jpeg image (use -m to set a supported model)
   -json
         response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)
   -k int
@@ -127,11 +136,13 @@ Parameters:
   -l float
         trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
   -m string
-        embedding or generative model name (default "gemini-2.0-flash")
+        embedding or generative model name (default "gemini-2.5-flash")
+  -mcp value
+        mcp stdio server command
   -o    only store metadata with embeddings and ignore the content
   -p value
         prompt parameter value in format key=val
-  -s    treat argument as system instruction
+  -s    treat argument as system prompt
   -t    output total number of tokens
   -temp float
         changes sampling during response generation [0.0,2.0] (default 1)
@@ -142,6 +153,29 @@ Parameters:
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit
+  -w    process directories declared with -f recursively
+```
+
+## Preferences
+Some flags can be set in a preferences file named `.genrc` to be placed in the home directory. The template below shows supported flags and sections. Use hash to comment lines.
+```
+[flags]
+#K=3
+#Lambda=0.5
+#Temp=1.0
+#TopP=0.95
+#EmbModel=gemini-embedding-001
+#GenModel=gemini-2.5-flash
+
+[mcpservers]
+#path to STDIO executable1
+#path to STDIO executable2
+#...
+
+[digestpaths]
+#path to folder1
+#path to folder2
+#...
 ```
 
 ## License

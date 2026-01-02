@@ -19,7 +19,7 @@ OS = $(word 1, $(target))
 ARCH = $(word 2, $(target))
 GITHASH = $(shell git log -1 --pretty=format:"%h")
 GOVER = $(word 3, $(shell go version))
-LDFLAGS = -ldflags '-X main.version=$(NEWTAG) -X main.githash=$(GITHASH) -X main.golang=$(GOVER)'
+LDFLAGS = -ldflags '-X main.Version=$(NEWTAG) -X main.Githash=$(GITHASH)'
 
 all: $(BINARY)
 

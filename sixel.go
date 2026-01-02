@@ -19,7 +19,7 @@ type Encoder struct {
 	w io.Writer
 
 	// Dither the image when generating a paletted version
-	// using the Floyd–Steinberg dithering algorithm.
+	// using Floyd–Steinberg dithering.
 	Dither bool
 
 	// Colors sets the number of colors for the encoder to quantize.
@@ -46,7 +46,6 @@ const (
 	DefaultPaletteSize       = 255        // Colors
 	SixelValueOffset         = 63         // Sixel data characters 0x3d to 0x7e
 	AsciiZero                = byte(0x30) // ASCII `0`
-	AsciiCr                  = byte(0x64) // Carriage return
 )
 
 func writeRepeatedSixel(buf *bytes.Buffer, curr byte, n int) {
@@ -84,9 +83,10 @@ func (e *Encoder) Encode(img image.Image) error {
 		return nil
 	}
 	if height > 320 {
-		ratio := float64(width) / float64(height)
-		width = int(math.Round(320.0 * ratio))
-		simg := image.NewRGBA(image.Rect(0, 0, width, 320))
+		ratio := float64(width) / float64(height) // using original height
+		height = 320
+		width = int(math.Round(float64(height) * ratio))
+		simg := image.NewRGBA(image.Rect(0, 0, width, height))
 		draw.CatmullRom.Scale(simg, simg.Bounds(), img, img.Bounds(), draw.Over, nil)
 		img = simg
 	}
@@ -195,6 +195,7 @@ func (e *Encoder) Encode(img image.Image) error {
 	}
 
 	// End sixel mode
+	buf.WriteString(GraphicsCarriageReturn)
 	buf.WriteString(StringTerminator)
 
 	// Direct copy to given io.Writer

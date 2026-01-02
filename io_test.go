@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -135,6 +134,9 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 			imgModality: true,
 		},
 	}
+	stdout := os.Stdout
+	defer func() { os.Stdout = stdout }()
+	os.Stdout = os.NewFile(0, os.DevNull)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cp := make([]*genai.Part, 1)
@@ -146,8 +148,7 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 				},
 				Index: 1,
 			}
-			_ = emitCandidates(os.Stdout, c, test.imgModality)
-			fmt.Println()
+			_ = emitCandidates(os.Stdout, c, test.imgModality, 1)
 		})
 	}
 }

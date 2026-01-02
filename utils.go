@@ -1,26 +1,19 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	_ "github.com/lib/pq"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"google.golang.org/api/googleapi"
 	"google.golang.org/genai"
 )
@@ -41,11 +34,8 @@ func (m *ParamMap) Set(kv string) error {
 	return nil
 }
 
-// ParamArray holds a list of strings.
+// ParamArray holds a list of strings e.g. file paths.
 type ParamArray []string
-
-// SessionArray holds a list of MCP client session
-type SessionArray []*mcp.ClientSession
 
 // String implements the flag.Value interface for ParamMap.
 func (*ParamArray) String() string { return "" }
@@ -54,29 +44,6 @@ func (*ParamArray) String() string { return "" }
 func (a *ParamArray) Set(val string) error {
 	*a = append(*a, val)
 	return nil
-}
-
-// Property for MCP JSON unmarshal
-type Property struct {
-	Description string `json:"description"`
-	Type        string `json:"type"`
-}
-
-// GenSchema for MCP JSON unmarshal
-type GenSchema struct {
-	Schema     string              `json:"$schema"`
-	Properties map[string]Property `json:"properties"`
-	Required   []string            `json:"required"`
-	Type       string              `json:"type"`
-}
-
-// derefParts is a kludge for SendMessageStream
-func derefParts(parts []*genai.Part) []genai.Part {
-	res := []genai.Part{}
-	for _, p := range parts {
-		res = append(res, *p)
-	}
-	return res
 }
 
 // conjoin returns a single text resulting from concatenation of all original parts.
@@ -101,7 +68,7 @@ func conjTexts(parts *[]*genai.Part) {
 func searchReplace(prompt string, pm ParamMap) string {
 	res := prompt
 	for k, v := range pm {
-		searchRegex := regexp.MustCompile("(?i){" + k + "}")
+		searchRegex := regexp.MustCompile("(?i){" + regexp.QuoteMeta(k) + "}")
 		res = searchRegex.ReplaceAllString(res, v)
 	}
 	return res
@@ -150,7 +117,12 @@ func appendToSelection(selection []QueryResult, item QueryResult, k int) []Query
 }
 
 // knownTools returns string of comma-separated function names.
-func knownTools(params *Parameters) string {
+func knownTools(ctx context.Context) (string, error) {
+	params, ok := ctx.Value("params").(*Parameters)
+	if !ok {
+		return "", fmt.Errorf("knownTools: params not found in context")
+	}
+
 	var res []string
 
 	// gen tools
@@ -160,8 +132,7 @@ func knownTools(params *Parameters) string {
 	}
 
 	// MCP tools
-	for _, sess := range params.McpSessions {
-		ctx := context.Background()
+	for _, sess := range params.MCPSessions {
 		ltr, err := sess.ListTools(ctx, nil)
 		if err != nil {
 			res = append(res, fmt.Sprintf("  * %v", err))
@@ -172,12 +143,12 @@ func knownTools(params *Parameters) string {
 		}
 	}
 
-	return strings.Join(res, "\n")
+	return strings.Join(res, "\n"), nil
 }
 
 // registerTools declares functions of type Tool in genai.FunctionDeclaration format.
 // TODO add support for arrays and objects
-func registerGenTools(config *genai.GenerateContentConfig) {
+func registerGenTools(config *genai.GenerateContentConfig) error {
 	genTool := reflect.TypeOf(Tool{})
 	n := genTool.NumMethod()
 	genDecls := make([]*genai.FunctionDeclaration, n)
@@ -185,21 +156,21 @@ func registerGenTools(config *genai.GenerateContentConfig) {
 		m := genTool.Method(i)
 		f := reflect.ValueOf(Tool{}).MethodByName(m.Name)
 		t := f.Type()
-		argMap := make(map[string]*genai.Schema)
-		if t.NumIn() > 0 {
-			for j := 0; j < t.NumIn(); j++ {
+		argMap := map[string]*genai.Schema{}
+		if t.NumIn() > 1 { // first tool arg must be context.Context
+			for j := 1; j < t.NumIn(); j++ {
 				switch t.In(j).Kind() {
 				case reflect.String:
-					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeString}
+					argMap[t.In(j).Name()] = &genai.Schema{Type: genai.TypeString}
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeInteger}
+					argMap[t.In(j).Name()] = &genai.Schema{Type: genai.TypeInteger}
 				case reflect.Float32, reflect.Float64:
-					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeNumber}
+					argMap[t.In(j).Name()] = &genai.Schema{Type: genai.TypeNumber}
 				case reflect.Bool:
-					argMap[fmt.Sprintf("arg%d", j)] = &genai.Schema{Type: genai.TypeBoolean}
+					argMap[t.In(j).Name()] = &genai.Schema{Type: genai.TypeBoolean}
 				default:
-					panic("unsupported tool type")
+					return fmt.Errorf("unsupported type for tool '%s'", m.Name)
 				}
 			}
 			genDecls[i] = &genai.FunctionDeclaration{
@@ -220,100 +191,20 @@ func registerGenTools(config *genai.GenerateContentConfig) {
 			FunctionDeclarations: genDecls,
 		})
 	}
-}
-
-// registerMcpTools declares tools of MCP servers in genai.FunctionDeclaration format.
-func registerMcpTools(ctx context.Context, config *genai.GenerateContentConfig, params *Parameters) error {
-	for _, sess := range params.McpSessions {
-		ltr, err := sess.ListTools(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("failed to list MCP tools: %w", err)
-		}
-		mcpDecls := []*genai.FunctionDeclaration{}
-		// MCP tools for this server
-		for _, tool := range ltr.Tools {
-			jsonBytes, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				return fmt.Errorf("failed to marshal input schema for MCP tool '%s': %w", tool.Name, err)
-			}
-			var mcpInputSchema GenSchema
-			if err = json.Unmarshal(jsonBytes, &mcpInputSchema); err != nil {
-				return fmt.Errorf("failed to unmarshal JSON bytes for MCP tool '%s': %w", tool.Name, err)
-			}
-			argMap := make(map[string]*genai.Schema)
-			for name, def := range mcpInputSchema.Properties {
-				switch strings.ToLower(def.Type) {
-				case "string":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeString,
-						Description: def.Description,
-					}
-				case "number":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeNumber,
-						Description: def.Description,
-					}
-				case "integer":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeInteger,
-						Description: def.Description,
-					}
-				case "boolean":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeBoolean,
-						Description: def.Description,
-					}
-				case "object":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeObject,
-						Description: def.Description,
-					}
-				case "array":
-					argMap[name] = &genai.Schema{
-						Type:        genai.TypeArray,
-						Description: def.Description,
-					}
-				}
-			}
-			mcpDecls = append(mcpDecls, &genai.FunctionDeclaration{
-				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters: &genai.Schema{
-					Type:       genai.TypeObject,
-					Properties: argMap,
-				},
-			})
-		}
-		if len(mcpDecls) > 0 {
-			config.Tools = append(config.Tools, &genai.Tool{
-				FunctionDeclarations: mcpDecls,
-			})
-		}
-	}
 	return nil
 }
 
-// invokeTool calls tool identified by genai.FunctionCall using anonymous argument names.
-func invokeTool(ctx context.Context, params *Parameters, fc genai.FunctionCall) string {
-	for _, sess := range params.McpSessions {
-		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
-			Name:      fc.Name,
-			Arguments: fc.Args,
-		})
-		if err != nil {
-			continue
-		}
-		return res.Content[0].(*mcp.TextContent).Text
-	}
+// invokeGenTool looks for exported symbols under Tool matching the provided FunctionCall signature.
+func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (string, string) {
 	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
 	if !f.IsValid() {
-		return fmt.Sprintf("%s invocation error", fc.Name)
+		return "", fmt.Sprintf("invokeTool: %s invocation error", fc.Name)
 	}
-	var args []reflect.Value
-	for i := 0; i < len(fc.Args); i++ {
+	args := []reflect.Value{reflect.ValueOf(ctx)} // first tool arg is context.Context
+	for i := 1; i < len(fc.Args)+1; i++ {
 		t := f.Type().In(i)
 		v := reflect.New(t).Elem()
-		argName := fmt.Sprintf("arg%d", i)
+		argName := f.Type().In(i).Name()
 		argVal, ok := fc.Args[argName]
 		if !ok {
 			args = append(args, v) // arg missing, use zero value
@@ -324,7 +215,7 @@ func invokeTool(ctx context.Context, params *Parameters, fc genai.FunctionCall) 
 			if s, ok := argVal.(string); ok {
 				v.SetString(s)
 			} else {
-				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+				return "", fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
 			}
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if fv, ok := argVal.(float64); ok {
@@ -332,22 +223,22 @@ func invokeTool(ctx context.Context, params *Parameters, fc genai.FunctionCall) 
 			} else if iv, ok := argVal.(int64); ok {
 				v.SetInt(iv)
 			} else {
-				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+				return "", fmt.Sprintf("%s type mismatch: '%s' expected integer, got %T", fc.Name, argName, argVal)
 			}
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			var uintVal uint64
 			if fv, ok := argVal.(float64); ok {
 				if fv < 0 {
-					return fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
+					return "", fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
 				}
 				uintVal = uint64(fv)
 			} else if iv, ok := argVal.(int64); ok {
 				if iv < 0 {
-					return fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
+					return "", fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, argName)
 				}
 				uintVal = uint64(iv)
 			} else {
-				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+				return "", fmt.Sprintf("%s type mismatch: '%s' expected unsigned integer, got %T", fc.Name, argName, argVal)
 			}
 			v.SetUint(uintVal)
 		case reflect.Float32, reflect.Float64:
@@ -356,39 +247,44 @@ func invokeTool(ctx context.Context, params *Parameters, fc genai.FunctionCall) 
 			} else if iv, ok := argVal.(int64); ok {
 				v.SetFloat(float64(iv))
 			} else {
-				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+				return "", fmt.Sprintf("%s type mismatch: '%s' expected float, got %T", fc.Name, argName, argVal)
 			}
 		case reflect.Bool:
 			if b, ok := argVal.(bool); ok {
 				v.SetBool(b)
 			} else {
-				return fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, argName, argVal)
+				return "", fmt.Sprintf("%s type mismatch: '%s' expected boolean, got %T", fc.Name, argName, argVal)
 			}
 		}
 		args = append(args, v)
 	}
 	vals := f.Call(args)
 	if err := vals[1].Interface(); err != nil {
-		return fmt.Sprintf("%s error: %v", fc.Name, err)
+		return "", fmt.Sprintf("%s error: %v", fc.Name, err)
 	}
-	return vals[0].String()
+	return vals[0].String(), ""
 }
 
-// hasInvokedTool checks for a suggested function call, invokes tool and returns response to model.
-func hasInvokedTool(ctx context.Context, params *Parameters, resp *genai.GenerateContentResponse) (bool, *genai.FunctionResponse) {
+// processFunCalls looks for suggested function calls across MCP sessions and gen tools.
+func processFunCalls(ctx context.Context, resp *genai.GenerateContentResponse) []*genai.Part {
 	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return false, &genai.FunctionResponse{}
+		return []*genai.Part{}
 	}
 	for _, fc := range resp.FunctionCalls() {
-		res := invokeTool(ctx, params, *fc)
-		return true, &genai.FunctionResponse{
-			Name: fc.Name,
-			Response: map[string]any{
-				"Response": res,
-			},
+		//parts = append(parts, &genai.Part{
+		//	FunctionCall: fc,
+		//})
+		if res := invokeMCPTool(ctx, fc); len(res) > 0 {
+			return res
+		}
+		res, err := invokeGenTool(ctx, fc)
+		if res != "" || err != "" {
+			return []*genai.Part{
+				genai.NewPartFromFunctionResponse(fc.Name, map[string]any{"output": res, "error": err}),
+			}
 		}
 	}
-	return false, &genai.FunctionResponse{}
+	return []*genai.Part{}
 }
 
 // genLogFatal refines the error if available and exits with 1
@@ -438,7 +334,11 @@ func oneMatches(strArray []string, cand string) bool {
 }
 
 // QueryPostgres submits query to database set by DSN parameter.
-func queryPostgres(query string) (string, error) {
+func queryPostgres(ctx context.Context, query string) (string, error) {
+	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	if !ok {
+		return "", fmt.Errorf("queryPostgres: keyVals not found in context")
+	}
 	var res []string
 	dsn, ok := keyVals["DSN"]
 	if !ok || len(dsn) == 0 {
@@ -449,14 +349,14 @@ func queryPostgres(query string) (string, error) {
 		return "", fmt.Errorf("opening DSN '%s': %w", dsn, err)
 	}
 	defer db.Close()
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("for query '%s': %w", query, err)
 	}
 	defer rows.Close()
 	cols, _ := rows.Columns()
-	row := make([]interface{}, len(cols))
-	rowPtr := make([]interface{}, len(cols))
+	row := make([]any, len(cols))
+	rowPtr := make([]any, len(cols))
 	for i := range row {
 		rowPtr[i] = &row[i]
 	}
@@ -484,76 +384,101 @@ func isFlagSet(name string) bool {
 	return res
 }
 
-// loadPrefs reads and parses .genrc from the user's home directory
-func loadPrefs(params *Parameters) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
+// validPrompts checks prompts against regular interactive vs no redirect or piped content session.
+func validPrompts(params *Parameters) bool {
+	if (params.Interactive &&
+		// no regular prompt privided
+		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+			// system instruction
+			(params.SystemInstruction &&
+				// not provided as file
+				((len(params.Args) == 0 && !anyMatches(params.FilePaths, SPExt)) ||
+					// provided as argument but no prompt as file and no chat mode
+					(len(params.Args) > 0 && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) ||
+		(!params.Interactive &&
+			// not set as file xor argument
+			((!oneMatches(params.FilePaths, "-") && !(len(params.Args) == 1 && params.Args[0] == "-")) ||
+				// system instruction
+				(params.SystemInstruction &&
+					// stdin as file, but no prompt as file or argument
+					((!oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+						// stdin as argument, no prompt as file
+						(len(params.Args) == 1 && params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) {
+		return false
 	}
-	prefsPath := filepath.Join(homeDir, DotGenRc)
-	prefsFile, err := os.Open(prefsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to open at %s: %w", prefsPath, err)
-	}
-	defer prefsFile.Close()
+	return true
+}
 
-	scanner := bufio.NewScanner(prefsFile)
-	currentSection := ""
+func validRanges(params *Parameters) bool {
+	if
+	// invalid k values
+	(params.K < 0 || params.K > 10) ||
+		// invalid lambda values
+		(params.Lambda < 0 || params.Lambda > 1) ||
+		// invalid temperature values
+		(params.Temp < 0 || params.Temp > 2) ||
+		// invalid topP values
+		(params.TopP < 0 || params.TopP > 1) {
+		return false
+	}
+	return true
+}
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if len(line) == 0 || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-			continue // skip empty line or line with comments
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			currentSection = strings.ToLower(line[1 : len(line)-1])
-			continue
-		}
-		switch currentSection {
-		case "flags":
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) != 2 {
-				return fmt.Errorf("flag error on line: %s", line)
-			}
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			switch strings.ToLower(key) {
-			case "k":
-				if val, err := strconv.Atoi(value); err == nil {
-					params.K = val
-				}
-			case "lambda":
-				if val, err := strconv.ParseFloat(value, 64); err == nil {
-					params.Lambda = val
-				}
-			case "temp":
-				if val, err := strconv.ParseFloat(value, 64); err == nil {
-					params.Temp = val
-				}
-			case "topp":
-				if val, err := strconv.ParseFloat(value, 64); err == nil {
-					params.TopP = val
-				}
-			case "embmodel":
-				params.EmbModel = value
-			case "genmodel":
-				params.GenModel = value
-			default:
-				return fmt.Errorf("unknown key value %s", key)
-			}
-		case "digestpaths":
-			params.DigestPaths = append(params.DigestPaths, line)
-		case "mcpservers":
-			params.McpServers = append(params.McpServers, line)
-		default:
-			return fmt.Errorf("unknown section: %s", currentSection)
-		}
+func validCombos(params *Parameters) bool {
+	if
+	// code execution with incompatible flags
+	(params.CodeGen &&
+		(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
+		// tool registration with incompatible flags
+		(params.Tool &&
+			(params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction || params.Embed)) ||
+		// search with incompatible flags
+		(params.GoogleSearch &&
+			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
+		// image modality with incompatible flags
+		(params.ImgModality &&
+			(params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
+		// walk without file attached that is not some prompt
+		(params.Walk &&
+			(len(params.FilePaths) == 0 || allMatch(params.FilePaths, PExt) || allMatch(params.FilePaths, SPExt))) ||
+		// chat mode
+		(params.ChatMode &&
+			// with incompatible flags
+			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) {
+		return false
 	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading file: %w", err)
+	return true
+}
+
+func validEmbeddings(params *Parameters, keyVals ParamMap) bool {
+	if
+	// embeddings
+	params.Embed &&
+		// incompatible flags
+		(params.Unsafe || params.JSON ||
+			isFlagSet("temp") || isFlagSet("top_p") || isFlagSet("k") || isFlagSet("l") ||
+			// no digest set
+			len(params.DigestPaths) != 1 ||
+			// metadata missing
+			(params.OnlyKvs && len(keyVals) == 0) ||
+			// prompts set
+			anyMatches(params.FilePaths, PExt) || anyMatches(params.FilePaths, SPExt) ||
+			// no arguments or files to digest
+			(!params.Interactive &&
+				!((len(params.Args) == 1 && params.Args[0] == "-") || oneMatches(params.FilePaths, "-")))) {
+
+		return false
 	}
-	return nil
+	return true
+}
+
+// isValidParams performs a complete argument validation.
+func isParamsInvalid(params *Parameters, keyVals ParamMap) bool {
+	if validPrompts(params) &&
+		validRanges(params) &&
+		validCombos(params) &&
+		validEmbeddings(params, keyVals) {
+		return false
+	}
+	return true
 }
