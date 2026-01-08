@@ -252,14 +252,17 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			}
 		}
 		if len(mediaAssets) > 0 {
-			defer func() {
+			defer func(verbose bool) {
 				for _, fileURI := range mediaAssets {
 					_, err := client.Files.Delete(genCtx, fileURI, nil)
 					if err != nil {
 						genLogFatal(err)
 					}
+					if verbose {
+						fmt.Fprintf(os.Stderr, "\033[36m%s\033[0m deleted\n", fileURI)
+					}
 				}
-			}()
+			}(params.Verbose)
 		}
 	}
 
@@ -275,9 +278,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 					genLogFatal(err)
 				}
 				if res := processFunCalls(genCtx, resp); len(res) > 0 {
-					if params.ChatMode {
-						parts = append(parts, res...)
-					}
 					resp = &genai.GenerateContentResponse{
 						Candidates: []*genai.Candidate{
 							&genai.Candidate{
@@ -287,6 +287,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 								Index: 0,
 							},
 						},
+					}
+					if params.ChatMode {
+						parts = append(parts, sendParts...) // send original parts back
+						parts = append(parts, res...)
 					}
 				}
 				if err := emitCandidates(out, resp.Candidates, params.ImgModality, i); err != nil {
@@ -325,7 +329,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				break // exit chat mode
 			}
 		}
-		parts = append([]*genai.Part{&genai.Part{Text: input}}, parts...)
+		parts = append(parts, &genai.Part{Text: input})
 	}
 
 	return 0

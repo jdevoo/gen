@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -123,9 +124,12 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 		for _, p := range c.Parts {
 			if p.Text != "" {
 				res += p.Text
+				if c.Role == "user" {
+					res += "\n"
+				}
 			}
 			if p.FunctionCall != nil && p.FunctionCall.Name != "" {
-				res += p.FunctionCall.Name
+				res += fmt.Sprintf("%s\n", p.FunctionCall.Name)
 			}
 			if p.FunctionResponse != nil && p.FunctionResponse.Response["output"].(string) != "" {
 				res += p.FunctionResponse.Response["output"].(string)
@@ -165,6 +169,43 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 	return file, nil
 }
 
+// loadPrompt reads a file and recursively replaces @subprompt with their content.
+func loadPrompt(filePath string, seen map[string]bool) (string, error) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", err
+	}
+	if seen[absPath] {
+		return "", fmt.Errorf("circular reference detected in: '%s'", absPath)
+	}
+	seen[absPath] = true
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("reading prompt file '%s': %w", filePath, err)
+	}
+	content := string(data)
+	dir := filepath.Dir(absPath)
+
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		// Find words starting with @
+		words := strings.Fields(line)
+		for _, word := range words {
+			if strings.HasPrefix(word, "@") && (strings.HasSuffix(word, PExt) || strings.HasSuffix(word, SPExt)) {
+				subFileName := strings.TrimPrefix(word, "@")
+				subPath := filepath.Join(dir, subFileName)
+				subContent, err := loadPrompt(subPath, seen)
+				if err != nil {
+					return "", err
+				}
+				lines[i] = strings.ReplaceAll(lines[i], word, subContent)
+			}
+		}
+	}
+	delete(seen, absPath)
+	return strings.Join(lines, "\n"), nil
+}
+
 // filePathHandler processes a single file path for glob.
 // parts and sysParts are extended with file content.
 func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part) error {
@@ -179,9 +220,9 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	defer f.Close()
 	switch path.Ext(filePathVal) {
 	case PExt, SPExt:
-		data, err := io.ReadAll(f)
+		data, err := loadPrompt(filePathVal, make(map[string]bool))
 		if err != nil {
-			return fmt.Errorf("reading file '%s': %w", filePathVal, err)
+			return fmt.Errorf("filePathHandler '%s': %w", filePathVal, err)
 		}
 		if path.Ext(filePathVal) == SPExt {
 			*sysParts = append(*sysParts, &genai.Part{Text: searchReplace(string(data), keyVals)})
@@ -202,6 +243,10 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		data, err := io.ReadAll(f)
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", filePathVal, err)
+		}
+		sniffedType := http.DetectContentType(data[0:512])
+		if !strings.HasPrefix(sniffedType, "text/plain") {
+			return fmt.Errorf("reading file %s: type %s not supported", filePathVal, sniffedType)
 		}
 		*parts = append(*parts, &genai.Part{Text: fmt.Sprintf("*** %s ***\n", filePathVal)})
 		*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})

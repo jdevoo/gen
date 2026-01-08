@@ -3,6 +3,7 @@ module github.com/jdevoo/gen
 go 1.25.0
 
 require (
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/lib/pq v1.10.9
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/soniakeys/quant v1.0.0

@@ -93,6 +93,12 @@ func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 					switch msg.Content.(type) {
 					case *mcp.TextContent:
 						res += fmt.Sprintf("%s\n", msg.Content.(*mcp.TextContent).Text)
+					case *mcp.ResourceLink:
+						res += fmt.Sprintf("%s\n", msg.Content.(*mcp.ResourceLink).URI)
+					case *mcp.EmbeddedResource:
+						if msg.Content.(*mcp.EmbeddedResource).Resource != nil {
+							res += fmt.Sprintf("%s\n", msg.Content.(*mcp.EmbeddedResource).Resource.URI)
+						}
 					}
 				}
 				return res, nil

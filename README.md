@@ -93,7 +93,7 @@ Query digest and read out loud using TTS system
 
 ## Model Context Protocol
 The following client capabilities are supported:
-- [ ] roots defined by paths set with `-f
+- [ ] roots defined by paths set with `-f`
 - [x] sampling using the model defined by `-m`
 - [x] elicitation looks for inputs defined by `-p`
 

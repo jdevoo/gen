@@ -271,9 +271,6 @@ func processFunCalls(ctx context.Context, resp *genai.GenerateContentResponse) [
 		return []*genai.Part{}
 	}
 	for _, fc := range resp.FunctionCalls() {
-		//parts = append(parts, &genai.Part{
-		//	FunctionCall: fc,
-		//})
 		if res := invokeMCPTool(ctx, fc); len(res) > 0 {
 			return res
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -151,4 +152,68 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 			_ = emitCandidates(os.Stdout, c, test.imgModality, 1)
 		})
 	}
+}
+
+func TestLoadPrompt(t *testing.T) {
+	tmpDir := t.TempDir()
+	subPromptPath := filepath.Join(tmpDir, "child"+PExt)
+	subContent := "I am the child content."
+	if err := os.WriteFile(subPromptPath, []byte(subContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mainPromptPath := filepath.Join(tmpDir, "parent"+PExt)
+	mainContent := "Hello, @child" + PExt
+	if err := os.WriteFile(mainPromptPath, []byte(mainContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("Successful Recursive Loading", func(t *testing.T) {
+		seen := make(map[string]bool)
+		result, err := loadPrompt(mainPromptPath, seen)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		expected := "Hello, I am the child content."
+		if strings.TrimSpace(result) != expected {
+			t.Errorf("Expected %q, got %q", expected, result)
+		}
+	})
+
+	t.Run("Circular Reference Detection", func(t *testing.T) {
+		pathA := filepath.Join(tmpDir, "a"+PExt)
+		pathB := filepath.Join(tmpDir, "b"+PExt)
+		os.WriteFile(pathA, []byte("File A calls @b"+PExt), 0644)
+		os.WriteFile(pathB, []byte("File B calls @a"+PExt), 0644)
+		seen := make(map[string]bool)
+		_, err := loadPrompt(pathA, seen)
+		if err == nil {
+			t.Error("Expected a circular reference error, but got nil")
+		} else if !strings.Contains(err.Error(), "circular reference detected") {
+			t.Errorf("Expected circular reference error message, got: %v", err)
+		}
+	})
+
+	t.Run("File Not Found", func(t *testing.T) {
+		seen := make(map[string]bool)
+		_, err := loadPrompt(filepath.Join(tmpDir, "nonexistent.prompt"), seen)
+		if err == nil {
+			t.Error("Expected error for non-existent file, got nil")
+		}
+	})
+
+	t.Run("Multiple References", func(t *testing.T) {
+		multiPath := filepath.Join(tmpDir, "multi"+PExt)
+		content := "@child" + PExt + " and again @child" + PExt
+		os.WriteFile(multiPath, []byte(content), 0644)
+
+		seen := make(map[string]bool)
+		result, err := loadPrompt(multiPath, seen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := subContent + " and again " + subContent
+		if strings.TrimSpace(result) != expected {
+			t.Errorf("Expected %q, got %q", expected, result)
+		}
+	})
 }

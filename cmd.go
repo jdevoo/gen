@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/shlex"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -148,7 +149,17 @@ func main() {
 
 	// stash MCP client sessions in params.MCPSessions
 	for _, s := range params.MCPServers {
-		cmd := exec.Command(s)
+		parts, err := shlex.Split(s)
+		if err != nil || len(parts) == 0 {
+			fmt.Fprintf(os.Stderr, "invalid MCP command: '%s' %v\n", s, err)
+			os.Exit(1)
+		}
+		cmdPath, err := exec.LookPath(parts[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot find MCP server: '%s' %v\n", parts[0], err)
+			os.Exit(1)
+		}
+		cmd := exec.Command(cmdPath, parts[1:]...)
 		name := filepath.Base(os.Args[0])
 		client := mcp.NewClient(
 			&mcp.Implementation{Name: name, Version: Version},
