@@ -13,7 +13,7 @@ type Tool struct{}
 
 // ListKnownGeminiModels retrieves the list of available Gemini models.
 func (t Tool) ListKnownGeminiModels(ctx context.Context) (string, error) {
-	var res string
+	var res []string
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		genLogFatal(err)
@@ -22,9 +22,9 @@ func (t Tool) ListKnownGeminiModels(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		res += fmt.Sprintf("%s %s\n", m.Name, m.Description)
+		res = append(res, fmt.Sprintf("%s %s", m.Name, m.Description))
 	}
-	return res, nil
+	return strings.Join(res, "\n"), nil
 }
 
 // ListAWSServices returns a list of services via Steampipe.
@@ -42,7 +42,7 @@ func (t Tool) ListPrompts(ctx context.Context) (string, error) {
 	for _, sess := range params.MCPSessions {
 		for p, err := range sess.Prompts(ctx, nil) {
 			if err != nil {
-				return "", err
+				continue // skip this MCP server
 			}
 			desc := fmt.Sprintf("%s: %s", p.Name, p.Description)
 			if len(p.Arguments) > 0 {
@@ -78,7 +78,7 @@ func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 	for _, sess := range params.MCPSessions {
 		for p, err := range sess.Prompts(ctx, nil) {
 			if err != nil {
-				return "", err
+				continue // skip this MCP server
 			}
 			if name == p.Name {
 				prompt, err := sess.GetPrompt(ctx, &mcp.GetPromptParams{
@@ -88,20 +88,20 @@ func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 				if err != nil {
 					return "", err
 				}
-				var res string
+				var res []string
 				for _, msg := range prompt.Messages {
 					switch msg.Content.(type) {
 					case *mcp.TextContent:
-						res += fmt.Sprintf("%s\n", msg.Content.(*mcp.TextContent).Text)
+						res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.TextContent).Text))
 					case *mcp.ResourceLink:
-						res += fmt.Sprintf("%s\n", msg.Content.(*mcp.ResourceLink).URI)
+						res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.ResourceLink).URI))
 					case *mcp.EmbeddedResource:
 						if msg.Content.(*mcp.EmbeddedResource).Resource != nil {
-							res += fmt.Sprintf("%s\n", msg.Content.(*mcp.EmbeddedResource).Resource.URI)
+							res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.EmbeddedResource).Resource.URI))
 						}
 					}
 				}
-				return res, nil
+				return strings.Join(res, "\n"), nil
 			}
 		}
 	}
@@ -118,7 +118,7 @@ func (t Tool) ListResources(ctx context.Context) (string, error) {
 	for _, sess := range params.MCPSessions {
 		for r, err := range sess.Resources(ctx, nil) {
 			if err != nil {
-				return "", err
+				continue // skip this MCP server
 			}
 			res = append(res, r.URI)
 		}
