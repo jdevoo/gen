@@ -244,7 +244,11 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", filePathVal, err)
 		}
-		sniffedType := http.DetectContentType(data[0:512])
+		sniffLen := len(data)
+		if sniffLen > 512 {
+			sniffLen = 512
+		}
+		sniffedType := http.DetectContentType(data[:sniffLen])
 		if !strings.HasPrefix(sniffedType, "text/plain") {
 			return fmt.Errorf("reading file %s: type %s not supported", filePathVal, sniffedType)
 		}
