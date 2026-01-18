@@ -61,6 +61,7 @@ func readLine(r io.Reader) (string, error) {
 }
 
 // emitCandidates prints LLM response candidates.
+// TODO add support for Thought, FileData, ExecutableCode, CodeExecutionResult
 func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, idx int) error {
 	for _, cand := range resp {
 		if cand != nil && cand.Content != nil {
@@ -264,7 +265,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 			sniffLen = 512
 		}
 		sniffedType := http.DetectContentType(data[:sniffLen])
-		if !strings.HasPrefix(sniffedType, "text/plain") {
+		if !strings.HasPrefix(sniffedType, "text") {
 			return fmt.Errorf("reading file %s: type %s not supported", filePathVal, sniffedType)
 		}
 		*parts = append(*parts, &genai.Part{Text: fmt.Sprintf("*** %s ***\n", filePathVal)})
