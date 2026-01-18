@@ -65,7 +65,7 @@ func (t Tool) ListPrompts(ctx context.Context) (string, error) {
 	return strings.Join(res, "\n"), nil
 }
 
-// GetPrompt retrieve a specific prompt by name from available MCP servers.
+// GetPrompt retrieves a specific prompt by name from available MCP servers.
 func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
@@ -92,12 +92,16 @@ func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 				for _, msg := range prompt.Messages {
 					switch msg.Content.(type) {
 					case *mcp.TextContent:
-						res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.TextContent).Text))
+						res = append(res, msg.Content.(*mcp.TextContent).Text)
 					case *mcp.ResourceLink:
-						res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.ResourceLink).URI))
+						res = append(res, fmt.Sprintf("%s %s",
+							msg.Content.(*mcp.ResourceLink).URI,
+							msg.Content.(*mcp.ResourceLink).MIMEType))
 					case *mcp.EmbeddedResource:
 						if msg.Content.(*mcp.EmbeddedResource).Resource != nil {
-							res = append(res, fmt.Sprintf("%s\n", msg.Content.(*mcp.EmbeddedResource).Resource.URI))
+							res = append(res, fmt.Sprintf("%s %s",
+								msg.Content.(*mcp.EmbeddedResource).Resource.URI,
+								msg.Content.(*mcp.EmbeddedResource).Resource.MIMEType))
 						}
 					}
 				}
@@ -105,7 +109,7 @@ func (t Tool) GetPrompt(ctx context.Context, name string) (string, error) {
 			}
 		}
 	}
-	return fmt.Sprintf("GetPrompt: prompt '%s' not found", name), nil
+	return fmt.Sprintf("GetPrompt: '%s' not found", name), nil
 }
 
 // ListResources returns resources available from MCP servers.
@@ -124,4 +128,36 @@ func (t Tool) ListResources(ctx context.Context) (string, error) {
 		}
 	}
 	return strings.Join(res, "\n"), nil
+}
+
+// GetResource retrieves a specific resource by name from available MCP servers.
+func (t Tool) GetResource(ctx context.Context, name string) (string, error) {
+	params, ok := ctx.Value("params").(*Parameters)
+	if !ok {
+		return "", fmt.Errorf("GetResource: params not found in context")
+	}
+	for _, sess := range params.MCPSessions {
+		for r, err := range sess.Resources(ctx, nil) {
+			if err != nil {
+				continue // skip this MCP server
+			}
+			if name == r.URI {
+				res, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{
+					URI: name,
+				})
+				if err != nil {
+					return "", err
+				}
+				for _, c := range res.Contents {
+					if len(c.Text) > 0 {
+						return c.Text, nil
+					}
+					if len(c.Blob) > 0 {
+						return string(c.Blob), nil
+					}
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("GetResource: '%s' not found", name), nil
 }

@@ -329,6 +329,9 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				break // exit chat mode
 			}
 		}
+		if isRedirected(out) {
+			fmt.Fprintf(out, "\n%s\n\n", input)
+		}
 		parts = append(parts, &genai.Part{Text: input})
 	}
 

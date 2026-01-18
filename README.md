@@ -122,7 +122,7 @@ Parameters:
         code execution tool (incompatible with -g, -json, -img or -tool)
   -d value
         path to a digest folder
-  -e    write embeddings to digest (default model "gemini-embedding-001")
+  -e    write text embeddings to digest (default model "gemini-embedding-001")
   -f value
         file, directory or quoted pattern of files to attach
   -g    Google search tool (incompatible with -code, -json, -img and -tool)

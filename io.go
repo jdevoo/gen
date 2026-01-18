@@ -24,20 +24,29 @@ import (
 	"google.golang.org/genai"
 )
 
-// hasInteractive checks if `in` is a terminal
-func isInteractive(in io.Reader) bool {
-	if f, ok := in.(*os.File); ok {
+// isRedirected checks if the provided stream (Reader or Writer)
+// is NOT a terminal and supports non-printable characters.
+func isRedirected(stream any) bool {
+	if f, ok := stream.(interface{ Stat() (os.FileInfo, error) }); ok {
 		fileInfo, _ := f.Stat()
-		return fileInfo.Mode()&os.ModeCharDevice == os.ModeCharDevice
+		mode := fileInfo.Mode()
+		// if it's a pipe (tee) or a regular file, it is redirected
+		if mode&os.ModeNamedPipe != 0 || mode.IsRegular() {
+			return true
+		}
+		// a terminal is a Character Device and
+		// if the CharDevice bit is NOT set, it's redirected
+		return mode&os.ModeCharDevice == 0
 	}
+	// it doesn't support Stat (like a buffer), we treat it as redirected
 	return true
 }
 
-// isRedirected checks if `out` supports non-printable characters.
-func isRedirected(out io.Writer) bool {
-	if f, ok := out.(*os.File); ok {
+// isEmpty checks if stream non-zero length
+func isEmpty(stream any) bool {
+	if f, ok := stream.(interface{ Stat() (os.FileInfo, error) }); ok {
 		fileInfo, _ := f.Stat()
-		return fileInfo.Mode()&os.ModeCharDevice != os.ModeCharDevice
+		return fileInfo.Size() == 0
 	}
 	return false
 }
@@ -88,6 +97,9 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, id
 						return err
 					}
 					if isRedirected(out) {
+						if !isEmpty(out) {
+							continue
+						}
 						// Encode to jpeg file
 						if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
 							return err
@@ -101,6 +113,9 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, id
 						senc.Dither = true
 						if err := senc.Encode(img); err != nil {
 							return err
+						}
+						if idx > 0 {
+							fmt.Fprintf(out, "\n")
 						}
 					}
 					continue

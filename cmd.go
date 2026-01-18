@@ -67,38 +67,77 @@ type Parameters struct {
 }
 
 // main gen entry point.
-// Parameters are stored as `ParamMap` and passed as context values for tool stete injection.
+// Parameters are stored as `ParamMap` and passed as context values for tool state injection.
 func main() {
-	// Define parameter map for variable substitutions in prompts
+	params, keyVals := parseFlags()
+
+	// Create the root context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle version option
+	if params.Version {
+		printVersion()
+		os.Exit(0)
+	}
+
+	// store keyVals and params in context
+	ctx = context.WithValue(ctx, "keyVals", keyVals)
+	ctx = context.WithValue(ctx, "params", params)
+
+	// stash MCP client sessions in params.MCPSessionsa
+	if err := initMCPSessions(ctx, params); err != nil {
+		fmt.Fprintf(os.Stderr, "MCP Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer genCleanup(params)
+
+	// Handle help and version flags before any further processing
+	if params.Help {
+		emitUsage(ctx, os.Stdout) // context includes params with list to known tools
+		os.Exit(0)
+	}
+
+	// Argument validation
+	if isParamsInvalid(params, keyVals) {
+		emitUsage(ctx, os.Stderr) // context includes params with list to known tools
+		os.Exit(1)
+	}
+
+	if err := validateEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// handle CTRL-C
+	setupSignalHandler(ctx, cancel, params)
+
+	os.Exit(emitGen(ctx, os.Stdin, os.Stdout))
+}
+
+// parseFlags handles flag definitions and parameter map for variable substitutions in prompts.
+func parseFlags() (*Parameters, ParamMap) {
 	keyVals := ParamMap{}
 
-	// Define gen parameters
+	// default parameter values
 	params := &Parameters{
-		K:           3,
-		Lambda:      0.5,
-		Temp:        1.0,
-		TopP:        0.95,
-		EmbModel:    "gemini-embedding-001",
-		GenModel:    "gemini-2.5-flash",
-		DigestPaths: ParamArray{},
-		MCPServers:  ParamArray{},
-		MCPSessions: SessionArray{},
+		K: 3, Lambda: 0.5, Temp: 1.0, TopP: 0.95,
+		EmbModel: "gemini-embedding-001", GenModel: "gemini-2.5-flash",
 	}
 
 	if err := loadPrefs(params); err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", DotGenRc, err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", DotGenRc, err)
 	}
 
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
 	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
 	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
-	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write embeddings to digest (default model \"%s\")", params.EmbModel))
+	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "file, directory or quoted pattern of files to attach")
 	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -json, -img and -tool)")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
-	flag.BoolVar(&params.ImgModality, "img", false, "generate a jpeg image (use -m to set a supported model)")
+	flag.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
 	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", params.Lambda, "trade off accuracy for diversity when querying digests [0.0,1.0]")
@@ -113,137 +152,37 @@ func main() {
 	flag.Float64Var(&params.TopP, "top_p", params.TopP, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
-	flag.BoolVar(&params.Walk, "w", false, "process directories delcared with -f recursively")
+	flag.BoolVar(&params.Walk, "w", false, "process directories declared with -f recursively")
 	flag.Parse()
+
 	params.Args = flag.Args()
-	params.Interactive = isInteractive(os.Stdin)
+	params.Interactive = !isRedirected(os.Stdin)
 
-	// Create the root context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle version option
-	if params.Version {
-		var genaiModule debug.Module
-		var mcpModule debug.Module
-		if binfo, ok := debug.ReadBuildInfo(); ok {
-			for _, dep := range binfo.Deps {
-				if dep.Path == "google.golang.org/genai" {
-					genaiModule = *dep
-					continue
-				}
-				if dep.Path == "github.com/modelcontextprotocol/go-sdk" {
-					mcpModule = *dep
-					continue
-				}
-			}
-		}
-		fmt.Fprintf(os.Stdout, "gen %s (%s sdk %s mcp %s)\n",
-			Version, Githash, genaiModule.Version, mcpModule.Version)
-		os.Exit(0)
-	}
-
-	// store keyVals and params in context
-	ctx = context.WithValue(ctx, "keyVals", keyVals)
-	ctx = context.WithValue(ctx, "params", params)
-
-	// stash MCP client sessions in params.MCPSessions
-	for _, s := range params.MCPServers {
-		parts, err := shlex.Split(s)
-		if err != nil || len(parts) == 0 {
-			fmt.Fprintf(os.Stderr, "invalid MCP command: '%s' %v\n", s, err)
-			os.Exit(1)
-		}
-		cmdPath, err := exec.LookPath(parts[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "cannot find MCP server: '%s' %v\n", parts[0], err)
-			os.Exit(1)
-		}
-		cmd := exec.Command(cmdPath, parts[1:]...)
-		name := filepath.Base(os.Args[0])
-		client := mcp.NewClient(
-			&mcp.Implementation{Name: name, Version: Version},
-			&mcp.ClientOptions{
-				CreateMessageHandler:  genSampling,
-				ElicitationHandler:    genElicitation,
-				LoggingMessageHandler: genLoggingHandler,
-			},
-		)
-		mcpCtx, mcpCancel := context.WithTimeout(ctx, 30*time.Second)
-		defer mcpCancel()
-		session, err := client.Connect(mcpCtx, &mcp.CommandTransport{Command: cmd}, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "MCP client connect error: %v\n", err)
-			os.Exit(1)
-		}
-		params.MCPSessions = append(params.MCPSessions, session)
-	}
-
-	// close any stashed MCP sessions before exit
-	defer func() {
-		for _, sess := range params.MCPSessions {
-			sess.Close()
-		}
-		if params.TokenCount && ctx.Err() == nil {
-			fmt.Printf("\n\033[31m%d tokens\033[0m\n", TokenCount.Load())
-		}
-	}()
-
-	// Handle help and version flags before any further processing
-	// requires context with params to list known tools
-	if params.Help {
-		emitUsage(ctx, os.Stdout)
-		os.Exit(0)
-	}
-
-	// Argument validation
-	// requires context with params to list known tools
-	if isParamsInvalid(params, keyVals) {
-		emitUsage(ctx, os.Stderr)
-		os.Exit(1)
-	}
-
-	// Look for API key staring with VertexAI followed by Google AI Studio
-	if val, ok := os.LookupEnv("GOOGLE_CLOUD_PROJECT"); !ok || len(val) == 0 {
-		if val, ok := os.LookupEnv("GOOGLE_API_KEY"); !ok || len(val) == 0 {
-			fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_API_KEY not set!\n")
-			os.Exit(1)
-		}
-	}
-	// if VertexAI project ID, then look for cloud location
-	if val, ok := os.LookupEnv("GOOGLE_CLOUD_PROJECT"); ok && len(val) != 0 {
-		if val, ok := os.LookupEnv("GOOGLE_CLOUD_LOCATION"); !ok || len(val) == 0 {
-			fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_CLOUD_LOCATION not set!\n")
-			os.Exit(1)
-		}
-		// if both backends are possible, chose which one is to be used
-		if val, ok := os.LookupEnv("GOOGLE_API_KEY"); ok && len(val) != 0 {
-			if val, ok := os.LookupEnv("GOOGLE_GENAI_USE_VERTEXAI"); !ok || len(val) == 0 {
-				fmt.Fprintf(os.Stderr, "Environment variable GOOGLE_GENAI_USE_VERTEXAI not set!\n")
-				os.Exit(1)
-			}
-		}
-	}
-
-	// handle CTRL-C
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-done
-		if params.TokenCount {
-			if count := TokenCount.Load(); count > 0 {
-				fmt.Printf("\n\033[31m%d tokens at CTRL-C\033[0m\n", count)
-			}
-		}
-		cancel()
-		os.Exit(1)
-	}()
-
-	os.Exit(emitGen(ctx, os.Stdin, os.Stdout))
+	return params, keyVals
 }
 
-// Usage overrides PrintDefaults to provide custom usage information.
+func printVersion() {
+	var genaiVer, mcpVer string
+	if binfo, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range binfo.Deps {
+			switch dep.Path {
+			case "google.golang.org/genai":
+				genaiVer = dep.Version
+			case "github.com/modelcontextprotocol/go-sdk":
+				mcpVer = dep.Version
+			}
+		}
+	}
+	fmt.Printf("gen %s (%s sdk %s mcp %s)\n", Version, Githash, genaiVer, mcpVer)
+}
+
+// emitUsage overrides PrintDefaults to provide custom usage information.
 func emitUsage(ctx context.Context, out io.Writer) {
+	tools, err := knownTools(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Fprintln(out, "Usage: gen [options] <prompt>")
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Command-line interface to Google Gemini large language models")
@@ -252,12 +191,98 @@ func emitUsage(ctx context.Context, out io.Writer) {
 	fmt.Fprintln(out, "  Content is generated by a prompt and optional system instructions.")
 	fmt.Fprintln(out, "  Use - to assign stdin as prompt or as attached file.")
 	fmt.Fprintf(out, "\n")
-	fmt.Fprintln(out, "Tools:")
-	if res, err := knownTools(ctx); err == nil {
-		fmt.Fprintln(out, res)
-	}
+	fmt.Fprintln(out, fmt.Sprintf("Tools:\n%s", tools))
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Parameters:")
 	fmt.Fprintf(out, "\n")
 	flag.PrintDefaults()
+}
+
+// validateEnv checks for required Google Cloud/AI Studio credentials.
+func validateEnv() error {
+	hasCloudProject := os.Getenv("GOOGLE_CLOUD_PROJECT") != ""
+	hasAPIKey := os.Getenv("GOOGLE_API_KEY") != ""
+
+	if !hasCloudProject && !hasAPIKey {
+		return fmt.Errorf("neither GOOGLE_CLOUD_PROJECT nor GOOGLE_API_KEY is set")
+	}
+
+	if hasCloudProject {
+		if os.Getenv("GOOGLE_CLOUD_LOCATION") == "" {
+			return fmt.Errorf("GOOGLE_CLOUD_LOCATION must be set when using GOOGLE_CLOUD_PROJECT")
+		}
+		if hasAPIKey && os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "" {
+			return fmt.Errorf("set GOOGLE_GENAI_USE_VERTEXAI to 'true' or 'false' when both API Key and Project ID are present")
+		}
+	}
+	return nil
+}
+
+// initMCPSessions starts the MCP server processes and connects clients.
+func initMCPSessions(ctx context.Context, params *Parameters) error {
+	if len(params.MCPServers) == 0 {
+		return nil
+	}
+
+	spinner := NewSpinner("%s")
+	spinner.Start()
+	defer spinner.Stop()
+
+	for _, srvCmd := range params.MCPServers {
+		parts, err := shlex.Split(srvCmd)
+		if err != nil || len(parts) == 0 {
+			return fmt.Errorf("invalid MCP command '%s': %v", srvCmd, err)
+		}
+
+		cmdPath, err := exec.LookPath(parts[0])
+		if err != nil {
+			return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
+		}
+
+		client := mcp.NewClient(
+			&mcp.Implementation{Name: filepath.Base(os.Args[0]), Version: Version},
+			&mcp.ClientOptions{
+				CreateMessageHandler:  genSampling,
+				ElicitationHandler:    genElicitation,
+				LoggingMessageHandler: genLoggingHandler,
+			},
+		)
+
+		mcpCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		session, err := client.Connect(mcpCtx, &mcp.CommandTransport{
+			Command: exec.Command(cmdPath, parts[1:]...),
+		}, nil)
+		cancel()
+
+		if err != nil {
+			return fmt.Errorf("MCP connect error: %v", err)
+		}
+		params.MCPSessions = append(params.MCPSessions, session)
+	}
+	return nil
+}
+
+func genCleanup(params *Parameters) {
+	for _, sess := range params.MCPSessions {
+		sess.Close()
+	}
+	// Final token count report
+	if params.TokenCount {
+		fmt.Printf("\n\033[31m%d tokens\033[0m\n", TokenCount.Load())
+	}
+}
+
+func setupSignalHandler(ctx context.Context, cancel context.CancelFunc, params *Parameters) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		if params.TokenCount {
+			if count := TokenCount.Load(); count > 0 {
+				fmt.Printf("\n\033[31m%d tokens at CTRL-C\033[0m\n", count)
+			}
+		}
+		cancel()
+		os.Exit(1)
+	}()
 }

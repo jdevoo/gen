@@ -135,8 +135,7 @@ func knownTools(ctx context.Context) (string, error) {
 	for _, sess := range params.MCPSessions {
 		ltr, err := sess.ListTools(ctx, nil)
 		if err != nil {
-			res = append(res, fmt.Sprintf("  * %v", err))
-			continue
+			return "", err
 		}
 		for _, tool := range ltr.Tools {
 			res = append(res, fmt.Sprintf("  * %v", tool.Name))
@@ -434,7 +433,8 @@ func validCombos(params *Parameters) bool {
 			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
 		// image modality with incompatible flags
 		(params.ImgModality &&
-			(params.GoogleSearch || params.CodeGen || params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
+			(params.GoogleSearch || params.CodeGen ||
+				params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
 		// walk without file attached that is not some prompt
 		(params.Walk &&
 			(len(params.FilePaths) == 0 || allMatch(params.FilePaths, PExt) || allMatch(params.FilePaths, SPExt))) ||
