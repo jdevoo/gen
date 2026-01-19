@@ -304,7 +304,7 @@ func (l *Log) writeBatch(b *Batch) error {
 	return nil
 }
 
-// findSegment performs a bsearch on the segments
+// findSegment performs a bsearch on the segments.
 func (l *Log) findSegment(index uint64) int {
 	i, j := 0, len(l.segments)
 	for i < j {

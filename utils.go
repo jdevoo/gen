@@ -283,7 +283,7 @@ func processFunCalls(ctx context.Context, resp *genai.GenerateContentResponse) [
 	return []*genai.Part{}
 }
 
-// genLogFatal refines the error if available and exits with 1
+// genLogFatal refines the error if available and exits with 1.
 func genLogFatal(err error) {
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
@@ -293,7 +293,7 @@ func genLogFatal(err error) {
 	}
 }
 
-// anyMatches returns true if any of the match candidates are found in
+// anyMatches returns true if any of the candidates match in array.
 func anyMatches(strArray []string, candidates ...string) bool {
 	for _, s := range strArray {
 		for _, c := range candidates {

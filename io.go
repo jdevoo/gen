@@ -24,40 +24,36 @@ import (
 	"google.golang.org/genai"
 )
 
-// isRedirected checks if the provided stream (Reader or Writer)
-// is NOT a terminal and supports non-printable characters.
+// isRedirected checks if stream is not a terminal.
 func isRedirected(stream any) bool {
-	if f, ok := stream.(interface{ Stat() (os.FileInfo, error) }); ok {
-		fileInfo, _ := f.Stat()
-		mode := fileInfo.Mode()
-		// if it's a pipe (tee) or a regular file, it is redirected
-		if mode&os.ModeNamedPipe != 0 || mode.IsRegular() {
-			return true
-		}
-		// a terminal is a Character Device and
-		// if the CharDevice bit is NOT set, it's redirected
-		return mode&os.ModeCharDevice == 0
+	f, ok := stream.(*os.File)
+	if !ok || f == nil {
+		return true // case of `io.Writer` that is **not** a file
 	}
-	// it doesn't support Stat (like a buffer), we treat it as redirected
-	return true
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fileInfo.Mode()&os.ModeCharDevice == 0
 }
 
-// isEmpty checks if stream non-zero length
-func isEmpty(stream any) bool {
-	if f, ok := stream.(interface{ Stat() (os.FileInfo, error) }); ok {
-		fileInfo, _ := f.Stat()
-		return fileInfo.Size() == 0
-	}
-	return false
-}
-
-// readLine reads a line from standard input on Linux, Mac or Windows
+// readLine reads a line from standard input on Linux, Mac or Windows.
 func readLine(r io.Reader) (string, error) {
 	scanner := bufio.NewScanner(r)
 	if scanner.Scan() {
 		return scanner.Text(), nil
 	}
 	return "", scanner.Err()
+}
+
+// isRedirected checks if `out` supports non-printable characters.
+func isEmpty(out io.Writer) bool {
+	if f, ok := out.(*os.File); ok {
+		if fileInfo, err := f.Stat(); err == nil {
+			return fileInfo.Size() == 0
+		}
+	}
+	return false
 }
 
 // emitCandidates prints LLM response candidates.
@@ -354,7 +350,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 	return nil
 }
 
-// persistChat saves chat history to .gen in the current directory
+// persistChat saves chat history to .gen in the current directory.
 func persistChat(chat *genai.Chat) error {
 	file, err := os.Create(DotGen)
 	if err != nil {
@@ -369,7 +365,7 @@ func persistChat(chat *genai.Chat) error {
 	return nil
 }
 
-// retrieveHistory reads content from .gen if it exists
+// retrieveHistory reads content from .gen if it exists.
 func retrieveHistory(hist *[]*genai.Content) error {
 	if _, err := os.Stat(DotGen); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -384,7 +380,7 @@ func retrieveHistory(hist *[]*genai.Content) error {
 	return nil
 }
 
-// loadPrefs reads and parses .genrc from the user's home directory
+// loadPrefs reads and parses .genrc from the user's home directory.
 func loadPrefs(params *Parameters) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

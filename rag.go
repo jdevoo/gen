@@ -89,7 +89,7 @@ func queryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []Que
 	return selection, nil
 }
 
-// deserializeDoc deserializes []byte to Document
+// deserializeDoc deserializes []byte to Document.
 func deserializeDoc(data []byte) (Document, error) {
 	var doc Document
 	buf := bytes.NewBuffer(data)
@@ -159,7 +159,7 @@ func deserializeDoc(data []byte) (Document, error) {
 	return doc, nil
 }
 
-// serializeDoc serializes Document to []byte
+// serializeDoc serializes Document to []byte.
 func serializeDoc(doc Document) ([]byte, error) {
 	var data bytes.Buffer
 

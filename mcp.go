@@ -176,7 +176,7 @@ func convertMCPType(val string, t string) (any, error) {
 	return nil, fmt.Errorf("Unsupported MCP type %s", t)
 }
 
-// genSampling message callback for MCP servers
+// genSampling message callback for MCP servers.
 func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
@@ -202,7 +202,7 @@ func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.Creat
 	}, nil
 }
 
-// genElicitation callback for MCP servers that request inputs not supplied via -p
+// genElicitation callback for MCP servers that request inputs not supplied via -p.
 func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 	keyVals, ok := ctx.Value("keyVals").(ParamMap)
 	if !ok {

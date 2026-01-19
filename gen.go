@@ -11,7 +11,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// emitGen is the main gen content generator
+// emitGen is the main gen content generator.
 func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	var genCtx context.Context
 	var genCancel context.CancelFunc

@@ -224,9 +224,11 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 		return nil
 	}
 
-	spinner := NewSpinner("%s")
-	spinner.Start()
-	defer spinner.Stop()
+	if !isRedirected(os.Stdout) {
+		spinner := NewSpinner("%s")
+		spinner.Start()
+		defer spinner.Stop()
+	}
 
 	for _, srvCmd := range params.MCPServers {
 		parts, err := shlex.Split(srvCmd)
