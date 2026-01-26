@@ -97,32 +97,32 @@ func deserializeDoc(data []byte) (Document, error) {
 	// Deserialize embedding vector
 	var embeddingLength uint64
 	if err := binary.Read(buf, binary.LittleEndian, &embeddingLength); err != nil {
-		return doc, fmt.Errorf("error reading embedding length: %w", err)
+		return doc, fmt.Errorf("error reading embedding length: %v", err)
 	}
 	doc.embedding = make([]float32, embeddingLength)
 	if err := binary.Read(buf, binary.LittleEndian, doc.embedding); err != nil {
-		return doc, fmt.Errorf("error reading embedding: %w", err)
+		return doc, fmt.Errorf("error reading embedding: %v", err)
 	}
 
 	// Deserialize content
 	var contentLength uint64
 	if err := binary.Read(buf, binary.LittleEndian, &contentLength); err != nil {
-		return doc, fmt.Errorf("error reading content length: %w", err)
+		return doc, fmt.Errorf("error reading content length: %v", err)
 	}
 	if contentLength > 0 {
 		//Decompress content
 		contentBytes := make([]byte, contentLength)
 		if _, err := buf.Read(contentBytes); err != nil {
-			return doc, fmt.Errorf("error reading compressed content: %w", err)
+			return doc, fmt.Errorf("error reading compressed content: %v", err)
 		}
 		r, err := gzip.NewReader(bytes.NewReader(contentBytes))
 		if err != nil {
-			return doc, fmt.Errorf("error creating gzip reader: %w", err)
+			return doc, fmt.Errorf("error creating gzip reader: %v", err)
 		}
 		defer r.Close()
 		var decompressedContent bytes.Buffer
 		if _, err := io.Copy(&decompressedContent, r); err != nil {
-			return doc, fmt.Errorf("error decompressing content: %w", err)
+			return doc, fmt.Errorf("error decompressing content: %v", err)
 		}
 		doc.content = decompressedContent.String()
 
@@ -131,26 +131,26 @@ func deserializeDoc(data []byte) (Document, error) {
 	// Deserialize metadata
 	var metadataLength uint64
 	if err := binary.Read(buf, binary.LittleEndian, &metadataLength); err != nil {
-		return doc, fmt.Errorf("error reading metadata length: %w", err)
+		return doc, fmt.Errorf("error reading metadata length: %v", err)
 	}
 	doc.metadata = map[string]string{}
 	for i := 0; i < int(metadataLength); i++ {
 		var keySize, valueSize uint64
 		if err := binary.Read(buf, binary.LittleEndian, &keySize); err != nil {
-			return doc, fmt.Errorf("error reading key size: %w", err)
+			return doc, fmt.Errorf("error reading key size: %v", err)
 		}
 		keyBytes := make([]byte, keySize)
 		if _, err := buf.Read(keyBytes); err != nil {
-			return doc, fmt.Errorf("error reading key: %w", err)
+			return doc, fmt.Errorf("error reading key: %v", err)
 		}
 		key := string(keyBytes)
 
 		if err := binary.Read(buf, binary.LittleEndian, &valueSize); err != nil {
-			return doc, fmt.Errorf("error reading value size: %w", err)
+			return doc, fmt.Errorf("error reading value size: %v", err)
 		}
 		valueBytes := make([]byte, valueSize)
 		if _, err := buf.Read(valueBytes); err != nil {
-			return doc, fmt.Errorf("error reading value: %w", err)
+			return doc, fmt.Errorf("error reading value: %v", err)
 		}
 		value := string(valueBytes)
 		doc.metadata[key] = value
@@ -165,12 +165,12 @@ func serializeDoc(doc Document) ([]byte, error) {
 
 	// Serialize embedding size
 	if err := binary.Write(&data, binary.LittleEndian, uint64(len(doc.embedding))); err != nil {
-		return nil, fmt.Errorf("error writing embedding length: %w", err)
+		return nil, fmt.Errorf("error writing embedding length: %v", err)
 	}
 
 	// Serialize embedding
 	if err := binary.Write(&data, binary.LittleEndian, doc.embedding); err != nil {
-		return nil, fmt.Errorf("error writing embedding: %w", err)
+		return nil, fmt.Errorf("error writing embedding: %v", err)
 	}
 
 	// Serialize content and content length - with gzip compression if content length > 0
@@ -178,46 +178,46 @@ func serializeDoc(doc Document) ([]byte, error) {
 		var buf bytes.Buffer
 		zw := gzip.NewWriter(&buf)
 		if _, err := zw.Write([]byte(doc.content)); err != nil {
-			return nil, fmt.Errorf("error writing compressed content: %w", err)
+			return nil, fmt.Errorf("error writing compressed content: %v", err)
 		}
 		if err := zw.Close(); err != nil {
-			return nil, fmt.Errorf("error closing gzip writer: %w", err)
+			return nil, fmt.Errorf("error closing gzip writer: %v", err)
 		}
 		contentBytes := buf.Bytes()
 		if err := binary.Write(&data, binary.LittleEndian, uint64(len(contentBytes))); err != nil {
-			return nil, fmt.Errorf("error writing compressed content length: %w", err)
+			return nil, fmt.Errorf("error writing compressed content length: %v", err)
 		}
 		if _, err := data.Write(contentBytes); err != nil {
-			return nil, fmt.Errorf("error writing compressed content: %w", err)
+			return nil, fmt.Errorf("error writing compressed content: %v", err)
 		}
 	} else {
 		if err := binary.Write(&data, binary.LittleEndian, uint64(0)); err != nil {
-			return nil, fmt.Errorf("error writing content length: %w", err)
+			return nil, fmt.Errorf("error writing content length: %v", err)
 		}
 	}
 
 	// Serialize metadata
 	if len(doc.metadata) > 0 {
 		if err := binary.Write(&data, binary.LittleEndian, uint64(len(doc.metadata))); err != nil {
-			return nil, fmt.Errorf("error writing metadata length: %w", err)
+			return nil, fmt.Errorf("error writing metadata length: %v", err)
 		}
 		for k, v := range doc.metadata {
 			if err := binary.Write(&data, binary.LittleEndian, uint64(len(k))); err != nil {
-				return nil, fmt.Errorf("error writing key size: %w", err)
+				return nil, fmt.Errorf("error writing key size: %v", err)
 			}
 			if _, err := data.Write([]byte(k)); err != nil {
-				return nil, fmt.Errorf("error writing key: %w", err)
+				return nil, fmt.Errorf("error writing key: %v", err)
 			}
 			if err := binary.Write(&data, binary.LittleEndian, uint64(len(v))); err != nil {
-				return nil, fmt.Errorf("error writing value size: %w", err)
+				return nil, fmt.Errorf("error writing value size: %v", err)
 			}
 			if _, err := data.Write([]byte(v)); err != nil {
-				return nil, fmt.Errorf("error writing value: %w", err)
+				return nil, fmt.Errorf("error writing value: %v", err)
 			}
 		}
 	} else {
 		if err := binary.Write(&data, binary.LittleEndian, uint64(0)); err != nil {
-			return nil, fmt.Errorf("error writing metadata length: %w", err)
+			return nil, fmt.Errorf("error writing metadata length: %v", err)
 		}
 	}
 

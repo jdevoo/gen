@@ -93,7 +93,7 @@ Query digest and read out loud using TTS system
 
 ## Model Context Protocol
 The following client capabilities are supported:
-- [ ] roots defined by paths set with `-f`
+- [x] current working directory added as root`
 - [x] sampling using the model defined by `-m`
 - [x] elicitation looks for inputs defined by `-p`
 
@@ -116,7 +116,7 @@ Tools:
 
 Parameters:
 
-  -V    output model details, system instructions and chat history
+  -V    output model details, system instructions, chat history and thoughts
   -c    enter chat mode after content generation (incompatible with -json, -img, -code or -g)
   -code
         code execution tool (incompatible with -g, -json, -img or -tool)
@@ -146,6 +146,8 @@ Parameters:
   -t    output total number of tokens
   -temp float
         changes sampling during response generation [0.0,2.0] (default 1)
+  -to duration
+        timeout value in milliseconds (default 5m0s)
   -tool
         invoke one of the tools (incompatible with -s, -g, -json, -img or -code)
   -top_p float

@@ -56,127 +56,154 @@ func isEmpty(out io.Writer) bool {
 	return false
 }
 
-// emitCandidates prints LLM response candidates.
-// TODO add support for Thought, FileData, ExecutableCode, CodeExecutionResult
-func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, idx int) error {
+// emitCandidates is a wrapper to emitContent.
+func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, verbose bool, switchedResp bool, idx int) error {
+	var finish genai.FinishReason
 	for _, cand := range resp {
 		if cand != nil && cand.Content != nil {
-			for _, p := range cand.Content.Parts {
-				if p.Text != "" {
-					if !isRedirected(out) {
-						fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
-					} else if !imgModality {
-						fmt.Fprintf(out, "%s", p.Text)
-					}
-					continue
-				}
-				if p.FunctionResponse != nil {
-					if res, ok := p.FunctionResponse.Response["output"]; ok && res != "" {
-						if !isRedirected(out) {
-							fmt.Fprintf(out, "\033[97m%s\033[0m", res.(string))
-						} else {
-							fmt.Fprintf(out, "%s", res.(string))
-						}
-					}
-					if err, ok := p.FunctionResponse.Response["error"]; ok && err != "" {
-						if !isRedirected(out) {
-							fmt.Fprintf(out, "\033[97m%s\033[0m", err.(string))
-						} else {
-							fmt.Fprintf(out, "%s", err.(string))
-						}
-					}
-					continue
-				}
-				if p.InlineData != nil {
-					reader := bytes.NewReader(p.InlineData.Data)
-					img, _, err := image.Decode(reader)
-					if err != nil {
-						return err
-					}
-					if isRedirected(out) {
-						if !isEmpty(out) {
-							continue
-						}
-						// Encode to jpeg file
-						if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
-							return err
-						}
-					} else {
-						if idx > 0 {
-							fmt.Fprintf(out, "\n")
-						}
-						// encode to Sixel format
-						senc := SixelEncoder(out)
-						senc.Dither = true
-						if err := senc.Encode(img); err != nil {
-							return err
-						}
-						if idx > 0 {
-							fmt.Fprintf(out, "\n")
-						}
-					}
-					continue
-				}
+			if err := emitContent(out, cand.Content, imgModality, verbose, idx); err != nil {
+				return err
+			}
+			finish = cand.FinishReason
+		}
+	}
+	if finish != "" {
+		if !switchedResp {
+			fmt.Fprint(out, "\n")
+		}
+		if verbose {
+			if !isRedirected(out) {
+				fmt.Fprintf(out, "\n\033[36m%s\033[0m\n", finish)
+			} else if !imgModality {
+				fmt.Fprintf(out, "\n%s\n", finish)
 			}
 		}
 	}
 	return nil
 }
 
-// emitHistory prints the chat history.
-// TODO improve layout
+// emitHistory prints the chat history (verbose).
 func emitHistory(out io.Writer, hist []*genai.Content) {
-	var res string
 	var prev string
 	for _, c := range hist {
 		if prev != c.Role {
-			res += fmt.Sprintf("\n%s\n", c.Role)
+			if !isRedirected(out) {
+				fmt.Fprintf(out, "\n\033[1;37;46m%s\033[0m\n", c.Role)
+			} else {
+				fmt.Fprintf(out, "\n***%s***\n", c.Role)
+			}
 			prev = c.Role
 		}
-		for _, p := range c.Parts {
-			if p.Text != "" {
-				res += p.Text
-				if c.Role == "user" {
-					res += "\n"
+		emitContent(out, c, false, true, 0)
+	}
+	fmt.Fprint(out, "\n")
+}
+
+// emitContent prints LLM response parts.
+func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx int) error {
+	for _, p := range content.Parts {
+		if p.Text != "" {
+			if !isRedirected(out) {
+				if verbose && p.Thought {
+					fmt.Fprintf(out, "\033[36m%s\033[0m", p.Text)
+				} else {
+					fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
+				}
+			} else if !imgModality || (verbose && p.Thought) {
+				fmt.Fprintf(out, "%s", p.Text)
+			}
+			continue
+		}
+		if verbose && p.FunctionResponse != nil {
+			for _, key := range []string{"output", "error"} {
+				if val, ok := p.FunctionResponse.Response[key].(string); ok && val != "" {
+					if !isRedirected(out) {
+						fmt.Fprintf(out, "\033[36m%s\033[0m", val)
+					} else {
+						fmt.Fprintf(out, "%s", val)
+					}
 				}
 			}
-			if p.FunctionCall != nil && p.FunctionCall.Name != "" {
-				res += fmt.Sprintf("%s\n", p.FunctionCall.Name)
-			}
-			if p.FunctionResponse != nil && p.FunctionResponse.Response["output"].(string) != "" {
-				res += p.FunctionResponse.Response["output"].(string)
-			}
-			if p.FunctionResponse != nil && p.FunctionResponse.Response["error"].(string) != "" {
-				res += p.FunctionResponse.Response["error"].(string)
+			continue
+		}
+		if verbose && p.ExecutableCode != nil {
+			if !isRedirected(out) {
+				fmt.Fprintf(out, "\033[36m```%s\n%s\n```\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
+			} else {
+				fmt.Fprintf(out, "```%s\n%s\n```", p.ExecutableCode.Language, p.ExecutableCode.Code)
 			}
 		}
+		if verbose && p.FileData != nil {
+			if !isRedirected(out) {
+				fmt.Fprintf(out, "\033[36m[%s](%s)\033[0m", p.FileData.DisplayName, p.FileData.FileURI)
+			} else {
+				fmt.Fprintf(out, "[%s](%s)", p.FileData.DisplayName, p.FileData.FileURI)
+			}
+		}
+		if p.InlineData != nil {
+			if strings.HasPrefix(p.InlineData.MIMEType, "text") {
+				fmt.Fprint(out, p.InlineData.Data)
+			}
+			if !strings.HasPrefix(p.InlineData.MIMEType, "image") {
+				return fmt.Errorf("emitContent of type %s: not supported", p.InlineData.MIMEType)
+			}
+			reader := bytes.NewReader(p.InlineData.Data)
+			img, _, err := image.Decode(reader)
+			if err != nil {
+				return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+			}
+			if isRedirected(out) {
+				// on redirect output first image only
+				if !isEmpty(out) {
+					continue
+				}
+				// encode to jpeg format
+				if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
+					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+				}
+			} else {
+				if idx > 0 {
+					fmt.Fprintf(out, "\n")
+				}
+				// encode to Sixel format
+				senc := SixelEncoder(out)
+				senc.Dither = true
+				if err := senc.Encode(img); err != nil {
+					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+				}
+				if idx > 0 {
+					fmt.Fprintf(out, "\n")
+				}
+			}
+			continue
+		}
 	}
-	fmt.Fprintf(out, "%s\n", res)
+	return nil
 }
 
 // uploadFile tracks state until FileStateActive reached.
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
 	file, err := client.Files.UploadFromPath(ctx, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("uploading file '%s': %w", path, err)
+		return nil, fmt.Errorf("uploading file '%s': %v", path, err)
 	}
 
-	pollingCtx, pollingCancel := context.WithTimeout(ctx, 5*time.Minute)
+	pollingCtx, pollingCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer pollingCancel()
 
 	for file.State == genai.FileStateProcessing {
 		select {
 		case <-pollingCtx.Done():
-			return nil, fmt.Errorf("upload cancelled or timed out for '%s': %w", file.Name, pollingCtx.Err())
+			return nil, fmt.Errorf("upload cancelled or timed out for '%s': %v", file.Name, pollingCtx.Err())
 		case <-time.After(1 * time.Second):
 			file, err = client.Files.Get(pollingCtx, file.Name, nil)
 			if err != nil {
-				return nil, fmt.Errorf("processing state for '%s': %w", file.Name, err)
+				return nil, fmt.Errorf("processing state for '%s': %v", file.Name, err)
 			}
 		}
 	}
 	if file.State != genai.FileStateActive {
-		return nil, fmt.Errorf("uploaded file has state '%s': %w", file.State, err)
+		return nil, fmt.Errorf("uploaded file has state '%s': %v", file.State, err)
 	}
 	return file, nil
 }
@@ -193,14 +220,14 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 	seen[absPath] = true
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return "", fmt.Errorf("reading prompt file '%s': %w", filePath, err)
+		return "", fmt.Errorf("reading prompt file '%s': %v", filePath, err)
 	}
 	content := string(data)
 	dir := filepath.Dir(absPath)
 
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
-		// Find words starting with @
+		// find text starting with @
 		words := strings.Fields(line)
 		for _, word := range words {
 			if strings.HasPrefix(word, "@") && (strings.HasSuffix(word, PExt) || strings.HasSuffix(word, SPExt)) {
@@ -227,14 +254,14 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	}
 	f, err := os.Open(filePathVal)
 	if err != nil {
-		return fmt.Errorf("opening file '%s': %w", filePathVal, err)
+		return fmt.Errorf("opening file '%s': %v", filePathVal, err)
 	}
 	defer f.Close()
 	switch path.Ext(filePathVal) {
 	case PExt, SPExt:
 		data, err := loadPrompt(filePathVal, make(map[string]bool))
 		if err != nil {
-			return fmt.Errorf("filePathHandler '%s': %w", filePathVal, err)
+			return fmt.Errorf("filePathHandler '%s': %v", filePathVal, err)
 		}
 		if path.Ext(filePathVal) == SPExt {
 			*sysParts = append(*sysParts, &genai.Part{Text: searchReplace(string(data), keyVals)})
@@ -245,7 +272,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
 		file, err := uploadFile(ctx, client, filePathVal)
 		if err != nil {
-			return fmt.Errorf("uploading file '%s': %w", filePathVal, err)
+			return fmt.Errorf("uploading file '%s': %v", filePathVal, err)
 		}
 		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
 			FileURI:  file.URI,
@@ -254,7 +281,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	default:
 		data, err := io.ReadAll(f)
 		if err != nil {
-			return fmt.Errorf("reading file %s: %w", filePathVal, err)
+			return fmt.Errorf("reading file %s: %v", filePathVal, err)
 		}
 		sniffLen := len(data)
 		if sniffLen > 512 {
@@ -304,7 +331,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 	}
 	matches, err := filepath.Glob(filePathVal)
 	if err != nil {
-		return fmt.Errorf("glob: '%s': %w", filePathVal, err)
+		return fmt.Errorf("glob: '%s': %v", filePathVal, err)
 	}
 	if len(matches) == 0 {
 		if _, err := os.Stat(filePathVal); os.IsNotExist(err) {
@@ -338,7 +365,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 				return filePathHandler(ctx, client, path, parts, sysParts)
 			})
 			if err != nil {
-				return fmt.Errorf("glob: '%s': %w", filePathVal, err)
+				return fmt.Errorf("glob: '%s': %v", filePathVal, err)
 			}
 		} else {
 			err := filePathHandler(ctx, client, match, parts, sysParts)
@@ -384,7 +411,7 @@ func retrieveHistory(hist *[]*genai.Content) error {
 func loadPrefs(params *Parameters) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
+		return fmt.Errorf("failed to get user home directory: %v", err)
 	}
 	prefsPath := filepath.Join(homeDir, DotGenRc)
 	prefsFile, err := os.Open(prefsPath)
@@ -392,7 +419,7 @@ func loadPrefs(params *Parameters) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("failed to open at %s: %w", prefsPath, err)
+		return fmt.Errorf("failed to open at %s: %v", prefsPath, err)
 	}
 	defer prefsFile.Close()
 
@@ -449,7 +476,7 @@ func loadPrefs(params *Parameters) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading file: %w", err)
+		return fmt.Errorf("error reading file: %v", err)
 	}
 	return nil
 }

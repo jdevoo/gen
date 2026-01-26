@@ -342,12 +342,12 @@ func queryPostgres(ctx context.Context, query string) (string, error) {
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return "", fmt.Errorf("opening DSN '%s': %w", dsn, err)
+		return "", fmt.Errorf("opening DSN '%s': %v", dsn, err)
 	}
 	defer db.Close()
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		return "", fmt.Errorf("for query '%s': %w", query, err)
+		return "", fmt.Errorf("for query '%s': %v", query, err)
 	}
 	defer rows.Close()
 	cols, _ := rows.Columns()

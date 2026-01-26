@@ -149,7 +149,7 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 				},
 				Index: 1,
 			}
-			_ = emitCandidates(os.Stdout, c, test.imgModality, 1)
+			_ = emitCandidates(os.Stdout, c, test.imgModality, false, false, 0)
 		})
 	}
 }

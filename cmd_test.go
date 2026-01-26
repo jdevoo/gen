@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParamsInvalid(t *testing.T) {
@@ -148,6 +149,7 @@ func TestParamsInvalid(t *testing.T) {
 			flag.BoolVar(&params.SystemInstruction, "s", false, "")
 			flag.BoolVar(&params.TokenCount, "t", false, "")
 			flag.Float64Var(&params.Temp, "temp", 1.0, "")
+			flag.DurationVar(&params.Timeout, "to", 90*time.Second, "")
 			flag.BoolVar(&params.Tool, "tool", false, "")
 			flag.Float64Var(&params.TopP, "top_p", 0.95, "")
 			flag.BoolVar(&params.Unsafe, "unsafe", false, "")

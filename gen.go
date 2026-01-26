@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"google.golang.org/genai"
 )
@@ -41,12 +40,18 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 
 	// Create a genai client
 	if !params.ChatMode {
-		genCtx, genCancel = context.WithTimeout(ctx, 90*time.Second)
+		genCtx, genCancel = context.WithTimeout(ctx, params.Timeout)
 		defer genCancel()
 	} else {
 		genCtx = ctx
 	}
 	client, err := genai.NewClient(genCtx, nil)
+	/*&genai.ClientConfig{
+		HTTPOptions: genai.HTTPOptions{
+			Timeout: &params.Timeout,
+		},
+	})
+	*/
 	if err != nil {
 		genLogFatal(err)
 	}
@@ -197,7 +202,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			Role:  "model",
 		}
 		if params.Verbose {
-			fmt.Fprintf(os.Stderr, "\033[36m%+v\033[0m\n\n", *config)
+			emitContent(os.Stderr, config.SystemInstruction, false, true, 0)
 		}
 	}
 
@@ -219,6 +224,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			backend = "GeminiAPI"
 		}
 		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+		// add thought summaries
+		config.ThinkingConfig = &genai.ThinkingConfig{
+			IncludeThoughts: true,
+			ThinkingLevel:   genai.ThinkingLevelLow,
+		}
 	}
 
 	history := []*genai.Content{}
@@ -226,6 +236,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		if err = retrieveHistory(&history); err != nil {
 			genLogFatal(err)
 		}
+		if params.Verbose {
+			emitHistory(os.Stderr, history)
+		}
+
 	}
 
 	// Start chat
@@ -259,7 +273,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 						genLogFatal(err)
 					}
 					if verbose {
-						fmt.Fprintf(os.Stderr, "\033[36m%s\033[0m deleted\n", fileURI)
+						fmt.Fprintf(os.Stderr, "\033[36m%s deleted\033[0m\n", fileURI)
 					}
 				}
 			}(params.Verbose)
@@ -267,72 +281,80 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	}
 
 	// Main chat loop
+	var onceOnly bool
+	var switchedResp bool
 	for {
 		if len(parts) > 0 {
 			i := 0
 			sendParts := parts
 			parts = []*genai.Part{} // emtpy parts for next iteration
+			switchedResp = false
 			for resp, err := range chat.SendStream(genCtx, sendParts...) {
 				if err != nil {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
-				if res := processFunCalls(genCtx, resp); len(res) > 0 {
-					resp = &genai.GenerateContentResponse{
-						Candidates: []*genai.Candidate{
-							&genai.Candidate{
-								Content: &genai.Content{
-									Parts: res,
-								},
-								Index: 0,
-							},
-						},
+				if !onceOnly {
+					if !params.ChatMode {
+						onceOnly = true
 					}
-					if params.ChatMode {
+					if res := processFunCalls(genCtx, resp); len(res) > 0 {
+						resp = &genai.GenerateContentResponse{
+							Candidates: []*genai.Candidate{
+								&genai.Candidate{
+									Content: &genai.Content{
+										Parts: res,
+									},
+									Index: 0,
+								},
+							},
+						}
+						switchedResp = true
 						parts = append(parts, sendParts...) // send original parts back
 						parts = append(parts, res...)
 					}
 				}
-				if err := emitCandidates(out, resp.Candidates, params.ImgModality, i); err != nil {
+				if err := emitCandidates(out, resp.Candidates, params.ImgModality, params.Verbose, switchedResp, i); err != nil {
+					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
 				if params.TokenCount && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
 				i += 1
-			}
+			} // for range SendStream
 		}
-		fmt.Fprint(out, "\n")
-		if !params.ChatMode {
+		// exit if not a chat and no function response to process
+		if !params.ChatMode && len(parts) == 0 {
 			break
 		}
-		if params.Verbose {
-			fmt.Fprintf(os.Stderr, "\033[36m")
-			hist := chat.History(false)
-			emitHistory(os.Stderr, hist)
-			fmt.Fprintf(os.Stderr, "\033[0m")
-		}
-		input, err := readLine(tty)
-		if err != nil {
-			genLogFatal(err)
-		}
-		// Check for double blank line exit condition
-		if input == "" {
-			input, err = readLine(tty)
+		if !switchedResp && params.ChatMode {
+			input, err := readLine(tty)
 			if err != nil {
 				genLogFatal(err)
 			}
+			// check for double blank line exit condition
 			if input == "" {
-				if err = persistChat(chat); err != nil {
+				input, err = readLine(tty)
+				if err != nil {
 					genLogFatal(err)
 				}
-				break // exit chat mode
+				if input == "" {
+					break // exit chat mode
+				}
 			}
+			if isRedirected(out) {
+				fmt.Fprintf(out, "\n%s\n\n", input)
+			}
+			parts = append(parts, &genai.Part{Text: input})
 		}
-		if isRedirected(out) {
-			fmt.Fprintf(out, "\n%s\n\n", input)
+	}
+
+	if params.ChatMode {
+		if err = persistChat(chat); err != nil {
+			fmt.Fprintf(out, "\n")
+			genLogFatal(err)
 		}
-		parts = append(parts, &genai.Part{Text: input})
 	}
 
 	return 0

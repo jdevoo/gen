@@ -6,16 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime/debug"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/google/shlex"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Version, Golang and Githash are populated by make
@@ -58,6 +53,7 @@ type Parameters struct {
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
+	Timeout           time.Duration
 	Tool              bool
 	TopP              float64
 	Unsafe            bool
@@ -121,7 +117,7 @@ func parseFlags() (*Parameters, ParamMap) {
 
 	// default parameter values
 	params := &Parameters{
-		K: 3, Lambda: 0.5, Temp: 1.0, TopP: 0.95,
+		K: 3, Lambda: 0.5, Temp: 1.0, TopP: 0.95, Timeout: 300 * time.Second,
 		EmbModel: "gemini-embedding-001", GenModel: "gemini-2.5-flash",
 	}
 
@@ -129,7 +125,7 @@ func parseFlags() (*Parameters, ParamMap) {
 		fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", DotGenRc, err)
 	}
 
-	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions and chat history")
+	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
 	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
 	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
@@ -148,6 +144,7 @@ func parseFlags() (*Parameters, ParamMap) {
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
 	flag.Float64Var(&params.Temp, "temp", params.Temp, "changes sampling during response generation [0.0,2.0]")
+	flag.DurationVar(&params.Timeout, "to", params.Timeout, "timeout value in milliseconds")
 	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -json, -img or -code)")
 	flag.Float64Var(&params.TopP, "top_p", params.TopP, "changes how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
@@ -214,52 +211,6 @@ func validateEnv() error {
 		if hasAPIKey && os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "" {
 			return fmt.Errorf("set GOOGLE_GENAI_USE_VERTEXAI to 'true' or 'false' when both API Key and Project ID are present")
 		}
-	}
-	return nil
-}
-
-// initMCPSessions starts the MCP server processes and connects clients.
-func initMCPSessions(ctx context.Context, params *Parameters) error {
-	if len(params.MCPServers) == 0 {
-		return nil
-	}
-
-	if !isRedirected(os.Stdout) {
-		spinner := NewSpinner("%s")
-		spinner.Start()
-		defer spinner.Stop()
-	}
-
-	for _, srvCmd := range params.MCPServers {
-		parts, err := shlex.Split(srvCmd)
-		if err != nil || len(parts) == 0 {
-			return fmt.Errorf("invalid MCP command '%s': %v", srvCmd, err)
-		}
-
-		cmdPath, err := exec.LookPath(parts[0])
-		if err != nil {
-			return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
-		}
-
-		client := mcp.NewClient(
-			&mcp.Implementation{Name: filepath.Base(os.Args[0]), Version: Version},
-			&mcp.ClientOptions{
-				CreateMessageHandler:  genSampling,
-				ElicitationHandler:    genElicitation,
-				LoggingMessageHandler: genLoggingHandler,
-			},
-		)
-
-		mcpCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		session, err := client.Connect(mcpCtx, &mcp.CommandTransport{
-			Command: exec.Command(cmdPath, parts[1:]...),
-		}, nil)
-		cancel()
-
-		if err != nil {
-			return fmt.Errorf("MCP connect error: %v", err)
-		}
-		params.MCPSessions = append(params.MCPSessions, session)
 	}
 	return nil
 }

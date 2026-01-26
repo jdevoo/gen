@@ -7,15 +7,79 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/google/shlex"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/genai"
 )
 
 // SessionArray holds a list of MCP client session
 type SessionArray []*mcp.ClientSession
+
+// initMCPSessions starts the MCP server processes and connects clients.
+func initMCPSessions(ctx context.Context, params *Parameters) error {
+	if len(params.MCPServers) == 0 {
+		return nil
+	}
+
+	if !isRedirected(os.Stdout) && !params.Verbose {
+		spinner := NewSpinner("%s")
+		spinner.Start()
+		defer spinner.Stop()
+	}
+
+	// Get the current working directory for AddRoots
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current working directory: %v", err)
+	}
+
+	for _, srvCmd := range params.MCPServers {
+		parts, err := shlex.Split(srvCmd)
+		if err != nil || len(parts) == 0 {
+			return fmt.Errorf("invalid MCP command '%s': %v", srvCmd, err)
+		}
+
+		cmdPath, err := exec.LookPath(parts[0])
+		if err != nil {
+			return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
+		}
+
+		options := mcp.ClientOptions{
+			CreateMessageHandler: genSampling,
+			ElicitationHandler:   genElicitation,
+		}
+		if params.Verbose {
+			options.LoggingMessageHandler = genLoggingHandler
+		}
+
+		client := mcp.NewClient(
+			&mcp.Implementation{Name: filepath.Base(os.Args[0]), Version: Version},
+			&options,
+		)
+		client.AddRoots(&mcp.Root{
+			Name: "gen",
+			URI:  "file://" + filepath.ToSlash(cwd),
+		})
+
+		mcpCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		session, err := client.Connect(mcpCtx, &mcp.CommandTransport{
+			Command: exec.Command(cmdPath, parts[1:]...),
+		}, nil)
+		cancel()
+
+		if err != nil {
+			return fmt.Errorf("MCP connect error: %v", err)
+		}
+		params.MCPSessions = append(params.MCPSessions, session)
+	}
+	return nil
+}
 
 // registerMCPTools declares tools of MCP servers in genai.FunctionDeclaration format.
 func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) error {
@@ -26,7 +90,7 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 	for _, sess := range params.MCPSessions {
 		ltr, err := sess.ListTools(ctx, nil)
 		if err != nil {
-			return fmt.Errorf("failed to list MCP tools: %w", err)
+			return fmt.Errorf("failed to list MCP tools: %v", err)
 		}
 		mcpDecls := []*genai.FunctionDeclaration{}
 		// MCP tools for this server
@@ -36,11 +100,11 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 			}
 			jsonBytes, err := json.Marshal(tool.InputSchema)
 			if err != nil {
-				return fmt.Errorf("failed to marshal input schema for MCP tool '%s': %w", tool.Name, err)
+				return fmt.Errorf("failed to marshal input schema for MCP tool '%s': %v", tool.Name, err)
 			}
 			var mcpInputSchema genai.Schema
 			if err = json.Unmarshal(jsonBytes, &mcpInputSchema); err != nil {
-				return fmt.Errorf("failed to unmarshal JSON bytes for MCP tool '%s': %w", tool.Name, err)
+				return fmt.Errorf("failed to unmarshal JSON bytes for MCP tool '%s': %v", tool.Name, err)
 			}
 			mcpDecls = append(mcpDecls, &genai.FunctionDeclaration{
 				Name:        tool.Name,
@@ -100,7 +164,11 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 				for _, c := range ctr.Content {
 					switch c.(type) {
 					case *mcp.TextContent:
-						parts = append(parts, genai.NewPartFromText(c.(*mcp.TextContent).Text))
+						parts = append(parts,
+							genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+								"output": c.(*mcp.TextContent).Text,
+								"error":  "",
+							}))
 					case *mcp.ResourceLink:
 						parts = append(parts,
 							genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
@@ -150,26 +218,26 @@ func convertMCPType(val string, t string) (any, error) {
 	case "integer":
 		i, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse '%s' as integer: %w", val, err)
+			return nil, fmt.Errorf("failed to parse '%s' as integer: %v", val, err)
 		}
 		return i, nil
 	case "number":
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse '%s' as number: %w", val, err)
+			return nil, fmt.Errorf("failed to parse '%s' as number: %v", val, err)
 		}
 		return f, nil
 	case "boolean":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse '%s' as boolean: %w", val, err)
+			return nil, fmt.Errorf("failed to parse '%s' as boolean: %v", val, err)
 		}
 		return b, nil
 	case "object", "array":
 		var v any
 		err := json.Unmarshal([]byte(val), &v)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal '%s' as JSON %s: %w", val, t, err)
+			return nil, fmt.Errorf("failed to unmarshal '%s' as JSON %s: %v", val, t, err)
 		}
 		return v, nil
 	}
