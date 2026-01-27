@@ -135,6 +135,8 @@ Parameters:
         maximum number of entries from digest to retrieve (default 3)
   -l float
         trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
+  -level value
+        thinking level MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -m string
         embedding or generative model name (default "gemini-2.5-flash")
   -mcp value
@@ -165,6 +167,8 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 #K=3
 #Lambda=0.5
 #Temp=1.0
+#ThinkingLevel=LOW
+#Timeout=5m
 #TopP=0.95
 #EmbModel=gemini-embedding-001
 #GenModel=gemini-2.5-flash

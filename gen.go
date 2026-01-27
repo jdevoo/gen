@@ -224,13 +224,18 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			backend = "GeminiAPI"
 		}
 		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+	}
+
+	// Handle thinking level
+	if params.ThinkingLevel != genai.ThinkingLevelUnspecified {
 		// add thought summaries
 		config.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevelLow,
+			ThinkingLevel:   genai.ThinkingLevel(params.ThinkingLevel),
 		}
 	}
 
+	// retrieve previous session, if any
 	history := []*genai.Content{}
 	if params.ChatMode {
 		if err = retrieveHistory(&history); err != nil {

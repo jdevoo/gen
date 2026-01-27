@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"google.golang.org/genai"
 )
 
 // Version, Golang and Githash are populated by make
@@ -53,6 +57,7 @@ type Parameters struct {
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
+	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration
 	Tool              bool
 	TopP              float64
@@ -117,8 +122,13 @@ func parseFlags() (*Parameters, ParamMap) {
 
 	// default parameter values
 	params := &Parameters{
-		K: 3, Lambda: 0.5, Temp: 1.0, TopP: 0.95, Timeout: 300 * time.Second,
-		EmbModel: "gemini-embedding-001", GenModel: "gemini-2.5-flash",
+		K:             3,
+		Lambda:        0.5,
+		Temp:          1.0,
+		TopP:          0.95,
+		ThinkingLevel: genai.ThinkingLevelUnspecified,
+		Timeout:       300 * time.Second,
+		EmbModel:      "gemini-embedding-001", GenModel: "gemini-2.5-flash",
 	}
 
 	if err := loadPrefs(params); err != nil {
@@ -137,6 +147,23 @@ func parseFlags() (*Parameters, ParamMap) {
 	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
 	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", params.Lambda, "trade off accuracy for diversity when querying digests [0.0,1.0]")
+	flag.Func("level", fmt.Sprintf("thinking level %s, %s, %s or %s (default: %s)",
+		genai.ThinkingLevelMinimal,
+		genai.ThinkingLevelLow,
+		genai.ThinkingLevelMedium,
+		genai.ThinkingLevelHigh, params.ThinkingLevel), func(lvl string) error {
+		s := strings.ToUpper(lvl)
+		switch genai.ThinkingLevel(s) {
+		case genai.ThinkingLevelMinimal,
+			genai.ThinkingLevelLow,
+			genai.ThinkingLevelMedium,
+			genai.ThinkingLevelHigh:
+			params.ThinkingLevel = genai.ThinkingLevel(s)
+			return nil
+		default:
+			return errors.New("")
+		}
+	})
 	flag.StringVar(&params.GenModel, "m", params.GenModel, "embedding or generative model name")
 	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
 	flag.BoolVar(&params.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")

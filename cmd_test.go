@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"google.golang.org/genai"
 )
 
 func TestParamsInvalid(t *testing.T) {
@@ -143,6 +145,10 @@ func TestParamsInvalid(t *testing.T) {
 			flag.BoolVar(&params.JSON, "json", false, "")
 			flag.IntVar(&params.K, "k", 3, "")
 			flag.Float64Var(&params.Lambda, "l", 0.5, "")
+			flag.Func("level", "", func(s string) error {
+				params.ThinkingLevel = genai.ThinkingLevelUnspecified
+				return nil
+			})
 			flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
 			flag.BoolVar(&params.OnlyKvs, "o", false, "")
 			flag.Var(&keyVals, "p", "")

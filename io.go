@@ -452,9 +452,22 @@ func loadPrefs(params *Parameters) error {
 				if val, err := strconv.ParseFloat(value, 64); err == nil {
 					params.Lambda = val
 				}
+			case "thinkinglevel":
+				val := genai.ThinkingLevel(strings.ToUpper(value))
+				switch val {
+				case genai.ThinkingLevelMinimal,
+					genai.ThinkingLevelLow,
+					genai.ThinkingLevelMedium,
+					genai.ThinkingLevelHigh:
+					params.ThinkingLevel = val
+				}
 			case "temp":
 				if val, err := strconv.ParseFloat(value, 64); err == nil {
 					params.Temp = val
+				}
+			case "timeout":
+				if val, err := time.ParseDuration(value); err == nil {
+					params.Timeout = val
 				}
 			case "topp":
 				if val, err := strconv.ParseFloat(value, 64); err == nil {
