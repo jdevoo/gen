@@ -406,9 +406,28 @@ func validPrompts(params *Parameters) bool {
 }
 
 func validRanges(params *Parameters) bool {
+	if strings.HasPrefix(string(genai.ThinkingLevelMinimal), string(params.ThinkingLevel)) {
+		params.ThinkingLevel = genai.ThinkingLevelMinimal
+	}
+	if strings.HasPrefix(string(genai.ThinkingLevelLow), string(params.ThinkingLevel)) {
+		params.ThinkingLevel = genai.ThinkingLevelLow
+	}
+	if strings.HasPrefix(string(genai.ThinkingLevelMedium), string(params.ThinkingLevel)) {
+		params.ThinkingLevel = genai.ThinkingLevelMedium
+	}
+	if strings.HasPrefix(string(genai.ThinkingLevelHigh), string(params.ThinkingLevel)) {
+		params.ThinkingLevel = genai.ThinkingLevelHigh
+	}
 	if
-	// invalid k values
-	(params.K < 0 || params.K > 10) ||
+	// invalid thinking level
+	(len(params.ThinkingLevel) < 3 &&
+		params.ThinkingLevel != genai.ThinkingLevelUnspecified &&
+		params.ThinkingLevel != genai.ThinkingLevelMinimal &&
+		params.ThinkingLevel != genai.ThinkingLevelLow &&
+		params.ThinkingLevel != genai.ThinkingLevelMedium &&
+		params.ThinkingLevel != genai.ThinkingLevelHigh) ||
+		// invalid k values
+		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
 		(params.Lambda < 0 || params.Lambda > 1) ||
 		// invalid temperature values

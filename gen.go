@@ -223,7 +223,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		} else {
 			backend = "GeminiAPI"
 		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit\033[0m\n\n", backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit)
+		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
+			backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, params.ThinkingLevel)
 	}
 
 	// Handle thinking level

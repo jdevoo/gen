@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -152,17 +151,8 @@ func parseFlags() (*Parameters, ParamMap) {
 		genai.ThinkingLevelLow,
 		genai.ThinkingLevelMedium,
 		genai.ThinkingLevelHigh, params.ThinkingLevel), func(lvl string) error {
-		s := strings.ToUpper(lvl)
-		switch genai.ThinkingLevel(s) {
-		case genai.ThinkingLevelMinimal,
-			genai.ThinkingLevelLow,
-			genai.ThinkingLevelMedium,
-			genai.ThinkingLevelHigh:
-			params.ThinkingLevel = genai.ThinkingLevel(s)
-			return nil
-		default:
-			return errors.New("")
-		}
+		params.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(lvl))
+		return nil
 	})
 	flag.StringVar(&params.GenModel, "m", params.GenModel, "embedding or generative model name")
 	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
