@@ -54,7 +54,8 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 			CreateMessageHandler: genSampling,
 			ElicitationHandler:   genElicitation,
 		}
-		if params.Verbose {
+
+		if params.Verbose && params.Tool {
 			options.LoggingMessageHandler = genLoggingHandler
 		}
 
@@ -122,7 +123,7 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 }
 
 func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
-	fmt.Fprintf(os.Stderr, "\033[36m%+v\033[0m\n\n", r.Params.Data)
+	fmt.Fprintf(os.Stderr, "\033[36m[MCP %v] %+v\033[0m\n", r.Params.Level, r.Params.Data)
 }
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.

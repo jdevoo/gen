@@ -100,6 +100,7 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 }
 
 // emitContent prints LLM response parts.
+// TODO handle FileData when redirect
 func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx int) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
@@ -128,9 +129,9 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		}
 		if verbose && p.ExecutableCode != nil {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\033[36m```%s\n%s\n```\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
+				fmt.Fprintf(out, "\033[36m```%s\n%s\n```\n\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
 			} else {
-				fmt.Fprintf(out, "```%s\n%s\n```", p.ExecutableCode.Language, p.ExecutableCode.Code)
+				fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
 			}
 		}
 		if verbose && p.FileData != nil {
