@@ -130,6 +130,7 @@ Parameters:
         file, directory or quoted pattern of files to attach
   -g    Google search tool (incompatible with -code, -json, -img and -tool)
   -h    show this help message and exit
+  -i    only store metadata with embeddings and ignore the content
   -img
         generate jpeg images (use -m to set a supported model)
   -json
@@ -142,7 +143,6 @@ Parameters:
         embedding or generative model name (default "gemini-3-flash-preview")
   -mcp value
         mcp stdio server command
-  -o    only store metadata with embeddings and ignore the content
   -p value
         prompt parameter value in format key=val
   -s    treat argument as system prompt

@@ -316,7 +316,8 @@ func anyMatches(strArray []string, candidates ...string) bool {
 
 // allMatch returns true if all list elements match.
 func allMatch(strArray []string, cand string) bool {
-	return len(strArray) > 0 && countMatches(strArray, cand) == 1
+	l := len(strArray)
+	return l > 0 && countMatches(strArray, cand) == l
 }
 
 // oneMatches returns true if one and only one matches.
