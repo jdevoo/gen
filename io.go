@@ -28,7 +28,7 @@ import (
 func isRedirected(stream any) bool {
 	f, ok := stream.(*os.File)
 	if !ok || f == nil {
-		return true // case of `io.Writer` that is **not** a file
+		return true // `stream` is **not** a file
 	}
 	fileInfo, err := f.Stat()
 	if err != nil {
@@ -56,8 +56,22 @@ func isEmpty(out io.Writer) bool {
 	return false
 }
 
+// rewind moves the file pointer back to the start if `out` is a file;
+// will not work with a pipe.
+func rewind(out io.Writer) bool {
+	if f, ok := out.(*os.File); ok {
+		if stat, err := f.Stat(); err == nil && stat.Mode().IsRegular() {
+			if _, err := f.Seek(0, io.SeekStart); err == nil {
+				f.Truncate(0)
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // emitCandidates is a wrapper to emitContent.
-func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, verbose bool, switchedResp bool, idx int) error {
+func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, verbose bool, addedFunRes bool, idx int) error {
 	var finish genai.FinishReason
 	for _, cand := range resp {
 		if cand != nil && cand.Content != nil {
@@ -68,7 +82,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, ve
 		}
 	}
 	if finish != "" {
-		if !switchedResp {
+		if !addedFunRes {
 			fmt.Fprint(out, "\n")
 		}
 		if verbose {
@@ -82,25 +96,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, ve
 	return nil
 }
 
-// emitHistory prints the chat history (verbose).
-func emitHistory(out io.Writer, hist []*genai.Content) {
-	var prev string
-	for _, c := range hist {
-		if prev != c.Role {
-			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n\033[1;37;46m%s\033[0m\n", c.Role)
-			} else {
-				fmt.Fprintf(out, "\n***%s***\n", c.Role)
-			}
-			prev = c.Role
-		}
-		emitContent(out, c, false, true, 0)
-	}
-	fmt.Fprint(out, "\n")
-}
-
 // emitContent prints LLM response parts.
-// TODO handle FileData when redirect
 func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx int) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
@@ -154,8 +150,8 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 				return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 			}
 			if isRedirected(out) {
-				// on redirect output first image only
-				if !isEmpty(out) {
+				//if !isEmpty(out) { // output first image only
+				if !rewind(out) { // rewind to keep last image only (NOTE fails for pipe)
 					continue
 				}
 				// encode to jpeg format
@@ -182,7 +178,52 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 	return nil
 }
 
+// emitImage renders segmentation results
+func emitImage(out io.Writer, img *genai.Image) error {
+	r := bytes.NewReader(img.ImageBytes)
+	mask, _, err := image.Decode(r)
+	if err != nil {
+		return err
+	}
+	if isRedirected(out) {
+		if !isEmpty(out) { // output first image only
+			return nil
+		}
+		// encode to jpeg format
+		if err := jpeg.Encode(out, mask, &jpeg.Options{Quality: 100}); err != nil {
+			return err
+		}
+	} else {
+		// encode to Sixel format
+		senc := SixelEncoder(out)
+		senc.Dither = true
+		if err := senc.Encode(mask); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "\n")
+	}
+	return nil
+}
+
+// emitHistory prints the chat history (verbose).
+func emitHistory(out io.Writer, hist []*genai.Content) {
+	var prev string
+	for _, c := range hist {
+		if prev != c.Role {
+			if !isRedirected(out) {
+				fmt.Fprintf(out, "\n\033[1;37;46m%s\033[0m\n", c.Role)
+			} else {
+				fmt.Fprintf(out, "\n***%s***\n", c.Role)
+			}
+			prev = c.Role
+		}
+		emitContent(out, c, false, true, 0)
+	}
+	fmt.Fprint(out, "\n")
+}
+
 // uploadFile tracks state until FileStateActive reached.
+// TODO timeout hardcoded
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
 	file, err := client.Files.UploadFromPath(ctx, path, nil)
 	if err != nil {
@@ -207,6 +248,30 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 		return nil, fmt.Errorf("uploaded file has state '%s': %v", file.State, err)
 	}
 	return file, nil
+}
+
+func loadImage(filePathVal string) (*genai.Image, error) {
+	f, err := os.Open(filePathVal)
+	if err != nil {
+		return nil, fmt.Errorf("loadImage error opening file '%s': %v", filePathVal, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("loadImage error reading file %s: %v", filePathVal, err)
+	}
+	sniffLen := len(data)
+	if sniffLen > 512 {
+		sniffLen = 512
+	}
+	sniffedType := http.DetectContentType(data[:sniffLen])
+	if !strings.HasPrefix(sniffedType, "image") {
+		return nil, fmt.Errorf("loadImage error reading file %s: type %s not supported", filePathVal, sniffedType)
+	}
+	return &genai.Image{
+		ImageBytes: data,
+		MIMEType:   sniffedType,
+	}, nil
 }
 
 // loadPrompt reads a file and recursively replaces @subprompt with their content.
@@ -248,7 +313,7 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 
 // filePathHandler processes a single file path for glob.
 // parts and sysParts are extended with file content.
-func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part) error {
+func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
 	keyVals, ok := ctx.Value("keyVals").(ParamMap)
 	if !ok {
 		return fmt.Errorf("filePathHandler: keyVals not found in context")
@@ -279,6 +344,14 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 			FileURI:  file.URI,
 			MIMEType: strings.Split(file.MIMEType, ";")[0],
 		}})
+	case ".json":
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return fmt.Errorf("reading file %s: %v", filePathVal, err)
+		}
+		if err := json.Unmarshal(data, jsonSchema); err != nil {
+			return err
+		}
 	default:
 		data, err := io.ReadAll(f)
 		if err != nil {
@@ -304,11 +377,17 @@ func isHidden(name string) bool {
 }
 
 // glob processes files and directories passed as argument (recursively if walk is true).
-func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part) error {
+func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
 		return fmt.Errorf("glob: params not found in context")
 	}
+	// GCS URI case
+	if strings.HasPrefix(filePathVal, "gs://") {
+		*parts = append(*parts, genai.NewPartFromFile(genai.File{URI: filePathVal}))
+		return nil
+	}
+	// regular file
 	fileInfo, err := os.Stat(filePathVal)
 	if err == nil && fileInfo.IsDir() {
 		return filepath.WalkDir(filePathVal, func(path string, d os.DirEntry, err error) error {
@@ -327,7 +406,7 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 				}
 				return nil
 			}
-			return filePathHandler(ctx, client, path, parts, sysParts)
+			return filePathHandler(ctx, client, path, parts, sysParts, jsonSchema)
 		})
 	}
 	matches, err := filepath.Glob(filePathVal)
@@ -363,13 +442,13 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 					}
 					return nil
 				}
-				return filePathHandler(ctx, client, path, parts, sysParts)
+				return filePathHandler(ctx, client, path, parts, sysParts, jsonSchema)
 			})
 			if err != nil {
 				return fmt.Errorf("glob: '%s': %v", filePathVal, err)
 			}
 		} else {
-			err := filePathHandler(ctx, client, match, parts, sysParts)
+			err := filePathHandler(ctx, client, match, parts, sysParts, jsonSchema)
 			if err != nil {
 				return err
 			}

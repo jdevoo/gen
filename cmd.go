@@ -53,12 +53,16 @@ type Parameters struct {
 	MCPSessions       SessionArray
 	OnlyKvs           bool // RAG
 	Interactive       bool // terminal session?
+	Segment           bool // SegmentForeground by default
+	SegmentBackground bool
+	SegModel          string
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
 	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration
 	Tool              bool
+	ToolRegistry      ToolMap
 	TopP              float64
 	Unsafe            bool
 	Verbose           bool
@@ -91,6 +95,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer genCleanup(params)
+
+	// initialize registry
+	params.ToolRegistry = ToolMap{}
 
 	// Handle help and version flags before any further processing
 	if params.Help {
@@ -127,7 +134,9 @@ func parseFlags() (*Parameters, ParamMap) {
 		TopP:          0.95,
 		ThinkingLevel: genai.ThinkingLevelUnspecified,
 		Timeout:       300 * time.Second,
-		EmbModel:      "gemini-embedding-001", GenModel: "gemini-2.5-flash",
+		EmbModel:      "gemini-embedding-001",
+		GenModel:      "gemini-2.5-flash",
+		SegModel:      "image-segmentation-001",
 	}
 
 	if err := loadPrefs(params); err != nil {
@@ -135,35 +144,38 @@ func parseFlags() (*Parameters, ParamMap) {
 	}
 
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
-	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode after content generation (incompatible with -json, -img, -code or -g)")
+	flag.BoolVar(&params.SegmentBackground, "b", false, "background segmentation mode (default: foreground)")
+	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json, -img, -code or -g)")
 	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -json, -img or -tool)")
 	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
-	flag.Var(&params.FilePaths, "f", "file, directory or quoted pattern of files to attach")
+	flag.Var(&params.FilePaths, "f", "GCS URI, file, directory or quoted pattern of files to attach")
 	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -json, -img and -tool)")
 	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
 	flag.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
-	flag.BoolVar(&params.JSON, "json", false, "response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
+	flag.BoolVar(&params.JSON, "json", false, "JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
 	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
-	flag.Float64Var(&params.Lambda, "l", params.Lambda, "trade off accuracy for diversity when querying digests [0.0,1.0]")
-	flag.Func("level", fmt.Sprintf("thinking level %s, %s, %s or %s (default: %s)",
+	flag.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
+	flag.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
 		genai.ThinkingLevelMinimal,
 		genai.ThinkingLevelLow,
 		genai.ThinkingLevelMedium,
-		genai.ThinkingLevelHigh, params.ThinkingLevel), func(lvl string) error {
-		params.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(lvl))
+		genai.ThinkingLevelHigh,
+		params.ThinkingLevel), func(val string) error {
+		params.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(val))
 		return nil
 	})
-	flag.StringVar(&params.GenModel, "m", params.GenModel, "embedding or generative model name")
+	flag.StringVar(&params.GenModel, "m", params.GenModel, "model name")
 	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
 	flag.BoolVar(&params.OnlyKvs, "o", false, "only store metadata with embeddings and ignore the content")
 	flag.Var(&keyVals, "p", "prompt parameter value in format key=val")
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
+	flag.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI backend (default model \"%s\")", params.SegModel))
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
-	flag.Float64Var(&params.Temp, "temp", params.Temp, "changes sampling during response generation [0.0,2.0]")
-	flag.DurationVar(&params.Timeout, "to", params.Timeout, "timeout value in milliseconds")
+	flag.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation [0.0,2.0]")
+	flag.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")
 	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -json, -img or -code)")
-	flag.Float64Var(&params.TopP, "top_p", params.TopP, "changes how the model selects tokens for generation [0.0,1.0]")
+	flag.Float64Var(&params.TopP, "top_p", params.TopP, "how the model selects tokens for generation [0.0,1.0]")
 	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	flag.BoolVar(&params.Version, "v", false, "show version and exit")
 	flag.BoolVar(&params.Walk, "w", false, "process directories declared with -f recursively")
@@ -201,7 +213,7 @@ func emitUsage(ctx context.Context, out io.Writer) {
 	fmt.Fprintf(out, "\n")
 	fmt.Fprintln(out, "Command-line interface to Google Gemini large language models")
 	fmt.Fprintln(out, "  Requires a valid GOOGLE_API_KEY environment variable set.")
-	fmt.Fprintln(out, "  Also supports VertexAI with valid GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.")
+	fmt.Fprintln(out, "  VertexAI backend with valid GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.")
 	fmt.Fprintln(out, "  Content is generated by a prompt and optional system instructions.")
 	fmt.Fprintln(out, "  Use - to assign stdin as prompt or as attached file.")
 	fmt.Fprintf(out, "\n")

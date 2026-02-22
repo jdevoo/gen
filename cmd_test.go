@@ -134,6 +134,7 @@ func TestParamsInvalid(t *testing.T) {
 			params.FilePaths = ParamArray{}
 			params.DigestPaths = ParamArray{}
 			flag.BoolVar(&params.Verbose, "V", false, "")
+			flag.BoolVar(&params.SegmentBackground, "b", false, "")
 			flag.BoolVar(&params.ChatMode, "c", false, "")
 			flag.BoolVar(&params.CodeGen, "code", false, "")
 			flag.Var(&params.DigestPaths, "d", "")
@@ -145,21 +146,24 @@ func TestParamsInvalid(t *testing.T) {
 			flag.BoolVar(&params.JSON, "json", false, "")
 			flag.IntVar(&params.K, "k", 3, "")
 			flag.Float64Var(&params.Lambda, "l", 0.5, "")
-			flag.Func("level", "", func(s string) error {
+			flag.Func("think", "", func(v string) error {
 				params.ThinkingLevel = genai.ThinkingLevelUnspecified
 				return nil
 			})
 			flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
+			flag.Var(&params.MCPServers, "mcp", "")
 			flag.BoolVar(&params.OnlyKvs, "o", false, "")
 			flag.Var(&keyVals, "p", "")
 			flag.BoolVar(&params.SystemInstruction, "s", false, "")
+			flag.BoolVar(&params.Segment, "seg", false, "")
 			flag.BoolVar(&params.TokenCount, "t", false, "")
 			flag.Float64Var(&params.Temp, "temp", 1.0, "")
-			flag.DurationVar(&params.Timeout, "to", 90*time.Second, "")
+			flag.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
 			flag.BoolVar(&params.Tool, "tool", false, "")
 			flag.Float64Var(&params.TopP, "top_p", 0.95, "")
 			flag.BoolVar(&params.Unsafe, "unsafe", false, "")
 			flag.BoolVar(&params.Version, "v", false, "")
+			flag.BoolVar(&params.Walk, "w", false, "")
 
 			progName := filepath.Base(t.Name())
 			os.Args = []string{progName}

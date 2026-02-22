@@ -293,13 +293,22 @@ func genLogFatal(err error) {
 	}
 }
 
+// countMatches is a helper that returns how many strings in strArray contain cand (case-insensitive).
+func countMatches(strArray []string, cand string) int {
+	count := 0
+	for _, s := range strArray {
+		if strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
+			count++
+		}
+	}
+	return count
+}
+
 // anyMatches returns true if any of the candidates match in array.
 func anyMatches(strArray []string, candidates ...string) bool {
-	for _, s := range strArray {
-		for _, c := range candidates {
-			if strings.Contains(strings.ToLower(s), strings.ToLower(c)) {
-				return true
-			}
+	for _, c := range candidates {
+		if countMatches(strArray, c) > 0 {
+			return true
 		}
 	}
 	return false
@@ -307,26 +316,17 @@ func anyMatches(strArray []string, candidates ...string) bool {
 
 // allMatch returns true if all list elements match.
 func allMatch(strArray []string, cand string) bool {
-	if len(strArray) == 0 {
-		return false
-	}
-	for _, s := range strArray {
-		if !strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
-			return false
-		}
-	}
-	return true
+	return len(strArray) > 0 && countMatches(strArray, cand) == 1
 }
 
 // oneMatches returns true if one and only one matches.
 func oneMatches(strArray []string, cand string) bool {
-	var res int
-	for _, s := range strArray {
-		if strings.Contains(strings.ToLower(s), strings.ToLower(cand)) {
-			res += 1
-		}
-	}
-	return res == 1
+	return countMatches(strArray, cand) == 1
+}
+
+// oneMatches returns true if one and only one matches.
+func zeroOrOneMatches(strArray []string, cand string) bool {
+	return countMatches(strArray, cand) <= 1
 }
 
 // QueryPostgres submits query to database set by DSN parameter.
@@ -383,8 +383,8 @@ func isFlagSet(name string) bool {
 // validPrompts checks prompts against regular interactive vs no redirect or piped content session.
 func validPrompts(params *Parameters) bool {
 	if (params.Interactive &&
-		// no regular prompt privided
-		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+		// no regular prompt privided and no segmentation
+		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt) && !params.Segment) ||
 			// system instruction
 			(params.SystemInstruction &&
 				// not provided as file
@@ -397,15 +397,18 @@ func validPrompts(params *Parameters) bool {
 				// system instruction
 				(params.SystemInstruction &&
 					// stdin as file, but no prompt as file or argument
-					((!oneMatches(params.FilePaths, "-") && len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+					((len(params.Args) == 0 &&
+						!oneMatches(params.FilePaths, "-") && !anyMatches(params.FilePaths, PExt)) ||
 						// stdin as argument, no prompt as file
-						(len(params.Args) == 1 && params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) {
+						(len(params.Args) == 1 &&
+							params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) {
 		return false
 	}
 	return true
 }
 
 func validRanges(params *Parameters) bool {
+	// ThinkingLevel
 	if strings.HasPrefix(string(genai.ThinkingLevelMinimal), string(params.ThinkingLevel)) {
 		params.ThinkingLevel = genai.ThinkingLevelMinimal
 	}
@@ -441,12 +444,22 @@ func validRanges(params *Parameters) bool {
 
 func validCombos(params *Parameters) bool {
 	if
-	// code execution with incompatible flags
-	(params.CodeGen &&
-		(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
+	// image segmentation
+	(params.Segment &&
+		(len(params.FilePaths) == 0 || !oneMatches(params.FilePaths, ".jpg") ||
+			params.ImgModality || params.CodeGen || params.JSON ||
+			params.Tool || params.GoogleSearch || params.Embed)) ||
+		// improper use of segmentation mode
+		(!params.Segment && params.SegmentBackground) ||
+		// at most one JSON schema
+		(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
+		// code execution with incompatible flags
+		(params.CodeGen &&
+			(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
 		// tool registration with incompatible flags
 		(params.Tool &&
-			(params.JSON || params.CodeGen || params.GoogleSearch || params.SystemInstruction || params.Embed)) ||
+			(params.JSON || params.CodeGen || params.GoogleSearch ||
+				params.SystemInstruction || params.Embed)) ||
 		// search with incompatible flags
 		(params.GoogleSearch &&
 			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
@@ -456,11 +469,12 @@ func validCombos(params *Parameters) bool {
 				params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
 		// walk without file attached that is not some prompt
 		(params.Walk &&
-			(len(params.FilePaths) == 0 || allMatch(params.FilePaths, PExt) || allMatch(params.FilePaths, SPExt))) ||
+			(len(params.FilePaths) == 0 ||
+				allMatch(params.FilePaths, PExt) || allMatch(params.FilePaths, SPExt))) ||
 		// chat mode
 		(params.ChatMode &&
 			// with incompatible flags
-			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) {
+			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed || params.Segment)) {
 		return false
 	}
 	return true

@@ -1,4 +1,4 @@
-To use `gen`, you will need a valid Gemini API key set in the `GOOGLE_API_KEY` environment variable.
+To use `gen`, you will either need a valid Gemini API key set in the `GOOGLE_API_KEY` environment variable or `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` on a Vertex AI backend.
 > [!NOTE]
 If you don't already have one, go to [Google AI Studio](https://ai.google.dev/tutorials/setup) to create a key.
 
@@ -47,6 +47,9 @@ Google search
 
 System instruction and prompts as files from iterative Prisonner's Dilemma [paper](https://arxiv.org/html/2406.13605v1)  
 `gen -json -f pd.sprompt -f pd.prompt`
+
+Structured output  
+`gen -json -f recipe.json -f recipe.prompt | jq "."`
 
 Chain of thought  
 `gen Please answer this question starting in two ways. First start with yes, then start with no and show your work. Afterwards determine which is correct. Is 3307 a prime number?`
@@ -117,7 +120,7 @@ Tools:
 Parameters:
 
   -V    output model details, system instructions, chat history and thoughts
-  -c    enter chat mode after content generation (incompatible with -json, -img, -code or -g)
+  -c    enter chat mode (incompatible with -json, -img, -code or -g)
   -code
         code execution tool (incompatible with -g, -json, -img or -tool)
   -d value
@@ -128,17 +131,15 @@ Parameters:
   -g    Google search tool (incompatible with -code, -json, -img and -tool)
   -h    show this help message and exit
   -img
-        generate a jpeg image (use -m to set a supported model)
+        generate jpeg images (use -m to set a supported model)
   -json
-        response in JavaScript Object Notation (incompatible with -g, -code, -img and -tool)
+        JavaScript Object Notation (incompatible with -g, -code, -img and -tool)
   -k int
         maximum number of entries from digest to retrieve (default 3)
   -l float
-        trade off accuracy for diversity when querying digests [0.0,1.0] (default 0.5)
-  -level value
-        thinking level MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
+        balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-        embedding or generative model name (default "gemini-2.5-flash")
+        embedding or generative model name (default "gemini-3-flash-preview")
   -mcp value
         mcp stdio server command
   -o    only store metadata with embeddings and ignore the content
@@ -147,13 +148,15 @@ Parameters:
   -s    treat argument as system prompt
   -t    output total number of tokens
   -temp float
-        changes sampling during response generation [0.0,2.0] (default 1)
-  -to duration
-        timeout value in milliseconds (default 5m0s)
+        sampling during response generation [0.0,2.0] (default 1)
+  -think value
+        MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
+  -timeout duration
+        time limit for single turn content generation (default 5m0s)
   -tool
         invoke one of the tools (incompatible with -s, -g, -json, -img or -code)
   -top_p float
-        changes how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit

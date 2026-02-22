@@ -19,6 +19,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	var sysParts []*genai.Part
 	var stdinData []byte
 	var mediaAssets []string
+	var schema map[string]any
 
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
@@ -46,14 +47,67 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		genCtx = ctx
 	}
 	client, err := genai.NewClient(genCtx, nil)
-	/*&genai.ClientConfig{
-		HTTPOptions: genai.HTTPOptions{
-			Timeout: &params.Timeout,
-		},
-	})
-	*/
 	if err != nil {
 		genLogFatal(err)
+	}
+
+	// Handle verbose parameter
+	if params.Verbose {
+		var backend string
+		if client.ClientConfig().Backend == genai.BackendVertexAI {
+			backend = "VertexAI"
+		} else {
+			backend = "GeminiAPI"
+		}
+		if params.Segment {
+			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | -/- in/out token limit | %s\033[0m\n\n",
+				backend, params.SegModel, params.ThinkingLevel)
+		} else {
+			var m *genai.Model
+			if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
+				m, err = client.Models.Get(genCtx, params.EmbModel, nil)
+			} else {
+				m, err = client.Models.Get(genCtx, params.GenModel, nil)
+			}
+			if err != nil {
+				genLogFatal(err)
+			}
+			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
+				backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, params.ThinkingLevel)
+		}
+	}
+
+	// Handle segmentation
+	if params.Segment {
+		var img *genai.Image
+		if strings.HasPrefix(params.FilePaths[0], "gs://") {
+			img = &genai.Image{GCSURI: params.FilePaths[0]}
+		} else {
+			img, err = loadImage(params.FilePaths[0])
+			if err != nil {
+				genLogFatal(err)
+			}
+		}
+		res, err := client.Models.SegmentImage(genCtx, params.SegModel,
+			&genai.SegmentImageSource{
+				Image: img,
+			},
+			&genai.SegmentImageConfig{
+				Mode: genai.SegmentModeForeground,
+			},
+		)
+		if err != nil {
+			genLogFatal(err)
+		}
+		for _, gim := range res.GeneratedMasks {
+			if err = emitImage(out, gim.Mask); err != nil {
+				genLogFatal(err)
+			}
+			for _, el := range gim.Labels {
+				fmt.Fprintln(out, el.Label)
+			}
+		}
+		return 0
 	}
 
 	// First, handle argument
@@ -83,8 +137,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				}
 				continue
 			}
-			// possible uploads include regular file, .prompt, .sprompt or directory
-			if err = glob(genCtx, client, filePathVal, &parts, &sysParts); err != nil {
+			// possible uploads include regular file, json schema, .prompt, .sprompt or directory
+			if err = glob(genCtx, client, filePathVal, &parts, &sysParts, &schema); err != nil {
 				genLogFatal(err)
 			}
 		}
@@ -150,6 +204,9 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	// Handle json parameter
 	if params.JSON {
 		config.ResponseMIMEType = "application/json"
+		if schema != nil {
+			config.ResponseJsonSchema = schema
+		}
 	}
 	// Register tools with genai.FunctionCallingConfigModeAny
 	if params.Tool {
@@ -195,6 +252,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			},
 		}
 	}
+
 	// Set system instruction
 	if len(sysParts) > 0 {
 		config.SystemInstruction = &genai.Content{
@@ -204,27 +262,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		if params.Verbose {
 			emitContent(os.Stderr, config.SystemInstruction, false, true, 0)
 		}
-	}
-
-	// Handle verbose parameter
-	if params.Verbose {
-		var m *genai.Model
-		var backend string
-		if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
-			m, err = client.Models.Get(genCtx, params.EmbModel, nil)
-		} else {
-			m, err = client.Models.Get(genCtx, params.GenModel, nil)
-		}
-		if err != nil {
-			genLogFatal(err)
-		}
-		if client.ClientConfig().Backend == genai.BackendVertexAI {
-			backend = "VertexAI"
-		} else {
-			backend = "GeminiAPI"
-		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
-			backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, params.ThinkingLevel)
 	}
 
 	// Handle thinking level
@@ -245,7 +282,6 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		if params.Verbose {
 			emitHistory(os.Stderr, history)
 		}
-
 	}
 
 	// Start chat
@@ -288,14 +324,15 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 
 	// Main chat loop
 	var onceOnly bool
-	var switchedResp bool
+	var addedFunRes bool
 	for {
 		if len(parts) > 0 {
 			i := 0
-			sendParts := parts
-			parts = []*genai.Part{} // emtpy parts for next iteration
-			switchedResp = false
-			for resp, err := range chat.SendStream(genCtx, sendParts...) {
+			//sendParts := parts
+			//parts = []*genai.Part{} // emtpy parts for next iteration
+			addedFunRes = false
+			//for resp, err := range chat.SendStream(genCtx, sendParts...) {
+			for resp, err := range chat.SendStream(genCtx, parts...) {
 				if err != nil {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
@@ -315,12 +352,12 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 								},
 							},
 						}
-						switchedResp = true
-						parts = append(parts, sendParts...) // send original parts back
+						addedFunRes = true
+						//parts = append(parts, sendParts...) // send original parts back
 						parts = append(parts, res...)
 					}
 				}
-				if err := emitCandidates(out, resp.Candidates, params.ImgModality, params.Verbose, switchedResp, i); err != nil {
+				if err := emitCandidates(out, resp.Candidates, params.ImgModality, params.Verbose, addedFunRes, i); err != nil {
 					fmt.Fprintf(out, "\n")
 					genLogFatal(err)
 				}
@@ -331,10 +368,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			} // for range SendStream
 		}
 		// exit if not a chat and no function response to process
-		if !params.ChatMode && len(parts) == 0 {
+		if !params.ChatMode && !addedFunRes { //len(parts) == 0 {
 			break
 		}
-		if !switchedResp && params.ChatMode {
+		if params.ChatMode && !addedFunRes {
 			input, err := readLine(tty)
 			if err != nil {
 				genLogFatal(err)
