@@ -165,12 +165,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 	// Lookup tool
 	sess, ok := params.ToolRegistry[fc.Name]
 	if !ok {
-		return []*genai.Part{
-			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"output": "",
-				"error":  fmt.Sprintf("MCP tool not found: %s", fc.Name),
-			}),
-		}
+		return []*genai.Part{}
 	}
 
 	ctr, err := sess.CallTool(ctx, &mcp.CallToolParams{

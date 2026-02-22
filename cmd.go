@@ -96,9 +96,6 @@ func main() {
 	}
 	defer genCleanup(params)
 
-	// initialize registry
-	params.ToolRegistry = ToolMap{}
-
 	// Handle help and version flags before any further processing
 	if params.Help {
 		emitUsage(ctx, os.Stdout) // context includes params with list to known tools
@@ -183,6 +180,7 @@ func parseFlags() (*Parameters, ParamMap) {
 
 	params.Args = flag.Args()
 	params.Interactive = !isRedirected(os.Stdin)
+	params.ToolRegistry = ToolMap{}
 
 	return params, keyVals
 }
