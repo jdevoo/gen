@@ -145,6 +145,7 @@ Parameters:
         mcp stdio server command
   -p value
         prompt parameter value in format key=val
+  -r    process directories declared with -f recursively
   -s    treat argument as system prompt
   -t    output total number of tokens
   -temp float
@@ -160,7 +161,6 @@ Parameters:
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit
-  -w    process directories declared with -f recursively
 ```
 
 ## Preferences

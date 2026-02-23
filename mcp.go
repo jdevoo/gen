@@ -52,15 +52,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 	for _, srv := range params.MCPServers {
 		srvStr := srv // capture for closure
 		g.Go(func() error {
-			parts, err := shlex.Split(srvStr)
-			if err != nil || len(parts) == 0 {
-				return fmt.Errorf("invalid MCP command '%s': %v", srvStr, err)
-			}
-
-			cmdPath, err := exec.LookPath(parts[0])
-			if err != nil {
-				return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
-			}
+			var session *mcp.ClientSession
 
 			options := mcp.ClientOptions{
 				Capabilities: &mcp.ClientCapabilities{
@@ -71,11 +63,9 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 				CreateMessageHandler: genSampling,
 				ElicitationHandler:   genElicitation,
 			}
-
 			if params.Verbose && params.Tool {
 				options.LoggingMessageHandler = genLoggingHandler
 			}
-
 			client := mcp.NewClient(
 				&mcp.Implementation{Name: filepath.Base(os.Args[0]), Version: Version},
 				&options,
@@ -89,9 +79,23 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 			mcpCtx, cancel := context.WithTimeout(gCtx, 30*time.Second)
 			defer cancel()
 
-			session, err := client.Connect(mcpCtx, &mcp.CommandTransport{
-				Command: exec.Command(cmdPath, parts[1:]...),
-			}, nil)
+			if strings.HasPrefix(srvStr, "http://") || strings.HasPrefix(srvStr, "https://") {
+				session, err = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
+					Endpoint: srvStr,
+				}, nil)
+			} else {
+				parts, err := shlex.Split(srvStr)
+				if err != nil || len(parts) == 0 {
+					return fmt.Errorf("invalid MCP command '%s': %v", srvStr, err)
+				}
+				cmdPath, err := exec.LookPath(parts[0])
+				if err != nil {
+					return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
+				}
+				session, err = client.Connect(mcpCtx, &mcp.CommandTransport{
+					Command: exec.Command(cmdPath, parts[1:]...),
+				}, nil)
+			}
 			if err != nil {
 				return fmt.Errorf("MCP connect error: %v", err)
 			}
