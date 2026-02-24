@@ -60,8 +60,14 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			backend = "GeminiAPI"
 		}
 		if params.Segment {
+			var m string
+			if !isFlagSet("m") {
+				m = params.SegModel
+			} else {
+				m = params.GenModel
+			}
 			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | -/- in/out token limit | %s\033[0m\n\n",
-				backend, params.SegModel, params.ThinkingLevel)
+				backend, m, params.ThinkingLevel)
 		} else {
 			var m *genai.Model
 			if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {

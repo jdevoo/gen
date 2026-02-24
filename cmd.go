@@ -150,10 +150,10 @@ func parseFlags() (*Parameters, ParamMap) {
 	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
 	flag.Var(&params.FilePaths, "f", "GCS URI, file, directory or quoted pattern of files to attach")
 	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -json, -img and -tool)")
-	flag.BoolVar(&params.Help, "h", false, "show this help message and exit")
+	flag.BoolVar(&params.Help, "h", false, "show available tools, this help message and exit")
 	flag.BoolVar(&params.OnlyKvs, "i", false, "only store metadata with embeddings and ignore the content")
 	flag.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
-	flag.BoolVar(&params.JSON, "json", false, "JavaScript Object Notation (incompatible with -g, -code, -img and -tool)")
+	flag.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -g, -code, -img and -tool)")
 	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	flag.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
 	flag.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
