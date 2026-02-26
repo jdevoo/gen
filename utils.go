@@ -4,17 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 
 	_ "github.com/lib/pq"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/genai"
 )
 
@@ -281,16 +278,6 @@ func processFunCalls(ctx context.Context, resp *genai.GenerateContentResponse) [
 		}
 	}
 	return []*genai.Part{}
-}
-
-// genLogFatal refines the error if available and exits with 1.
-func genLogFatal(err error) {
-	var gerr *googleapi.Error
-	if errors.As(err, &gerr) {
-		log.Fatal(gerr)
-	} else {
-		log.Fatal(err)
-	}
 }
 
 // countMatches is a helper that returns how many strings in strArray contain cand (case-insensitive).

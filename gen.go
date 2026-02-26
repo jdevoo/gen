@@ -23,18 +23,19 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
-		genLogFatal(fmt.Errorf("emitGen: params not found in context"))
+		return 1
 	}
 	keyVals, ok := ctx.Value("keyVals").(ParamMap)
 	if !ok {
-		genLogFatal(fmt.Errorf("emitGen: keyVals not found in context"))
+		return 1
 	}
 
 	// Handle redirect/piped data
 	if !params.Interactive {
 		stdinData, err = io.ReadAll(in)
 		if err != nil {
-			genLogFatal(err)
+			fmt.Fprintf(os.Stderr, "emitGen: %v", err)
+			return 1
 		}
 		params.Interactive = len(stdinData) == 0 // ignore redirect
 	}
@@ -48,7 +49,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	}
 	client, err := genai.NewClient(genCtx, nil)
 	if err != nil {
-		genLogFatal(err)
+		fmt.Fprintf(os.Stderr, "emitGen: %v", err)
+		return 1
 	}
 
 	// Handle verbose parameter
@@ -76,7 +78,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				m, err = client.Models.Get(genCtx, params.GenModel, nil)
 			}
 			if err != nil {
-				genLogFatal(err)
+				return 1
 			}
 			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
 				backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, params.ThinkingLevel)
@@ -91,7 +93,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		} else {
 			img, err = loadImage(params.FilePaths[0])
 			if err != nil {
-				genLogFatal(err)
+				return 1
 			}
 		}
 		res, err := client.Models.SegmentImage(genCtx, params.SegModel,
@@ -103,11 +105,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			},
 		)
 		if err != nil {
-			genLogFatal(err)
+			return 1
 		}
 		for _, gim := range res.GeneratedMasks {
 			if err = emitImage(out, gim.Mask); err != nil {
-				genLogFatal(err)
+				return 1
 			}
 			for _, el := range gim.Labels {
 				fmt.Fprintln(out, el.Label)
@@ -145,7 +147,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			}
 			// possible uploads include regular file, json schema, .prompt, .sprompt or directory
 			if err = glob(genCtx, client, filePathVal, &parts, &sysParts, &schema); err != nil {
-				genLogFatal(err)
+				return 1
 			}
 		}
 	}
@@ -163,10 +165,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	if params.Embed {
 		res, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 		if err != nil {
-			genLogFatal(err)
+			return 1
 		}
 		if err := appendToDigest(params.DigestPaths[0], res.Embeddings[0], keyVals, params.OnlyKvs, params.Verbose, parts...); err != nil {
-			genLogFatal(err)
+			return 1
 		}
 		return 0
 	}
@@ -177,11 +179,11 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		for _, digestPathVal := range params.DigestPaths {
 			query, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
 			if err != nil {
-				genLogFatal(err)
+				return 1
 			}
 			res, err = queryDigest(digestPathVal, query.Embeddings[0], res, params.K, float32(params.Lambda), params.Verbose)
 			if err != nil {
-				genLogFatal(err)
+				return 1
 			}
 		}
 		if len(res) > 0 {
@@ -218,10 +220,10 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	if params.Tool {
 		config.Tools = []*genai.Tool{}
 		if err = registerGenTools(config); err != nil { // declared in the tools.go file
-			genLogFatal(err)
+			return 1
 		}
 		if err = registerMCPTools(genCtx, config); err != nil { // declared with -mcp
-			genLogFatal(err)
+			return 1
 		}
 		conjTexts(&parts)
 	}
@@ -283,7 +285,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	history := []*genai.Content{}
 	if params.ChatMode {
 		if err = retrieveHistory(&history); err != nil {
-			genLogFatal(err)
+			return 1
 		}
 		if params.Verbose {
 			emitHistory(os.Stderr, history)
@@ -293,7 +295,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	// Start chat
 	chat, err := client.Chats.Create(genCtx, params.GenModel, config, history)
 	if err != nil {
-		genLogFatal(err)
+		return 1
 	}
 
 	tty := in // assume in is terminal for chat
@@ -302,7 +304,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		// in is a redirect, look for a terminal to open
 		tty, err = openConsole()
 		if err != nil {
-			genLogFatal(err)
+			return 1
 		}
 	}
 
@@ -318,7 +320,8 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				for _, fileURI := range mediaAssets {
 					_, err := client.Files.Delete(genCtx, fileURI, nil)
 					if err != nil {
-						genLogFatal(err)
+						fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
+						continue
 					}
 					if verbose {
 						fmt.Fprintf(os.Stderr, "\033[36m%s deleted\033[0m\n", fileURI)
@@ -341,7 +344,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			for resp, err := range chat.SendStream(genCtx, parts...) {
 				if err != nil {
 					fmt.Fprintf(out, "\n")
-					genLogFatal(err)
+					return 1
 				}
 				if !onceOnly {
 					if !params.ChatMode {
@@ -365,7 +368,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 				}
 				if err := emitCandidates(out, resp.Candidates, params.ImgModality, params.Verbose, addedFunRes, i); err != nil {
 					fmt.Fprintf(out, "\n")
-					genLogFatal(err)
+					return 1
 				}
 				if params.TokenCount && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
@@ -380,13 +383,13 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 		if params.ChatMode && !addedFunRes {
 			input, err := readLine(tty)
 			if err != nil {
-				genLogFatal(err)
+				return 1
 			}
 			// check for double blank line exit condition
 			if input == "" {
 				input, err = readLine(tty)
 				if err != nil {
-					genLogFatal(err)
+					return 1
 				}
 				if input == "" {
 					break // exit chat mode
@@ -402,7 +405,7 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 	if params.ChatMode {
 		if err = persistChat(chat); err != nil {
 			fmt.Fprintf(out, "\n")
-			genLogFatal(err)
+			return 1
 		}
 	}
 

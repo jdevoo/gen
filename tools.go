@@ -16,7 +16,7 @@ func (t Tool) ListKnownGeminiModels(ctx context.Context) (string, error) {
 	var res []string
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
-		genLogFatal(err)
+		return "", err
 	}
 	for m, err := range client.Models.All(ctx) {
 		if err != nil {
