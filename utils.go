@@ -369,7 +369,7 @@ func isFlagSet(name string) bool {
 }
 
 // validPrompts checks prompts against regular interactive vs no redirect or piped content session.
-func validPrompts(params *Parameters) bool {
+func validPrompts(params *Parameters) error {
 	if (params.Interactive &&
 		// no regular prompt privided and no segmentation
 		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt) && !params.Segment) ||
@@ -390,12 +390,12 @@ func validPrompts(params *Parameters) bool {
 						// stdin as argument, no prompt as file
 						(len(params.Args) == 1 &&
 							params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) {
-		return false
+		return fmt.Errorf("invalid or missing prompts")
 	}
-	return true
+	return nil
 }
 
-func validRanges(params *Parameters) bool {
+func validRanges(params *Parameters) error {
 	// ThinkingLevel
 	if strings.HasPrefix(string(genai.ThinkingLevelMinimal), string(params.ThinkingLevel)) {
 		params.ThinkingLevel = genai.ThinkingLevelMinimal
@@ -425,12 +425,12 @@ func validRanges(params *Parameters) bool {
 		(params.Temp < 0 || params.Temp > 2) ||
 		// invalid topP values
 		(params.TopP < 0 || params.TopP > 1) {
-		return false
+		return fmt.Errorf("invalid option values")
 	}
-	return true
+	return nil
 }
 
-func validCombos(params *Parameters) bool {
+func validCombos(params *Parameters) error {
 	if
 	// image segmentation
 	(params.Segment &&
@@ -463,12 +463,12 @@ func validCombos(params *Parameters) bool {
 		(params.ChatMode &&
 			// with incompatible flags
 			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed || params.Segment)) {
-		return false
+		return fmt.Errorf("invalid options combination")
 	}
-	return true
+	return nil
 }
 
-func validEmbeddings(params *Parameters, keyVals ParamMap) bool {
+func validEmbeddings(params *Parameters, keyVals ParamMap) error {
 	if
 	// embeddings
 	params.Embed &&
@@ -485,18 +485,24 @@ func validEmbeddings(params *Parameters, keyVals ParamMap) bool {
 			(!params.Interactive &&
 				!((len(params.Args) == 1 && params.Args[0] == "-") || oneMatches(params.FilePaths, "-")))) {
 
-		return false
+		return fmt.Errorf("invalid use of -e")
 	}
-	return true
+	return nil
 }
 
-// isValidParams performs a complete argument validation.
-func isParamsInvalid(params *Parameters, keyVals ParamMap) bool {
-	if validPrompts(params) &&
-		validRanges(params) &&
-		validCombos(params) &&
-		validEmbeddings(params, keyVals) {
-		return false
+// isArgsInvalid performs a complete argument validation.
+func isArgsInvalid(params *Parameters, keyVals ParamMap) error {
+	if err := validPrompts(params); err != nil {
+		return err
 	}
-	return true
+	if err := validRanges(params); err != nil {
+		return err
+	}
+	if err := validCombos(params); err != nil {
+		return err
+	}
+	if err := validEmbeddings(params, keyVals); err != nil {
+		return err
+	}
+	return nil
 }

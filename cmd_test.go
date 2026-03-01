@@ -10,7 +10,7 @@ import (
 	"google.golang.org/genai"
 )
 
-func TestParamsInvalid(t *testing.T) {
+func TestArgsInvalid(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -174,8 +174,8 @@ func TestParamsInvalid(t *testing.T) {
 			}
 			params.Args = flag.CommandLine.Args()
 			params.Interactive = tc.interactive
-			actual := isParamsInvalid(params, keyVals)
-			if actual != tc.expected {
+			actual := isArgsInvalid(params, keyVals)
+			if (actual != nil) != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)
 			}
 		})

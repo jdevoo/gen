@@ -16,15 +16,13 @@ import (
 	"google.golang.org/genai"
 )
 
-// Version, Golang and Githash are populated by make
-// Token count accumulator in case of CTRL-C
+// Version and Githash are populated by make
 var (
 	Version    string
 	Githash    string
 	TokenCount atomic.Int32
 )
 
-// gen constants
 const (
 	SPExt     = ".sprompt" // system prompt extension
 	PExt      = ".prompt"  // regular prompt extension
@@ -70,20 +68,33 @@ type Parameters struct {
 	Walk              bool // used with FilePaths
 }
 
-// main gen entry point.
-// Parameters are stored as `ParamMap` and passed as context values for tool state injection.
 func main() {
-	params, keyVals := parseFlags()
+	// create context that listens for OS interrupt signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// Create the root context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	if err := run(ctx); err != nil {
+		if err.Error() != "" {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		}
+		os.Exit(1)
+	}
+}
 
-	// Handle version option
+func run(ctx context.Context) error {
+	params := &Parameters{}
+	keyVals := ParamMap{}
+
+	if err := parseFlags(params, &keyVals); err != nil {
+		return err
+	}
+
 	if params.Version {
 		printVersion()
-		os.Exit(0)
+		return nil
 	}
+
+	defer cleanup(params)
 
 	// store keyVals and params in context
 	ctx = context.WithValue(ctx, "keyVals", keyVals)
@@ -92,54 +103,50 @@ func main() {
 	// stash MCP client sessions in params.MCPSessionsa
 	if params.Help || params.Tool {
 		if err := initMCPSessions(ctx, params); err != nil {
-			fmt.Fprintf(os.Stderr, "MCP Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("MCP error: %w", err)
 		}
-		defer genCleanup(params)
 	}
 
-	// Handle help and version flags before any further processing
+	// handle help and version flags before any further processing
+	// context includes params with list to known tools
 	if params.Help {
-		emitUsage(ctx, os.Stdout, true) // context includes params with list to known tools
-		os.Exit(0)
+		emitUsage(ctx, os.Stdout, true)
+		return nil
 	}
 
-	// Argument validation
-	if isParamsInvalid(params, keyVals) {
+	// argument validation
+	if err := isArgsInvalid(params, keyVals); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n\n", err)
 		emitUsage(ctx, os.Stdout, false)
-		os.Exit(1)
+		return fmt.Errorf("")
 	}
 
 	if err := validateEnv(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Environment error: %w", err)
 	}
 
-	// handle CTRL-C
-	setupSignalHandler(ctx, cancel, params)
+	if err := genContent(ctx, os.Stdin, os.Stdout); err != nil {
+		return fmt.Errorf("Generation error: %w", err)
+	}
 
-	os.Exit(emitGen(ctx, os.Stdin, os.Stdout))
+	return nil
 }
 
 // parseFlags handles flag definitions and parameter map for variable substitutions in prompts.
-func parseFlags() (*Parameters, ParamMap) {
-	keyVals := ParamMap{}
-
+func parseFlags(params *Parameters, keyVals *ParamMap) error {
 	// default parameter values
-	params := &Parameters{
-		K:             3,
-		Lambda:        0.5,
-		Temp:          1.0,
-		TopP:          0.95,
-		ThinkingLevel: genai.ThinkingLevelUnspecified,
-		Timeout:       300 * time.Second,
-		EmbModel:      "gemini-embedding-001",
-		GenModel:      "gemini-2.5-flash",
-		SegModel:      "image-segmentation-001",
-	}
+	params.K = 3
+	params.Lambda = 0.5
+	params.Temp = 1.0
+	params.TopP = 0.95
+	params.ThinkingLevel = genai.ThinkingLevelUnspecified
+	params.Timeout = 300 * time.Second
+	params.EmbModel = "gemini-embedding-001"
+	params.GenModel = "gemini-2.5-flash"
+	params.SegModel = "image-segmentation-001"
 
 	if err := loadPrefs(params); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", DotGenRc, err)
+		return fmt.Errorf("Error loading preferences from %s: %v\n", DotGenRc, err)
 	}
 
 	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
@@ -167,7 +174,7 @@ func parseFlags() (*Parameters, ParamMap) {
 	})
 	flag.StringVar(&params.GenModel, "m", params.GenModel, "model name")
 	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
-	flag.Var(&keyVals, "p", "prompt parameter value in format key=val")
+	flag.Var(keyVals, "p", "prompt parameter value in format key=val")
 	flag.BoolVar(&params.Walk, "r", false, "process directories declared with -f recursively")
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
 	flag.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI (default model \"%s\")", params.SegModel))
@@ -184,7 +191,7 @@ func parseFlags() (*Parameters, ParamMap) {
 	params.Interactive = !isRedirected(os.Stdin)
 	params.ToolRegistry = ToolMap{}
 
-	return params, keyVals
+	return nil
 }
 
 func printVersion() {
@@ -203,15 +210,10 @@ func printVersion() {
 }
 
 // emitUsage overrides PrintDefaults to provide custom usage information.
-func emitUsage(ctx context.Context, out io.Writer, long bool) {
+func emitUsage(ctx context.Context, out io.Writer, emitTools bool) {
 	var tools string
-	var err error
-	if long {
-		tools, err = knownTools(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
-			os.Exit(1)
-		}
+	if emitTools {
+		tools, _ = knownTools(ctx)
 		fmt.Fprintln(out, "Command-line interface to Google Gemini large language models")
 		fmt.Fprintln(out, "  Requires a valid GOOGLE_API_KEY environment variable set.")
 		fmt.Fprintln(out, "  VertexAI backend with valid GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION.")
@@ -221,7 +223,7 @@ func emitUsage(ctx context.Context, out io.Writer, long bool) {
 	}
 	fmt.Fprintln(out, "Usage: gen [options] <prompt>")
 	fmt.Fprintf(out, "\n")
-	if long {
+	if emitTools {
 		fmt.Fprintln(out, fmt.Sprintf("Tools:\n%s", tools))
 		fmt.Fprintf(out, "\n")
 	}
@@ -250,27 +252,14 @@ func validateEnv() error {
 	return nil
 }
 
-func genCleanup(params *Parameters) {
+func cleanup(params *Parameters) {
 	for _, sess := range params.MCPSessions {
-		sess.Close()
+		if sess != nil {
+			sess.Close()
+		}
 	}
-	// Final token count report
+	// final token count report
 	if params.TokenCount {
 		fmt.Printf("\n\033[31m%d tokens\033[0m\n", TokenCount.Load())
 	}
-}
-
-func setupSignalHandler(ctx context.Context, cancel context.CancelFunc, params *Parameters) {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		if params.TokenCount {
-			if count := TokenCount.Load(); count > 0 {
-				fmt.Printf("\n\033[31m%d tokens at CTRL-C\033[0m\n", count)
-			}
-		}
-		cancel()
-		os.Exit(1)
-	}()
 }

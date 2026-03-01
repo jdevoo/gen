@@ -10,237 +10,315 @@ import (
 	"google.golang.org/genai"
 )
 
-// emitGen is the main gen content generator.
-func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
-	var genCtx context.Context
-	var genCancel context.CancelFunc
-	var err error
-	var parts []*genai.Part
-	var sysParts []*genai.Part
-	var stdinData []byte
-	var mediaAssets []string
-	var schema map[string]any
+type Generator struct {
+	ctx      context.Context
+	params   *Parameters
+	keyVals  ParamMap
+	client   *genai.Client
+	in       io.Reader
+	out      io.Writer
+	parts    []*genai.Part
+	sysParts []*genai.Part
+	schema   map[string]any
+}
 
+func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
-		return 1
+		return fmt.Errorf("missing params")
+	}
+	if !params.ChatMode {
+		var genCancel context.CancelFunc
+		ctx, genCancel = context.WithTimeout(ctx, params.Timeout)
+		defer genCancel()
+	}
+	g, err := newGenerator(ctx, in, out)
+	if err != nil {
+		return err
+	}
+	return g.run()
+}
+
+func newGenerator(ctx context.Context, in io.Reader, out io.Writer) (*Generator, error) {
+	params, ok := ctx.Value("params").(*Parameters)
+	if !ok {
+		return nil, fmt.Errorf("missing params")
 	}
 	keyVals, ok := ctx.Value("keyVals").(ParamMap)
 	if !ok {
-		return 1
+		return nil, fmt.Errorf("missing keyVals")
 	}
 
-	// Handle redirect/piped data
-	if !params.Interactive {
-		stdinData, err = io.ReadAll(in)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "emitGen: %v", err)
-			return 1
-		}
-		params.Interactive = len(stdinData) == 0 // ignore redirect
-	}
-
-	// Create a genai client
-	if !params.ChatMode {
-		genCtx, genCancel = context.WithTimeout(ctx, params.Timeout)
-		defer genCancel()
-	} else {
-		genCtx = ctx
-	}
-	client, err := genai.NewClient(genCtx, nil)
+	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "emitGen: %v", err)
-		return 1
+		return nil, err
 	}
 
-	// Handle verbose parameter
-	if params.Verbose {
-		var backend string
-		if client.ClientConfig().Backend == genai.BackendVertexAI {
-			backend = "VertexAI"
-		} else {
-			backend = "GeminiAPI"
-		}
-		if params.Segment {
-			var m string
-			if !isFlagSet("m") {
-				m = params.SegModel
-			} else {
-				m = params.GenModel
-			}
-			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | -/- in/out token limit | %s\033[0m\n\n",
-				backend, m, params.ThinkingLevel)
-		} else {
-			var m *genai.Model
-			if (params.Embed || len(params.DigestPaths) > 0) && !isFlagSet("m") {
-				m, err = client.Models.Get(genCtx, params.EmbModel, nil)
-			} else {
-				m, err = client.Models.Get(genCtx, params.GenModel, nil)
-			}
-			if err != nil {
-				return 1
-			}
-			fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
-				backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, params.ThinkingLevel)
+	return &Generator{
+		ctx:     ctx,
+		params:  params,
+		keyVals: keyVals,
+		client:  client,
+		in:      in,
+		out:     out,
+	}, nil
+}
+
+func (g *Generator) run() error {
+	if g.params.Verbose {
+		if err := g.emitModelDetails(); err != nil {
+			return err
 		}
 	}
 
-	// Handle segmentation
-	if params.Segment {
-		var img *genai.Image
-		if strings.HasPrefix(params.FilePaths[0], "gs://") {
-			img = &genai.Image{GCSURI: params.FilePaths[0]}
-		} else {
-			img, err = loadImage(params.FilePaths[0])
-			if err != nil {
-				return 1
-			}
-		}
-		res, err := client.Models.SegmentImage(genCtx, params.SegModel,
-			&genai.SegmentImageSource{
-				Image: img,
-			},
-			&genai.SegmentImageConfig{
-				Mode: genai.SegmentModeForeground,
-			},
-		)
-		if err != nil {
-			return 1
-		}
-		for _, gim := range res.GeneratedMasks {
-			if err = emitImage(out, gim.Mask); err != nil {
-				return 1
-			}
-			for _, el := range gim.Labels {
-				fmt.Fprintln(out, el.Label)
-			}
-		}
-		return 0
+	if g.params.Segment {
+		return g.segmentImage() // exit after segmentation
 	}
 
-	// First, handle argument
-	if len(params.Args) > 0 {
-		text := searchReplace(strings.Join(params.Args, " "), keyVals)
-		if !params.Interactive && text == "-" {
-			text = string(stdinData)
-		}
-		if params.SystemInstruction && (params.Interactive || !oneMatches(params.FilePaths, "-")) {
-			// argument used as system prompt for chat session unless `-f -` is set
-			sysParts = append(sysParts, &genai.Part{Text: text})
-		} else {
-			parts = append(parts, &genai.Part{Text: text})
-		}
+	if err := g.setPromptsAndFiles(); err != nil {
+		return err
 	}
 
-	// Next, handle file options
-	if len(params.FilePaths) > 0 {
-		for _, filePathVal := range params.FilePaths {
-			// redirect passed as file
-			if filePathVal == "-" {
-				if params.SystemInstruction {
-					// `-f -` takes precedence over argument with `-s`
-					sysParts = append(sysParts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
-				} else {
-					parts = append(parts, &genai.Part{Text: searchReplace(string(stdinData), keyVals)})
+	if g.params.Embed {
+		return g.saveEmbeddings() // exit after embeddings added
+	}
+
+	if len(g.params.DigestPaths) > 0 {
+		return g.searchDigests() // exit after embeddings search
+	}
+
+	// remove any uploaded media assets on exit
+	if len(g.params.FilePaths) > 0 {
+		var mediaAssets []string
+		for _, p := range g.parts {
+			if p.FileData != nil {
+				mediaAssets = append(mediaAssets, p.FileData.FileURI)
+			}
+		}
+		if len(mediaAssets) > 0 {
+			defer func(verbose bool) {
+				for _, fileURI := range mediaAssets {
+					_, err := g.client.Files.Delete(g.ctx, fileURI, nil)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
+						continue
+					}
+					if verbose {
+						fmt.Fprintf(os.Stderr, "\033[36m%s deleted\033[0m\n", fileURI)
+					}
 				}
-				continue
-			}
-			// possible uploads include regular file, json schema, .prompt, .sprompt or directory
-			if err = glob(genCtx, client, filePathVal, &parts, &sysParts, &schema); err != nil {
-				return 1
-			}
+			}(g.params.Verbose)
 		}
 	}
 
-	// Handle token count
-	if params.TokenCount {
+	// handle token count
+	if g.params.TokenCount {
 		defer func() {
-			if params.TokenCount && ctx.Err() == nil {
-				fmt.Fprintf(out, "\033[31m%d tokens\033[0m\n", TokenCount.Load())
+			if g.params.TokenCount && g.ctx.Err() == nil {
+				fmt.Fprintf(g.out, "\033[31m%d tokens\033[0m\n", TokenCount.Load())
 			}
 		}()
 	}
 
-	// Handle embed parameter then exit
-	if params.Embed {
-		res, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
+	config := genai.GenerateContentConfig{
+		Temperature: genai.Ptr(float32(g.params.Temp)),
+		TopP:        genai.Ptr(float32(g.params.TopP)),
+	}
+	if err := g.buildConfig(&config); err != nil {
+		return err
+	}
+
+	return g.generateContent(&config)
+}
+
+func (g *Generator) emitModelDetails() error {
+	backend := "GeminiAPI"
+	if g.client.ClientConfig().Backend == genai.BackendVertexAI {
+		backend = "VertexAI"
+	}
+
+	name := g.params.GenModel
+	if g.params.Segment {
+		if !isFlagSet("m") {
+			name = g.params.SegModel
+		}
+		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | -/- in/out token limit | %s\033[0m\n\n",
+			backend, name, g.params.ThinkingLevel)
+		return nil
+	}
+
+	var m *genai.Model
+	var err error
+	if (g.params.Embed || len(g.params.DigestPaths) > 0) && !isFlagSet("m") {
+		m, err = g.client.Models.Get(g.ctx, g.params.EmbModel, nil)
+	} else {
+		m, err = g.client.Models.Get(g.ctx, g.params.GenModel, nil)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
+		backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, g.params.ThinkingLevel)
+	return nil
+}
+
+func (g *Generator) setPromptsAndFiles() error {
+	var stdinData []byte
+	var err error
+
+	// handle redirect/piped data
+	if !g.params.Interactive {
+		stdinData, err = io.ReadAll(g.in)
 		if err != nil {
-			return 1
+			return err
 		}
-		if err := appendToDigest(params.DigestPaths[0], res.Embeddings[0], keyVals, params.OnlyKvs, params.Verbose, parts...); err != nil {
-			return 1
-		}
-		return 0
+		g.params.Interactive = len(stdinData) == 0 // ignore redirect
 	}
 
-	// Handle digest parameter and retrieve text from digest
-	if len(params.DigestPaths) > 0 {
-		var res []QueryResult
-		for _, digestPathVal := range params.DigestPaths {
-			query, err := client.Models.EmbedContent(genCtx, params.EmbModel, []*genai.Content{{Parts: parts}}, nil)
-			if err != nil {
-				return 1
-			}
-			res, err = queryDigest(digestPathVal, query.Embeddings[0], res, params.K, float32(params.Lambda), params.Verbose)
-			if err != nil {
-				return 1
-			}
+	// handle prompts from argument
+	if len(g.params.Args) > 0 {
+		text := searchReplace(strings.Join(g.params.Args, " "), g.keyVals)
+		if !g.params.Interactive && text == "-" {
+			text = string(stdinData)
 		}
-		if len(res) > 0 {
-			// inject digest into a prompt or append as text
-			if idx := partWithKey(sysParts, DigestKey); idx != -1 {
-				replacePart(&sysParts, idx, DigestKey, res)
-			} else if idx := partWithKey(parts, DigestKey); idx != -1 {
-				replacePart(&parts, idx, DigestKey, res)
-			} else {
-				prependToParts(&parts, res)
+		if g.params.SystemInstruction && (g.params.Interactive || !oneMatches(g.params.FilePaths, "-")) {
+			// argument used as system prompt for chat session unless `-f -` is set
+			g.sysParts = append(g.sysParts, &genai.Part{Text: text})
+		} else {
+			g.parts = append(g.parts, &genai.Part{Text: text})
+		}
+
+		// handle files
+		for _, filePathVal := range g.params.FilePaths {
+			// case of redirect passed as file
+			if filePathVal == "-" {
+				if g.params.SystemInstruction {
+					// `-f -` takes precedence over `-s`
+					g.sysParts = append(g.sysParts, &genai.Part{Text: searchReplace(string(stdinData), g.keyVals)})
+				} else {
+					g.parts = append(g.parts, &genai.Part{Text: searchReplace(string(stdinData), g.keyVals)})
+				}
+				continue
+			}
+			// case of regular file, json schema, .prompt, .sprompt or directory
+			if err = glob(g.ctx, g.client, filePathVal, &g.parts, &g.sysParts, &g.schema); err != nil {
+				return err
 			}
 		}
 	}
 
-	// Set temperature and top_p from args or model defaults
-	config := &genai.GenerateContentConfig{
-		Temperature: genai.Ptr(float32(params.Temp)),
-		TopP:        genai.Ptr(float32(params.TopP)),
+	return nil
+}
+
+func (g *Generator) segmentImage() error {
+	var img *genai.Image
+	var err error
+
+	if strings.HasPrefix(g.params.FilePaths[0], "gs://") {
+		img = &genai.Image{GCSURI: g.params.FilePaths[0]}
+	} else {
+		img, err = loadImage(g.params.FilePaths[0])
+		if err != nil {
+			return err
+		}
 	}
-	// Handle modality
-	if params.ImgModality {
+
+	res, err := g.client.Models.SegmentImage(g.ctx, g.params.SegModel,
+		&genai.SegmentImageSource{
+			Image: img,
+		},
+		&genai.SegmentImageConfig{
+			Mode: genai.SegmentModeForeground,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, gim := range res.GeneratedMasks {
+		if err = emitImage(g.out, gim.Mask); err != nil {
+			return err
+		}
+		for _, el := range gim.Labels {
+			fmt.Fprintln(g.out, el.Label)
+		}
+	}
+
+	return nil
+}
+
+func (g *Generator) saveEmbeddings() error {
+	res, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, []*genai.Content{{Parts: g.parts}}, nil)
+	if err != nil {
+		return err
+	}
+	if err := appendToDigest(g.params.DigestPaths[0], res.Embeddings[0], g.keyVals, g.params.OnlyKvs, g.params.Verbose, g.parts...); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *Generator) searchDigests() error {
+	var res []QueryResult
+	for _, digestPathVal := range g.params.DigestPaths {
+		query, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, []*genai.Content{{Parts: g.parts}}, nil)
+		if err != nil {
+			return err
+		}
+		res, err = queryDigest(digestPathVal, query.Embeddings[0], res, g.params.K, float32(g.params.Lambda), g.params.Verbose)
+		if err != nil {
+			return err
+		}
+	}
+	if len(res) > 0 {
+		// inject digest into a prompt or append as text
+		if idx := partWithKey(g.sysParts, DigestKey); idx != -1 {
+			replacePart(&g.sysParts, idx, DigestKey, res)
+		} else if idx := partWithKey(g.parts, DigestKey); idx != -1 {
+			replacePart(&g.parts, idx, DigestKey, res)
+		} else {
+			prependToParts(&g.parts, res)
+		}
+	}
+	return nil
+}
+
+func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
+	var err error
+
+	if g.params.ImgModality {
 		config.ResponseModalities = []string{"TEXT", "IMAGE"}
 	} else {
 		config.ResponseModalities = []string{"TEXT"}
 	}
-	// Handle json parameter
-	if params.JSON {
+	if g.params.JSON {
 		config.ResponseMIMEType = "application/json"
-		if schema != nil {
-			config.ResponseJsonSchema = schema
+		if g.schema != nil {
+			config.ResponseJsonSchema = g.schema
 		}
 	}
-	// Register tools with genai.FunctionCallingConfigModeAny
-	if params.Tool {
+	if g.params.Tool {
+		// register tools with genai.FunctionCallingConfigModeAny
 		config.Tools = []*genai.Tool{}
 		if err = registerGenTools(config); err != nil { // declared in the tools.go file
-			return 1
+			return err
 		}
-		if err = registerMCPTools(genCtx, config); err != nil { // declared with -mcp
-			return 1
+		if err = registerMCPTools(g.ctx, config); err != nil { // declared with -mcp
+			return err
 		}
-		conjTexts(&parts)
+		conjTexts(&g.parts)
 	}
-	// Allow code execution
-	if params.CodeGen {
+	if g.params.CodeGen {
 		config.Tools =
 			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
 	}
-	// Enable Google search retrieval
-	if params.GoogleSearch {
+	if g.params.GoogleSearch {
 		config.Tools = []*genai.Tool{
 			{GoogleSearch: &genai.GoogleSearch{}},
 			{URLContext: &genai.URLContext{}},
 		}
 	}
-	// Handle unsafe parameter
-	if params.Unsafe {
+	if g.params.Unsafe {
 		config.SafetySettings = []*genai.SafetySetting{
 			{
 				Category:  genai.HarmCategoryDangerousContent,
@@ -260,97 +338,71 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 			},
 		}
 	}
-
-	// Set system instruction
-	if len(sysParts) > 0 {
+	if len(g.sysParts) > 0 {
 		config.SystemInstruction = &genai.Content{
-			Parts: sysParts,
+			Parts: g.sysParts,
 			Role:  "model",
 		}
-		if params.Verbose {
+		if g.params.Verbose {
 			emitContent(os.Stderr, config.SystemInstruction, false, true, 0)
 		}
 	}
-
-	// Handle thinking level
-	if params.ThinkingLevel != genai.ThinkingLevelUnspecified {
-		// add thought summaries
+	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {
 		config.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevel(params.ThinkingLevel),
+			ThinkingLevel:   genai.ThinkingLevel(g.params.ThinkingLevel),
 		}
 	}
 
+	return nil
+}
+
+func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
+	var err error
+
 	// retrieve previous session, if any
 	history := []*genai.Content{}
-	if params.ChatMode {
+	if g.params.ChatMode {
 		if err = retrieveHistory(&history); err != nil {
-			return 1
+			return err
 		}
-		if params.Verbose {
+		if g.params.Verbose {
 			emitHistory(os.Stderr, history)
 		}
 	}
 
-	// Start chat
-	chat, err := client.Chats.Create(genCtx, params.GenModel, config, history)
+	chat, err := g.client.Chats.Create(g.ctx, g.params.GenModel, config, history)
 	if err != nil {
-		return 1
+		return err
 	}
 
-	tty := in // assume in is terminal for chat
+	tty := g.in // assume in is terminal for chat
 
-	if !params.Interactive && params.ChatMode {
+	if !g.params.Interactive && g.params.ChatMode {
 		// in is a redirect, look for a terminal to open
 		tty, err = openConsole()
 		if err != nil {
-			return 1
+			return err
 		}
 	}
 
-	// Remove any uploaded media assets on exit
-	if len(params.FilePaths) > 0 {
-		for _, p := range parts {
-			if p.FileData != nil {
-				mediaAssets = append(mediaAssets, p.FileData.FileURI)
-			}
-		}
-		if len(mediaAssets) > 0 {
-			defer func(verbose bool) {
-				for _, fileURI := range mediaAssets {
-					_, err := client.Files.Delete(genCtx, fileURI, nil)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
-						continue
-					}
-					if verbose {
-						fmt.Fprintf(os.Stderr, "\033[36m%s deleted\033[0m\n", fileURI)
-					}
-				}
-			}(params.Verbose)
-		}
-	}
-
-	// Main chat loop
+	// main chat loop
 	var onceOnly bool
 	var addedFunRes bool
 	for {
-		if len(parts) > 0 {
+		if len(g.parts) > 0 {
 			i := 0
-			//sendParts := parts
-			//parts = []*genai.Part{} // emtpy parts for next iteration
 			addedFunRes = false
-			//for resp, err := range chat.SendStream(genCtx, sendParts...) {
-			for resp, err := range chat.SendStream(genCtx, parts...) {
+			for resp, err := range chat.SendStream(g.ctx, g.parts...) {
 				if err != nil {
-					fmt.Fprintf(out, "\n")
-					return 1
+					fmt.Fprintf(g.out, "\n")
+					return err
 				}
 				if !onceOnly {
-					if !params.ChatMode {
+					if !g.params.ChatMode {
 						onceOnly = true
 					}
-					if res := processFunCalls(genCtx, resp); len(res) > 0 {
+					if res := processFunCalls(g.ctx, resp); len(res) > 0 {
 						resp = &genai.GenerateContentResponse{
 							Candidates: []*genai.Candidate{
 								&genai.Candidate{
@@ -362,52 +414,51 @@ func emitGen(ctx context.Context, in io.Reader, out io.Writer) int {
 							},
 						}
 						addedFunRes = true
-						//parts = append(parts, sendParts...) // send original parts back
-						parts = append(parts, res...)
+						g.parts = append(g.parts, res...)
 					}
 				}
-				if err := emitCandidates(out, resp.Candidates, params.ImgModality, params.Verbose, addedFunRes, i); err != nil {
-					fmt.Fprintf(out, "\n")
-					return 1
+				if err := emitCandidates(g.out, resp.Candidates, g.params.ImgModality, g.params.Verbose, addedFunRes, i); err != nil {
+					fmt.Fprintf(g.out, "\n")
+					return err
 				}
-				if params.TokenCount && resp.UsageMetadata != nil {
+				if g.params.TokenCount && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
 				i += 1
 			} // for range SendStream
 		}
 		// exit if not a chat and no function response to process
-		if !params.ChatMode && !addedFunRes { //len(parts) == 0 {
+		if !g.params.ChatMode && !addedFunRes { //len(parts) == 0 {
 			break
 		}
-		if params.ChatMode && !addedFunRes {
+		if g.params.ChatMode && !addedFunRes {
 			input, err := readLine(tty)
 			if err != nil {
-				return 1
+				return err
 			}
 			// check for double blank line exit condition
 			if input == "" {
 				input, err = readLine(tty)
 				if err != nil {
-					return 1
+					return err
 				}
 				if input == "" {
 					break // exit chat mode
 				}
 			}
-			if isRedirected(out) {
-				fmt.Fprintf(out, "\n%s\n\n", input)
+			if isRedirected(g.out) {
+				fmt.Fprintf(g.out, "\n%s\n\n", input)
 			}
-			parts = append(parts, &genai.Part{Text: input})
+			g.parts = append(g.parts, &genai.Part{Text: input})
 		}
 	}
 
-	if params.ChatMode {
+	if g.params.ChatMode {
 		if err = persistChat(chat); err != nil {
-			fmt.Fprintf(out, "\n")
-			return 1
+			fmt.Fprintf(g.out, "\n")
+			return err
 		}
 	}
 
-	return 0
+	return nil
 }

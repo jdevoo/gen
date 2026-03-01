@@ -124,10 +124,12 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 			continue
 		}
 		if verbose && p.ExecutableCode != nil {
-			if !isRedirected(out) {
-				fmt.Fprintf(out, "\033[36m```%s\n%s\n```\n\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
-			} else {
-				fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
+			if p.CodeExecutionResult != nil && p.CodeExecutionResult.Outcome == genai.OutcomeOK {
+				if !isRedirected(out) {
+					fmt.Fprintf(out, "\033[36m```%s\n%s\n```\n\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
+				} else {
+					fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
+				}
 			}
 		}
 		if verbose && p.FileData != nil {
