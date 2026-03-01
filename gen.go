@@ -84,7 +84,9 @@ func (g *Generator) run() error {
 	}
 
 	if len(g.params.DigestPaths) > 0 {
-		return g.searchDigests() // exit after embeddings search
+		if err := g.searchDigests(); err != nil {
+			return err
+		}
 	}
 
 	// remove any uploaded media assets on exit

@@ -173,9 +173,9 @@ func parseFlags(params *Parameters, keyVals *ParamMap) error {
 		return nil
 	})
 	flag.StringVar(&params.GenModel, "m", params.GenModel, "model name")
-	flag.Var(&params.MCPServers, "mcp", "mcp stdio server command")
+	flag.Var(&params.MCPServers, "mcp", "mcp stdio or streamable server command")
 	flag.Var(keyVals, "p", "prompt parameter value in format key=val")
-	flag.BoolVar(&params.Walk, "r", false, "process directories declared with -f recursively")
+	flag.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
 	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
 	flag.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI (default model \"%s\")", params.SegModel))
 	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")

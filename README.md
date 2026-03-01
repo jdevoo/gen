@@ -130,10 +130,10 @@ Options:
   -m string
     	model name (default "gemini-3-flash-preview")
   -mcp value
-    	mcp stdio server command
+    	mcp stdio or streamable server command
   -p value
     	prompt parameter value in format key=val
-  -r	process directories declared with -f recursively
+  -r	process directory declared with -f recursively
   -s	treat argument as system prompt
   -seg
     	segment image on VertexAI (default model "image-segmentation-001")
