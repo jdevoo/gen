@@ -260,6 +260,6 @@ func cleanup(params *Parameters) {
 	}
 	// final token count report
 	if params.TokenCount {
-		fmt.Printf("\n\033[31m%d tokens\033[0m\n", TokenCount.Load())
+		fmt.Printf("\n"+tokens("%d tokens")+"\n", TokenCount.Load())
 	}
 }

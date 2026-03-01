@@ -48,7 +48,7 @@ func appendToDigest(path string, embedding *genai.ContentEmbedding, keyVals Para
 		return err
 	}
 	if verbose {
-		fmt.Fprintf(os.Stderr, "\033[36mcontent added.\033[0m\n")
+		fmt.Fprint(os.Stderr, infos("content added.\n"))
 	}
 	return nil
 }
@@ -63,7 +63,7 @@ func queryDigest(path string, queryEmbedding *genai.ContentEmbedding, cand []Que
 	defer d.Close()
 	segs := d.Segments()
 	if verbose {
-		fmt.Fprintf(os.Stderr, "\033[36mReading %d segments from digest at %s\033[0m\n", segs, path)
+		fmt.Fprintf(os.Stderr, infos("Reading %d segments from digest at %s\n"), segs, path)
 	}
 	for s := 1; s <= segs; s++ {
 		for idx := 0; ; idx++ {

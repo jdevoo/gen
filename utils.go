@@ -506,3 +506,19 @@ func isArgsInvalid(params *Parameters, keyVals ParamMap) error {
 	}
 	return nil
 }
+
+func plains(s string) string {
+	return "\033[97m" + s + "\033[0m"
+}
+
+func infos(s string) string {
+	return "\033[36m" + s + "\033[0m"
+}
+
+func tokens(s string) string {
+	return "\033[31m" + s + "\033[0m"
+}
+
+func roles(s string) string {
+	return "\033[1;37;46m" + s + "\033[0m"
+}

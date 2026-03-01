@@ -87,7 +87,7 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, ve
 		}
 		if verbose {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n\033[36m%s\033[0m\n", finish)
+				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
 			} else if !imgModality {
 				fmt.Fprintf(out, "\n%s\n", finish)
 			}
@@ -96,15 +96,15 @@ func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, ve
 	return nil
 }
 
-// emitContent prints LLM response parts.
+// emitContent outputs LLM response parts.
 func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx int) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
 			if !isRedirected(out) {
 				if verbose && p.Thought {
-					fmt.Fprintf(out, "\033[36m%s\033[0m", p.Text)
+					fmt.Fprintf(out, infos("%s"), p.Text)
 				} else {
-					fmt.Fprintf(out, "\033[97m%s\033[0m", p.Text)
+					fmt.Fprintf(out, plains("%s"), p.Text)
 				}
 			} else if !imgModality || (verbose && p.Thought) {
 				fmt.Fprintf(out, "%s", p.Text)
@@ -115,7 +115,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 			for _, key := range []string{"output", "error"} {
 				if val, ok := p.FunctionResponse.Response[key].(string); ok && val != "" {
 					if !isRedirected(out) {
-						fmt.Fprintf(out, "\033[36m%s\033[0m", val)
+						fmt.Fprintf(out, infos("%s"), val)
 					} else {
 						fmt.Fprintf(out, "%s", val)
 					}
@@ -126,7 +126,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		if verbose && p.ExecutableCode != nil {
 			if p.CodeExecutionResult != nil && p.CodeExecutionResult.Outcome == genai.OutcomeOK {
 				if !isRedirected(out) {
-					fmt.Fprintf(out, "\033[36m```%s\n%s\n```\n\033[0m", p.ExecutableCode.Language, p.ExecutableCode.Code)
+					fmt.Fprintf(out, infos("```%s\n%s\n```\n"), p.ExecutableCode.Language, p.ExecutableCode.Code)
 				} else {
 					fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
 				}
@@ -134,7 +134,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		}
 		if verbose && p.FileData != nil {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\033[36m[%s](%s)\033[0m", p.FileData.DisplayName, p.FileData.FileURI)
+				fmt.Fprintf(out, infos("[%s](%s)"), p.FileData.DisplayName, p.FileData.FileURI)
 			} else {
 				fmt.Fprintf(out, "[%s](%s)", p.FileData.DisplayName, p.FileData.FileURI)
 			}
@@ -213,7 +213,7 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 	for _, c := range hist {
 		if prev != c.Role {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n\033[1;37;46m%s\033[0m\n", c.Role)
+				fmt.Fprintf(out, "\n"+roles("%s\n"), c.Role)
 			} else {
 				fmt.Fprintf(out, "\n***%s***\n", c.Role)
 			}

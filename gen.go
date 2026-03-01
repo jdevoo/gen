@@ -106,7 +106,7 @@ func (g *Generator) run() error {
 						continue
 					}
 					if verbose {
-						fmt.Fprintf(os.Stderr, "\033[36m%s deleted\033[0m\n", fileURI)
+						fmt.Fprintf(os.Stderr, infos("%s deleted\n"), fileURI)
 					}
 				}
 			}(g.params.Verbose)
@@ -117,7 +117,7 @@ func (g *Generator) run() error {
 	if g.params.TokenCount {
 		defer func() {
 			if g.params.TokenCount && g.ctx.Err() == nil {
-				fmt.Fprintf(g.out, "\033[31m%d tokens\033[0m\n", TokenCount.Load())
+				fmt.Fprintf(g.out, tokens("%d tokens")+"\n", TokenCount.Load())
 			}
 		}()
 	}
@@ -144,7 +144,7 @@ func (g *Generator) emitModelDetails() error {
 		if !isFlagSet("m") {
 			name = g.params.SegModel
 		}
-		fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | -/- in/out token limit | %s\033[0m\n\n",
+		fmt.Fprintf(os.Stderr, infos("%s backend | %s | -/- in/out token limit | %s\n\n"),
 			backend, name, g.params.ThinkingLevel)
 		return nil
 	}
@@ -159,7 +159,7 @@ func (g *Generator) emitModelDetails() error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "\033[36m%s backend | %s | %d/%d in/out token limit | %s\033[0m\n\n",
+	fmt.Fprintf(os.Stderr, infos("%s backend | %s | %d/%d in/out token limit | %s\n\n"),
 		backend, m.Name, m.InputTokenLimit, m.OutputTokenLimit, g.params.ThinkingLevel)
 	return nil
 }
