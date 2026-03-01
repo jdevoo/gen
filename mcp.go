@@ -66,20 +66,27 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 			if params.Verbose && params.Tool {
 				options.LoggingMessageHandler = genLoggingHandler
 			}
+
 			client := mcp.NewClient(
 				&mcp.Implementation{Name: filepath.Base(os.Args[0]), Version: Version},
 				&options,
 			)
+
 			client.AddRoots(&mcp.Root{
 				Name: "gen",
 				URI:  "file://" + filepath.ToSlash(cwd),
 			})
 
-			// NOTE 30s connection timeout
-			mcpCtx, cancel := context.WithTimeout(gCtx, 30*time.Second)
+			isStreamableServer := strings.HasPrefix(srvStr, "http://") ||
+				strings.HasPrefix(srvStr, "https://")
+			timeout := 30 * time.Second
+			if isStreamableServer {
+				timeout = 120 * time.Second
+			}
+			mcpCtx, cancel := context.WithTimeout(gCtx, timeout)
 			defer cancel()
 
-			if strings.HasPrefix(srvStr, "http://") || strings.HasPrefix(srvStr, "https://") {
+			if isStreamableServer {
 				session, err = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
 					Endpoint: srvStr,
 				}, nil)

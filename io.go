@@ -232,7 +232,7 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 		return nil, fmt.Errorf("uploading file '%s': %v", path, err)
 	}
 
-	pollingCtx, pollingCancel := context.WithTimeout(ctx, 30*time.Second)
+	pollingCtx, pollingCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer pollingCancel()
 
 	for file.State == genai.FileStateProcessing {
