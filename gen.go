@@ -189,8 +189,10 @@ func (g *Generator) setPromptsAndFiles() error {
 		} else {
 			g.parts = append(g.parts, &genai.Part{Text: text})
 		}
+	}
 
-		// handle files
+	// handle files
+	if len(g.params.FilePaths) > 0 {
 		for _, filePathVal := range g.params.FilePaths {
 			// case of redirect passed as file
 			if filePathVal == "-" {
