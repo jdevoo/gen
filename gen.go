@@ -347,7 +347,7 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			Parts: g.sysParts,
 		}
 		if g.params.Verbose {
-			emitContent(os.Stderr, config.SystemInstruction, false, true)
+			emitContent(os.Stderr, config.SystemInstruction, false, true, 0)
 		}
 	}
 	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {
@@ -409,7 +409,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					fcAcc = append(fcAcc, fc...)
 					break
 				}
-				err := emitCandidate(g.out, resp.Candidates[0], g.params.ImgModality, g.params.Verbose)
+				err := emitCandidate(g.out, resp.Candidates[0], g.params.ImgModality, g.params.Verbose, i)
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
@@ -423,7 +423,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				visited = true
 				resCand := processFunctionCalls(g.ctx, fcAcc)
 				if resCand != nil {
-					err := emitCandidate(g.out, resCand, g.params.ImgModality, g.params.Verbose)
+					err := emitCandidate(g.out, resCand, g.params.ImgModality, g.params.Verbose, i)
 					if err != nil {
 						fmt.Fprintf(g.out, "\n")
 						return err
