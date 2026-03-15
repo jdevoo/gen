@@ -76,6 +76,9 @@ Generate a brief using an adapted version of Ali Abassi's prompt
 Tree of thought  
 `gen -c -f tot.sprompt -f tot.prompt`
 
+Thinking models  
+`gen -think med What is the sum of the first 50 prime numbers?`
+
 > [!NOTE]
 Exit chat mode with two consecutive blank lines. Chat mode saves history in a `.gen` file in the current directory; remove it to start an empty session.
 

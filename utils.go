@@ -417,12 +417,12 @@ func validRanges(params *Parameters) error {
 	}
 	if
 	// invalid thinking level
-	(len(params.ThinkingLevel) < 3 &&
+	(len(params.ThinkingLevel) < 3 ||
 		params.ThinkingLevel != genai.ThinkingLevelUnspecified &&
-		params.ThinkingLevel != genai.ThinkingLevelMinimal &&
-		params.ThinkingLevel != genai.ThinkingLevelLow &&
-		params.ThinkingLevel != genai.ThinkingLevelMedium &&
-		params.ThinkingLevel != genai.ThinkingLevelHigh) ||
+			params.ThinkingLevel != genai.ThinkingLevelMinimal &&
+			params.ThinkingLevel != genai.ThinkingLevelLow &&
+			params.ThinkingLevel != genai.ThinkingLevelMedium &&
+			params.ThinkingLevel != genai.ThinkingLevelHigh) ||
 		// invalid k values
 		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
