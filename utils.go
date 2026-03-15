@@ -169,11 +169,16 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 					return fmt.Errorf("unsupported type for tool '%s'", m.Name)
 				}
 			}
+			var req []string
+			for k := range argMap {
+				req = append(req, k)
+			}
 			genDecls[i] = &genai.FunctionDeclaration{
 				Name: m.Name,
 				Parameters: &genai.Schema{
 					Type:       genai.TypeObject,
 					Properties: argMap,
+					Required:   req,
 				},
 			}
 		} else {
@@ -261,23 +266,24 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (string, string)
 	return vals[0].String(), ""
 }
 
-// processFunCalls looks for suggested function calls across MCP sessions and gen tools.
-func processFunCalls(ctx context.Context, resp *genai.GenerateContentResponse) []*genai.Part {
-	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return []*genai.Part{}
-	}
-	for _, fc := range resp.FunctionCalls() {
-		if res := invokeMCPTool(ctx, fc); len(res) > 0 {
-			return res
+// processFunctionCalls attempts function calls across MCP sessions and gen tools.
+func processFunctionCalls(ctx context.Context, parts []*genai.FunctionCall) *genai.Candidate {
+	var res []*genai.Part
+	for _, fc := range parts {
+		mcpRes := invokeMCPTool(ctx, fc)
+		if len(mcpRes) > 0 {
+			res = append(res, mcpRes...)
+			continue
 		}
-		res, err := invokeGenTool(ctx, fc)
-		if res != "" || err != "" {
-			return []*genai.Part{
-				genai.NewPartFromFunctionResponse(fc.Name, map[string]any{"output": res, "error": err}),
-			}
-		}
+		genRes, genErr := invokeGenTool(ctx, fc)
+		// always return a response
+		res = append(res, genai.NewPartFromFunctionResponse(fc.Name, map[string]any{"output": genRes, "error": genErr}))
 	}
-	return []*genai.Part{}
+	return &genai.Candidate{
+		Content: &genai.Content{
+			Parts: res,
+		},
+	}
 }
 
 // countMatches is a helper that returns how many strings in strArray contain cand (case-insensitive).

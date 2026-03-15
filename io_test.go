@@ -142,14 +142,10 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 		t.Run(test.name, func(t *testing.T) {
 			cp := make([]*genai.Part, 1)
 			cp[0] = &test.part
-			c := make([]*genai.Candidate, 1)
-			c[0] = &genai.Candidate{
-				Content: &genai.Content{
-					Parts: cp,
-				},
-				Index: 1,
+			c := &genai.Candidate{
+				Content: &genai.Content{Parts: cp},
 			}
-			_ = emitCandidates(os.Stdout, c, test.imgModality, false, false, 0)
+			_ = emitCandidate(os.Stdout, c, test.imgModality, false, 0)
 		})
 	}
 }

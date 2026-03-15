@@ -302,7 +302,7 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 	if g.params.Tool {
 		// register tools with genai.FunctionCallingConfigModeAny
 		config.Tools = []*genai.Tool{}
-		if err = registerGenTools(config); err != nil { // declared in the tools.go file
+		if err = registerGenTools(config); err != nil { // see tools.go
 			return err
 		}
 		if err = registerMCPTools(g.ctx, config); err != nil { // declared with -mcp
@@ -343,10 +343,9 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 	if len(g.sysParts) > 0 {
 		config.SystemInstruction = &genai.Content{
 			Parts: g.sysParts,
-			Role:  "model",
 		}
 		if g.params.Verbose {
-			emitContent(os.Stderr, config.SystemInstruction, false, true, 0)
+			emitContent(os.Stderr, config.SystemInstruction, false, true)
 		}
 	}
 	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {
@@ -388,38 +387,25 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 		}
 	}
 
-	// main chat loop
-	var onceOnly bool
-	var addedFunRes bool
+	// main interaction loop
+	var visited bool // avoid tool call loops
 	for {
 		if len(g.parts) > 0 {
 			i := 0
-			addedFunRes = false
-			for resp, err := range chat.SendStream(g.ctx, g.parts...) {
+			turnParts := g.parts
+			g.parts = []*genai.Part{}
+			var fcAcc []*genai.FunctionCall
+			for resp, err := range chat.SendStream(g.ctx, turnParts...) {
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
 				}
-				if !onceOnly {
-					if !g.params.ChatMode {
-						onceOnly = true
-					}
-					if res := processFunCalls(g.ctx, resp); len(res) > 0 {
-						resp = &genai.GenerateContentResponse{
-							Candidates: []*genai.Candidate{
-								&genai.Candidate{
-									Content: &genai.Content{
-										Parts: res,
-									},
-									Index: 0,
-								},
-							},
-						}
-						addedFunRes = true
-						g.parts = append(g.parts, res...)
-					}
+				if fc := resp.FunctionCalls(); len(fc) > 0 {
+					fcAcc = append(fcAcc, fc...)
+					break
 				}
-				if err := emitCandidates(g.out, resp.Candidates, g.params.ImgModality, g.params.Verbose, addedFunRes, i); err != nil {
+				err := emitCandidate(g.out, resp.Candidates[0], g.params.ImgModality, g.params.Verbose)
+				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
 				}
@@ -427,33 +413,47 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
 				i += 1
-			} // for range SendStream
+			} // end turn
+			if len(fcAcc) > 0 && !visited {
+				visited = true
+				resCand := processFunctionCalls(g.ctx, fcAcc)
+				if resCand != nil {
+					err := emitCandidate(g.out, resCand, g.params.ImgModality, g.params.Verbose)
+					if err != nil {
+						fmt.Fprintf(g.out, "\n")
+						return err
+					}
+					// see protocol https://ai.google.dev/gemini-api/docs/function-calling
+					g.parts = append(g.parts, turnParts...)
+					g.parts = append(g.parts, resCand.Content.Parts...)
+					continue
+				}
+			}
 		}
-		// exit if not a chat and no function response to process
-		if !g.params.ChatMode && !addedFunRes { //len(parts) == 0 {
+		// exit if not a chat
+		if !g.params.ChatMode {
 			break
 		}
-		if g.params.ChatMode && !addedFunRes {
-			input, err := readLine(tty)
+		input, err := readLine(tty)
+		if err != nil {
+			return err
+		}
+		// check for double blank line
+		if input == "" {
+			input, err = readLine(tty)
 			if err != nil {
 				return err
 			}
-			// check for double blank line exit condition
 			if input == "" {
-				input, err = readLine(tty)
-				if err != nil {
-					return err
-				}
-				if input == "" {
-					break // exit chat mode
-				}
+				break // exit chat mode
 			}
-			if isRedirected(g.out) {
-				fmt.Fprintf(g.out, "\n%s\n\n", input)
-			}
-			g.parts = append(g.parts, &genai.Part{Text: input})
 		}
-	}
+		if isRedirected(g.out) {
+			fmt.Fprintf(g.out, "\n%s\n\n", input)
+		}
+		g.parts = append(g.parts, &genai.Part{Text: input})
+		visited = false
+	} // end main interaction loop
 
 	if g.params.ChatMode {
 		if err = persistChat(chat); err != nil {

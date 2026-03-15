@@ -217,6 +217,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 			outputStrings = append(outputStrings, v.Resource.Text)
 		}
 	}
+
 	parts = append(parts,
 		genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"output": strings.Join(outputStrings, "\n"),

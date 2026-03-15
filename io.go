@@ -70,34 +70,32 @@ func rewind(out io.Writer) bool {
 	return false
 }
 
-// emitCandidates is a wrapper to emitContent.
-func emitCandidates(out io.Writer, resp []*genai.Candidate, imgModality bool, verbose bool, addedFunRes bool, idx int) error {
+// emitCandidate is a wrapper to emitContent.
+func emitCandidate(out io.Writer, cand *genai.Candidate, imgModality bool, verbose bool) error {
 	var finish genai.FinishReason
-	for _, cand := range resp {
-		if cand != nil && cand.Content != nil {
-			if err := emitContent(out, cand.Content, imgModality, verbose, idx); err != nil {
-				return err
-			}
-			finish = cand.FinishReason
-		}
+	if cand == nil || cand.Content == nil {
+		return nil
 	}
+	if err := emitContent(out, cand.Content, imgModality, verbose); err != nil {
+		return err
+	}
+	finish = cand.FinishReason
 	if finish != "" {
-		if !addedFunRes {
-			fmt.Fprint(out, "\n")
-		}
 		if verbose {
 			if !isRedirected(out) {
 				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
 			} else if !imgModality {
 				fmt.Fprintf(out, "\n%s\n", finish)
 			}
+		} else {
+			fmt.Fprintln(out)
 		}
 	}
 	return nil
 }
 
 // emitContent outputs LLM response parts.
-func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx int) error {
+func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
 			if !isRedirected(out) {
@@ -115,9 +113,9 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 			for _, key := range []string{"output", "error"} {
 				if val, ok := p.FunctionResponse.Response[key].(string); ok && val != "" {
 					if !isRedirected(out) {
-						fmt.Fprintf(out, infos("%s"), val)
+						fmt.Fprintf(out, infos("%s\n"), val)
 					} else {
-						fmt.Fprintf(out, "%s", val)
+						fmt.Fprintf(out, "%s\n", val)
 					}
 				}
 			}
@@ -161,18 +159,13 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
 			} else {
-				if idx > 0 {
-					fmt.Fprintf(out, "\n")
-				}
 				// encode to Sixel format
 				senc := SixelEncoder(out)
 				senc.Dither = true
 				if err := senc.Encode(img); err != nil {
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
-				if idx > 0 {
-					fmt.Fprintf(out, "\n")
-				}
+				fmt.Fprint(out, "\n")
 			}
 			continue
 		}
@@ -219,7 +212,7 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 			}
 			prev = c.Role
 		}
-		emitContent(out, c, false, true, 0)
+		emitContent(out, c, false, true)
 	}
 	fmt.Fprint(out, "\n")
 }
