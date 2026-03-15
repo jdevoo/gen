@@ -521,7 +521,7 @@ func infos(s string) string {
 	return "\033[36m" + s + "\033[0m"
 }
 
-func tokens(s string) string {
+func important(s string) string {
 	return "\033[31m" + s + "\033[0m"
 }
 

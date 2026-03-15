@@ -117,7 +117,7 @@ func (g *Generator) run() error {
 	if g.params.TokenCount {
 		defer func() {
 			if g.params.TokenCount && g.ctx.Err() == nil {
-				fmt.Fprintf(g.out, tokens("%d tokens")+"\n", TokenCount.Load())
+				fmt.Fprintf(g.out, important("%d tokens")+"\n", TokenCount.Load())
 			}
 		}()
 	}
@@ -367,8 +367,11 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 		if err = retrieveHistory(&history); err != nil {
 			return err
 		}
-		if g.params.Verbose {
-			emitHistory(os.Stderr, history)
+		if len(history) > 0 {
+			fmt.Fprintf(g.out, important("%s found\n"), DotGen)
+			if g.params.Verbose {
+				emitHistory(os.Stderr, history)
+			}
 		}
 	}
 
