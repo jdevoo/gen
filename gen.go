@@ -113,15 +113,6 @@ func (g *Generator) run() error {
 		}
 	}
 
-	// handle token count
-	if g.params.TokenCount {
-		defer func() {
-			if g.params.TokenCount && g.ctx.Err() == nil {
-				fmt.Fprintf(g.out, important("%d tokens")+"\n", TokenCount.Load())
-			}
-		}()
-	}
-
 	config := genai.GenerateContentConfig{
 		Temperature: genai.Ptr(float32(g.params.Temp)),
 		TopP:        genai.Ptr(float32(g.params.TopP)),

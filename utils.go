@@ -34,10 +34,10 @@ func (m *ParamMap) Set(kv string) error {
 // ParamArray holds a list of strings e.g. file paths.
 type ParamArray []string
 
-// String implements the flag.Value interface for ParamMap.
+// String implements the flag.Value interface for ParamArray.
 func (*ParamArray) String() string { return "" }
 
-// Set implements the flag.Value interface for ParamMap.
+// Set implements the flag.Value interface for ParamArray.
 func (a *ParamArray) Set(val string) error {
 	*a = append(*a, val)
 	return nil
