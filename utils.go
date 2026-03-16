@@ -449,14 +449,14 @@ func validCombos(params *Parameters) error {
 		(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
 		// code execution with incompatible flags
 		(params.CodeGen &&
-			(params.JSON || params.Tool || params.GoogleSearch || params.Embed)) ||
+			(params.Tool || params.GoogleSearch || params.Embed)) ||
 		// tool registration with incompatible flags
 		(params.Tool &&
-			(params.JSON || params.CodeGen || params.GoogleSearch ||
+			(params.CodeGen || params.GoogleSearch ||
 				params.SystemInstruction || params.Embed)) ||
 		// search with incompatible flags
 		(params.GoogleSearch &&
-			(params.JSON || params.Tool || params.CodeGen || params.Embed)) ||
+			(params.Tool || params.CodeGen || params.Embed)) ||
 		// image modality with incompatible flags
 		(params.ImgModality &&
 			(params.GoogleSearch || params.CodeGen ||

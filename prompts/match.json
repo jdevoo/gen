@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "winner": {
+      "type": "string",
+      "description":"The name of the winner."
+    },
+    "final_match_score": {
+      "type": "string",
+      "description":"The final match score."
+    },
+    "scorers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The name of the scorer."
+    }
+  },
+  "required": ["winner", "final_match_score", "scorers"]
+}
