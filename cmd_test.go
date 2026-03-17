@@ -3,12 +3,45 @@ package main
 import (
 	"flag"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"google.golang.org/genai"
 )
+
+func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
+	fs.BoolVar(&params.Verbose, "V", false, "")
+	fs.BoolVar(&params.SegmentBackground, "b", false, "")
+	fs.BoolVar(&params.ChatMode, "c", false, "")
+	fs.BoolVar(&params.CodeGen, "code", false, "")
+	fs.Var(&params.DigestPaths, "d", "")
+	fs.BoolVar(&params.Embed, "e", false, "")
+	fs.Var(&params.FilePaths, "f", "")
+	fs.BoolVar(&params.GoogleSearch, "g", false, "")
+	fs.BoolVar(&params.Help, "h", false, "")
+	fs.BoolVar(&params.ImgModality, "img", false, "")
+	fs.BoolVar(&params.JSON, "json", false, "")
+	fs.IntVar(&params.K, "k", 3, "")
+	fs.Float64Var(&params.Lambda, "l", 0.5, "")
+	fs.Func("think", "", func(v string) error {
+		params.ThinkingLevel = genai.ThinkingLevelUnspecified
+		return nil
+	})
+	fs.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
+	fs.Var(&params.MCPServers, "mcp", "")
+	fs.BoolVar(&params.OnlyKvs, "o", false, "")
+	fs.Var(keyVals, "p", "")
+	fs.BoolVar(&params.SystemInstruction, "s", false, "")
+	fs.BoolVar(&params.Segment, "seg", false, "")
+	fs.BoolVar(&params.TokenCount, "t", false, "")
+	fs.Float64Var(&params.Temp, "temp", 1.0, "")
+	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
+	fs.BoolVar(&params.Tool, "tool", false, "")
+	fs.Float64Var(&params.TopP, "top_p", 0.95, "")
+	fs.BoolVar(&params.Unsafe, "unsafe", false, "")
+	fs.BoolVar(&params.Version, "v", false, "")
+	fs.BoolVar(&params.Walk, "w", false, "")
+}
 
 func TestArgsInvalid(t *testing.T) {
 	oldArgs := os.Args
@@ -128,52 +161,20 @@ func TestArgsInvalid(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Reset params for each test case.
-			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+			fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
 			params = &Parameters{} // Re-initialize the params struct
 			keyVals := ParamMap{}  // Reset the keyVals map
 			params.FilePaths = ParamArray{}
 			params.DigestPaths = ParamArray{}
-			flag.BoolVar(&params.Verbose, "V", false, "")
-			flag.BoolVar(&params.SegmentBackground, "b", false, "")
-			flag.BoolVar(&params.ChatMode, "c", false, "")
-			flag.BoolVar(&params.CodeGen, "code", false, "")
-			flag.Var(&params.DigestPaths, "d", "")
-			flag.BoolVar(&params.Embed, "e", false, "")
-			flag.Var(&params.FilePaths, "f", "")
-			flag.BoolVar(&params.GoogleSearch, "g", false, "")
-			flag.BoolVar(&params.Help, "h", false, "")
-			flag.BoolVar(&params.ImgModality, "img", false, "")
-			flag.BoolVar(&params.JSON, "json", false, "")
-			flag.IntVar(&params.K, "k", 3, "")
-			flag.Float64Var(&params.Lambda, "l", 0.5, "")
-			flag.Func("think", "", func(v string) error {
-				params.ThinkingLevel = genai.ThinkingLevelUnspecified
-				return nil
-			})
-			flag.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
-			flag.Var(&params.MCPServers, "mcp", "")
-			flag.BoolVar(&params.OnlyKvs, "o", false, "")
-			flag.Var(&keyVals, "p", "")
-			flag.BoolVar(&params.SystemInstruction, "s", false, "")
-			flag.BoolVar(&params.Segment, "seg", false, "")
-			flag.BoolVar(&params.TokenCount, "t", false, "")
-			flag.Float64Var(&params.Temp, "temp", 1.0, "")
-			flag.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
-			flag.BoolVar(&params.Tool, "tool", false, "")
-			flag.Float64Var(&params.TopP, "top_p", 0.95, "")
-			flag.BoolVar(&params.Unsafe, "unsafe", false, "")
-			flag.BoolVar(&params.Version, "v", false, "")
-			flag.BoolVar(&params.Walk, "w", false, "")
+			SetupFlags(fs, params, &keyVals)
 
-			progName := filepath.Base(t.Name())
-			os.Args = []string{progName}
-			os.Args = append(os.Args, tc.args...)
-			err := flag.CommandLine.Parse(os.Args[1:])
-			if err != nil {
-				t.Fatalf("Error parsing params: %v", err)
+			if err := fs.Parse(tc.args); err != nil {
+				t.Fatalf("Parse failed: %v", err)
 			}
-			params.Args = flag.CommandLine.Args()
+			params.Args = fs.Args()
 			params.Interactive = tc.interactive
+
 			actual := isArgsInvalid(params, keyVals)
 			if (actual != nil) != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)

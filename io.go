@@ -175,7 +175,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
 			} else {
-				if *idx > 0 {
+				if idx != nil && *idx > 0 {
 					fmt.Fprintf(out, "\n")
 				}
 				// encode to Sixel format
@@ -184,7 +184,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 				if err := senc.Encode(img); err != nil {
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
-				if *idx > 0 {
+				if idx != nil && *idx > 0 {
 					fmt.Fprint(out, "\n")
 				}
 			}

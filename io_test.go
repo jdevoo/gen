@@ -145,7 +145,7 @@ ubeK6t3gnXdG4wwziiii/UTKMOg6dbzJLFE4dSCP3rEdeOM8805tDsGMvySgSsS6rM6gk9eAcUUVftZt
 			c := &genai.Candidate{
 				Content: &genai.Content{Parts: cp},
 			}
-			_ = emitCandidate(os.Stdout, c, test.imgModality, false, 0)
+			_ = emitCandidate(os.Stdout, c, test.imgModality, false, nil)
 		})
 	}
 }

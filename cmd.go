@@ -85,7 +85,7 @@ func run(ctx context.Context) error {
 	params := &Parameters{}
 	keyVals := ParamMap{}
 
-	if err := parseFlags(params, &keyVals); err != nil {
+	if err := parseFlags(flag.CommandLine, params, &keyVals, os.Args[1:]); err != nil {
 		return err
 	}
 
@@ -133,7 +133,7 @@ func run(ctx context.Context) error {
 }
 
 // parseFlags handles flag definitions and parameter map for variable substitutions in prompts.
-func parseFlags(params *Parameters, keyVals *ParamMap) error {
+func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []string) error {
 	// default parameter values
 	params.K = 3
 	params.Lambda = 0.5
@@ -149,21 +149,21 @@ func parseFlags(params *Parameters, keyVals *ParamMap) error {
 		return fmt.Errorf("Error loading preferences from %s: %v\n", DotGenRc, err)
 	}
 
-	flag.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
-	flag.BoolVar(&params.SegmentBackground, "b", false, "background segmentation mode (default: foreground)")
-	flag.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json, -img, -code or -g)")
-	flag.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
-	flag.Var(&params.DigestPaths, "d", "path to a digest folder")
-	flag.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
-	flag.Var(&params.FilePaths, "f", "GCS URI, file, directory or quoted pattern of files to attach")
-	flag.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -img and -tool)")
-	flag.BoolVar(&params.Help, "h", false, "show available tools, this help message and exit")
-	flag.BoolVar(&params.OnlyKvs, "i", false, "only store metadata with embeddings and ignore the content")
-	flag.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
-	flag.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -c and -img)")
-	flag.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
-	flag.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
-	flag.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
+	fs.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
+	fs.BoolVar(&params.SegmentBackground, "b", false, "background segmentation mode (default: foreground)")
+	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json, -img, -code or -g)")
+	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
+	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
+	fs.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
+	fs.Var(&params.FilePaths, "f", "GCS URI, file, directory or quoted pattern of files to attach")
+	fs.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -img and -tool)")
+	fs.BoolVar(&params.Help, "h", false, "show available tools, this help message and exit")
+	fs.BoolVar(&params.OnlyKvs, "i", false, "only store metadata with embeddings and ignore the content")
+	fs.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
+	fs.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -c and -img)")
+	fs.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
+	fs.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
+	fs.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
 		genai.ThinkingLevelMinimal,
 		genai.ThinkingLevelLow,
 		genai.ThinkingLevelMedium,
@@ -172,22 +172,24 @@ func parseFlags(params *Parameters, keyVals *ParamMap) error {
 		params.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(val))
 		return nil
 	})
-	flag.StringVar(&params.GenModel, "m", params.GenModel, "model name")
-	flag.Var(&params.MCPServers, "mcp", "mcp stdio or streamable server command")
-	flag.Var(keyVals, "p", "prompt parameter value in format key=val")
-	flag.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
-	flag.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
-	flag.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI (default model \"%s\")", params.SegModel))
-	flag.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
-	flag.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation [0.0,2.0]")
-	flag.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")
-	flag.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -img or -code)")
-	flag.Float64Var(&params.TopP, "top_p", params.TopP, "how the model selects tokens for generation [0.0,1.0]")
-	flag.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
-	flag.BoolVar(&params.Version, "v", false, "show version and exit")
-	flag.Parse()
+	fs.StringVar(&params.GenModel, "m", params.GenModel, "model name")
+	fs.Var(&params.MCPServers, "mcp", "mcp stdio or streamable server command")
+	fs.Var(keyVals, "p", "prompt parameter value in format key=val")
+	fs.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
+	fs.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
+	fs.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI (default model \"%s\")", params.SegModel))
+	fs.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
+	fs.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation [0.0,2.0]")
+	fs.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")
+	fs.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -img or -code)")
+	fs.Float64Var(&params.TopP, "top_p", params.TopP, "how the model selects tokens for generation [0.0,1.0]")
+	fs.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
+	fs.BoolVar(&params.Version, "v", false, "show version and exit")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
-	params.Args = flag.Args()
+	params.Args = fs.Args()
 	params.Interactive = !isRedirected(os.Stdin)
 	params.ToolRegistry = ToolMap{}
 
