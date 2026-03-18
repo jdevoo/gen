@@ -11,8 +11,8 @@ import (
 
 type Tool struct{}
 
-// ListKnownGeminiModels retrieves the list of available Gemini models.
-func (t Tool) ListKnownGeminiModels(ctx context.Context) (string, error) {
+// FetchKnownGeminiModels retrieves the list of available Gemini models.
+func (t Tool) FetchKnownGeminiModels(ctx context.Context) (string, error) {
 	var res []string
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
@@ -27,8 +27,8 @@ func (t Tool) ListKnownGeminiModels(ctx context.Context) (string, error) {
 	return strings.Join(res, "\n"), nil
 }
 
-// ListAWSServices returns a list of services via Steampipe.
-func (t Tool) ListAWSServices(ctx context.Context) (string, error) {
+// FetchAWSServices returns a list of services via Steampipe.
+func (t Tool) FetchAWSServices(ctx context.Context) (string, error) {
 	return queryPostgres(ctx, "SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'")
 }
 
