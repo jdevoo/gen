@@ -76,7 +76,8 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, imgModality bool, verbo
 	if cand == nil || cand.Content == nil {
 		return nil
 	}
-	if err := emitContent(out, cand.Content, imgModality, verbose, idx); err != nil {
+	mp := NewParser()
+	if err := emitContent(out, cand.Content, imgModality, verbose, idx, mp); err != nil {
 		return err
 	}
 	finish = cand.FinishReason
@@ -95,14 +96,14 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, imgModality bool, verbo
 }
 
 // emitContent outputs LLM response parts.
-func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx *int) error {
+func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
 			if !isRedirected(out) {
 				if verbose && p.Thought {
 					fmt.Fprintf(out, infos("%s"), p.Text)
 				} else {
-					fmt.Fprintf(out, plains("%s"), p.Text)
+					fmt.Fprintf(out, plains("%s"), mp.Parse(p.Text))
 				}
 			} else if !imgModality || (verbose && p.Thought) {
 				fmt.Fprintf(out, "%s", p.Text)
@@ -156,6 +157,9 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 				} else {
 					fmt.Fprint(out, p.InlineData.Data)
 				}
+				if idx != nil {
+					*idx++
+				}
 			}
 			if !strings.HasPrefix(p.InlineData.MIMEType, "image") {
 				return fmt.Errorf("emitContent of type %s: not supported", p.InlineData.MIMEType)
@@ -184,9 +188,9 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 				if err := senc.Encode(img); err != nil {
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
-				if idx != nil && *idx > 0 {
-					fmt.Fprint(out, "\n")
-				}
+				//if idx != nil && *idx > 0 {
+				fmt.Fprint(out, "\n")
+				//}
 			}
 			if idx != nil {
 				*idx++
@@ -236,7 +240,8 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 			}
 			prev = c.Role
 		}
-		emitContent(out, c, false, true, nil)
+		mp := NewParser()
+		emitContent(out, c, false, true, nil, mp)
 	}
 	fmt.Fprint(out, "\n")
 }

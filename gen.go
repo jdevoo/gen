@@ -338,7 +338,8 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			Parts: g.sysParts,
 		}
 		if g.params.Verbose {
-			emitContent(os.Stderr, config.SystemInstruction, false, true, nil)
+			mp := NewParser()
+			emitContent(os.Stderr, config.SystemInstruction, false, true, nil, mp)
 		}
 	}
 	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {

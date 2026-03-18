@@ -10,10 +10,17 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	_ "github.com/lib/pq"
 	"google.golang.org/genai"
 )
+
+// MarkdownParser holds state across Parse calls.
+type MarkdownParser struct {
+	mu     sync.Mutex
+	isBold bool
+}
 
 // ParamMap holds key-value pairs for string replacement.
 type ParamMap map[string]string
@@ -527,4 +534,36 @@ func important(s string) string {
 
 func roles(s string) string {
 	return "\033[1;37;46m" + s + "\033[0m"
+}
+
+// NewParser creates and initializes a new Parser.
+func NewParser() *MarkdownParser {
+	return &MarkdownParser{
+		isBold: false,
+	}
+}
+
+// ParseMarkdown turns pairs of `**` to terminal escape sequences
+func (p *MarkdownParser) Parse(s string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var sb strings.Builder
+
+	for i := 0; i < len(s); {
+		if i+1 < len(s) && s[i:i+2] == "**" {
+			if p.isBold {
+				sb.WriteString("\033[22m")
+			} else {
+				sb.WriteString("\033[1m")
+			}
+			p.isBold = !p.isBold
+			i += 2
+		} else {
+			sb.WriteByte(s[i])
+			i++
+		}
+	}
+
+	return sb.String()
 }
