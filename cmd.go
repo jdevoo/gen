@@ -100,7 +100,7 @@ func run(ctx context.Context) error {
 	ctx = context.WithValue(ctx, "keyVals", keyVals)
 	ctx = context.WithValue(ctx, "params", params)
 
-	// stash MCP client sessions in params.MCPSessionsa
+	// stash MCP client sessions in params.MCPSessions
 	if params.Help || params.Tool {
 		if err := initMCPSessions(ctx, params); err != nil {
 			return fmt.Errorf("MCP error: %w", err)

@@ -116,10 +116,10 @@ func deserializeDoc(data []byte) (Document, error) {
 			return doc, fmt.Errorf("error reading compressed content: %v", err)
 		}
 		r, err := gzip.NewReader(bytes.NewReader(contentBytes))
+		defer r.Close()
 		if err != nil {
 			return doc, fmt.Errorf("error creating gzip reader: %v", err)
 		}
-		defer r.Close()
 		var decompressedContent bytes.Buffer
 		if _, err := io.Copy(&decompressedContent, r); err != nil {
 			return doc, fmt.Errorf("error decompressing content: %v", err)

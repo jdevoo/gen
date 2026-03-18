@@ -318,6 +318,7 @@ func (l *Log) findSegment(index uint64) int {
 	return i - 1
 }
 
+// FIXME querying a large digest will lead to linear RAM growth until gen crashes
 func (l *Log) loadSegmentEntries(s *segment) error {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -341,6 +342,7 @@ func (l *Log) loadSegmentEntries(s *segment) error {
 	return nil
 }
 
+// FIXME no corruption protection
 func loadNextBinaryEntry(data []byte) (n int, err error) {
 	// data_size + data
 	size, n := binary.Uvarint(data)
