@@ -33,7 +33,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 		return nil
 	}
 
-	if !isRedirected(os.Stdout) && !params.Verbose {
+	if !params.OutRedirected && !params.Verbose {
 		spinner := NewSpinner("%s")
 		spinner.Start()
 		defer spinner.Stop()

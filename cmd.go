@@ -49,6 +49,8 @@ type Parameters struct {
 	Lambda            float64
 	MCPServers        ParamArray
 	MCPSessions       SessionArray
+	OutPath           string
+	OutRedirected     bool
 	OnlyKvs           bool // RAG
 	Interactive       bool // terminal session?
 	Segment           bool // SegmentForeground by default
@@ -163,6 +165,7 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	fs.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -c and -img)")
 	fs.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	fs.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
+	fs.StringVar(&params.OutPath, "out", "", "output path for images (incompatible with a redirect)")
 	fs.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
 		genai.ThinkingLevelMinimal,
 		genai.ThinkingLevelLow,
@@ -191,6 +194,7 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 
 	params.Args = fs.Args()
 	params.Interactive = !isRedirected(os.Stdin)
+	params.OutRedirected = isRedirected(os.Stdout)
 	params.ToolRegistry = ToolMap{}
 
 	return nil

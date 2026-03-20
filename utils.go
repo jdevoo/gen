@@ -430,6 +430,8 @@ func validRanges(params *Parameters) error {
 			params.ThinkingLevel != genai.ThinkingLevelLow &&
 			params.ThinkingLevel != genai.ThinkingLevelMedium &&
 			params.ThinkingLevel != genai.ThinkingLevelHigh) ||
+		// invalid out path
+		(len(params.OutPath) > 0 && !isValidPath(params.OutPath)) ||
 		// invalid k values
 		(params.K < 0 || params.K > 10) ||
 		// invalid lambda values
@@ -468,6 +470,9 @@ func validCombos(params *Parameters) error {
 		(params.ImgModality &&
 			(params.GoogleSearch || params.CodeGen ||
 				params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
+		// out path only with -img and no redirect
+		(len(params.OutPath) > 0 &&
+			(!params.ImgModality || params.OutRedirected)) ||
 		// walk without file attached that is not some prompt
 		(params.Walk &&
 			(len(params.FilePaths) == 0 ||

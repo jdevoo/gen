@@ -338,7 +338,7 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			Parts: g.sysParts,
 		}
 		if g.params.Verbose {
-			emitContent(os.Stderr, config.SystemInstruction, false, true, nil, nil)
+			emitContent(os.Stderr, config.SystemInstruction, false, false, true, nil, nil, "")
 		}
 	}
 	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {
@@ -400,7 +400,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					fcAcc = append(fcAcc, fc...)
 					break
 				}
-				err := emitCandidate(g.out, resp.Candidates[0], g.params.ImgModality, g.params.Verbose, &i)
+				err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
@@ -413,7 +413,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				visited = true
 				resCand := processFunctionCalls(g.ctx, fcAcc)
 				if resCand != nil {
-					err := emitCandidate(g.out, resCand, g.params.ImgModality, g.params.Verbose, &i)
+					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
 					if err != nil {
 						fmt.Fprintf(g.out, "\n")
 						return err
@@ -443,7 +443,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				break // exit chat mode
 			}
 		}
-		if isRedirected(g.out) {
+		if g.params.OutRedirected {
 			fmt.Fprintf(g.out, "\n%s\n\n", input)
 		}
 		g.parts = append(g.parts, &genai.Part{Text: input})

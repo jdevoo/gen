@@ -46,7 +46,7 @@ func readLine(r io.Reader) (string, error) {
 	return "", scanner.Err()
 }
 
-// isRedirected checks if `out` supports non-printable characters.
+// isEmpty `out` was already used.
 func isEmpty(out io.Writer) bool {
 	if f, ok := out.(*os.File); ok {
 		if fileInfo, err := f.Stat(); err == nil {
@@ -56,34 +56,28 @@ func isEmpty(out io.Writer) bool {
 	return false
 }
 
-// rewind moves the file pointer back to the start if `out` is a file;
-// will not work with a pipe.
-func rewind(out io.Writer) bool {
-	if f, ok := out.(*os.File); ok {
-		if stat, err := f.Stat(); err == nil && stat.Mode().IsRegular() {
-			if _, err := f.Seek(0, io.SeekStart); err == nil {
-				f.Truncate(0)
-				return true
-			}
-		}
+func isValidPath(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err == nil && fileInfo.IsDir() {
+		return true
 	}
 	return false
 }
 
 // emitCandidate is a wrapper to emitContent.
-func emitCandidate(out io.Writer, cand *genai.Candidate, imgModality bool, verbose bool, idx *int) error {
+func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, imgModality bool, verbose bool, idx *int, outPath string) error {
 	var finish genai.FinishReason
 	if cand == nil || cand.Content == nil {
 		return nil
 	}
 	mp := NewParser()
-	if err := emitContent(out, cand.Content, imgModality, verbose, idx, mp); err != nil {
+	if err := emitContent(out, cand.Content, outRedirected, imgModality, verbose, idx, mp, outPath); err != nil {
 		return err
 	}
 	finish = cand.FinishReason
 	if finish != "" {
 		if verbose {
-			if !isRedirected(out) {
+			if !outRedirected {
 				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
 			} else if !imgModality {
 				fmt.Fprintf(out, "\n%s\n", finish)
@@ -96,10 +90,10 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, imgModality bool, verbo
 }
 
 // emitContent outputs LLM response parts.
-func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
+func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
-			if !isRedirected(out) {
+			if !outRedirected {
 				if verbose && p.Thought {
 					fmt.Fprintf(out, infos("%s"), p.Text)
 				} else {
@@ -120,7 +114,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		if verbose && p.FunctionResponse != nil {
 			for _, key := range []string{"output", "error"} {
 				if val, ok := p.FunctionResponse.Response[key].(string); ok && val != "" {
-					if !isRedirected(out) {
+					if !outRedirected {
 						fmt.Fprintf(out, infos("%s\n"), val)
 					} else {
 						fmt.Fprintf(out, "%s\n", val)
@@ -134,7 +128,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		}
 		if verbose && p.ExecutableCode != nil {
 			if p.CodeExecutionResult != nil && p.CodeExecutionResult.Outcome == genai.OutcomeOK {
-				if !isRedirected(out) {
+				if !outRedirected {
 					fmt.Fprintf(out, infos("```%s\n%s\n```\n"), p.ExecutableCode.Language, p.ExecutableCode.Code)
 				} else {
 					fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
@@ -145,7 +139,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 			}
 		}
 		if verbose && p.FileData != nil {
-			if !isRedirected(out) {
+			if !outRedirected {
 				fmt.Fprintf(out, infos("[%s](%s)"), p.FileData.DisplayName, p.FileData.FileURI)
 			} else {
 				fmt.Fprintf(out, "[%s](%s)", p.FileData.DisplayName, p.FileData.FileURI)
@@ -156,7 +150,7 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 		}
 		if p.InlineData != nil {
 			if strings.HasPrefix(p.InlineData.MIMEType, "text") {
-				if !isRedirected(out) {
+				if !outRedirected {
 					fmt.Fprintf(out, infos("%s"), p.InlineData.Data)
 				} else {
 					fmt.Fprint(out, p.InlineData.Data)
@@ -173,20 +167,27 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 			if err != nil {
 				return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 			}
-			if isRedirected(out) {
-				//if !isEmpty(out) { // output first image only
-				if !rewind(out) { // rewind to keep last image only (NOTE fails for pipe)
-					continue
+			if outRedirected {
+				if isEmpty(out) { // output first image only
+					if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
+						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+					}
 				}
-				// encode to jpeg format
-				if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
+			} else if len(outPath) > 0 {
+				tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
+				defer func() {
+					tmpOut.Close()
+				}()
+				if err != nil {
+					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+				}
+				if err := jpeg.Encode(tmpOut, img, &jpeg.Options{Quality: 100}); err != nil {
 					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 				}
 			} else {
 				if idx != nil && *idx > 0 {
 					fmt.Fprintf(out, "\n")
 				}
-				// encode to Sixel format
 				senc := SixelEncoder(out)
 				senc.Dither = true
 				if err := senc.Encode(img); err != nil {
@@ -244,7 +245,7 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 			}
 			prev = c.Role
 		}
-		emitContent(out, c, false, true, nil, nil)
+		emitContent(out, c, false, false, true, nil, nil, "")
 	}
 	fmt.Fprint(out, "\n")
 }

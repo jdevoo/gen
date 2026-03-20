@@ -29,6 +29,7 @@ func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
 	})
 	fs.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
 	fs.Var(&params.MCPServers, "mcp", "")
+	fs.StringVar(&params.OutPath, "out", "", "")
 	fs.BoolVar(&params.OnlyKvs, "o", false, "")
 	fs.Var(keyVals, "p", "")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "")
