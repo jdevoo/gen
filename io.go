@@ -103,7 +103,11 @@ func emitContent(out io.Writer, content *genai.Content, imgModality bool, verbos
 				if verbose && p.Thought {
 					fmt.Fprintf(out, infos("%s"), p.Text)
 				} else {
-					fmt.Fprintf(out, plains("%s"), mp.Parse(p.Text))
+					s := p.Text
+					if mp != nil {
+						s = mp.Parse(p.Text)
+					}
+					fmt.Fprintf(out, plains("%s"), s)
 				}
 			} else if !imgModality || (verbose && p.Thought) {
 				fmt.Fprintf(out, "%s", p.Text)
@@ -234,14 +238,13 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 	for _, c := range hist {
 		if prev != c.Role {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n"+roles("%s\n"), c.Role)
+				fmt.Fprintf(out, "\n"+roles("%s")+"\n", c.Role)
 			} else {
 				fmt.Fprintf(out, "\n***%s***\n", c.Role)
 			}
 			prev = c.Role
 		}
-		mp := NewParser()
-		emitContent(out, c, false, true, nil, mp)
+		emitContent(out, c, false, true, nil, nil)
 	}
 	fmt.Fprint(out, "\n")
 }

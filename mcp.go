@@ -167,8 +167,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 	if !ok {
 		return []*genai.Part{
 			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"output": "",
-				"error":  "invokeTool: params not found in context",
+				"error": "invokeTool: params not found in context",
 			}),
 		}
 	}
@@ -186,22 +185,20 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 	if err != nil {
 		return []*genai.Part{
 			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"output": "",
-				"error":  fmt.Sprintf("invokeMcpTool: %s", err.Error()),
+				"error": fmt.Sprintf("invokeMcpTool: %s", err.Error()),
 			}),
 		}
 	}
 
 	var parts []*genai.Part
-	var outputStrings []string
 	var errorStrings []string
 
 	for _, c := range ctr.Content {
 		switch v := c.(type) {
 		case *mcp.TextContent:
-			outputStrings = append(outputStrings, v.Text)
+			parts = append(parts, genai.NewPartFromText(v.Text+"\n"))
 		case *mcp.ResourceLink:
-			outputStrings = append(outputStrings, fmt.Sprintf("%+v", v))
+			parts = append(parts, genai.NewPartFromURI(v.URI, v.MIMEType))
 		case *mcp.ImageContent:
 			stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(v.Data)}
 			strippedData, err := io.ReadAll(stripper)
@@ -210,19 +207,23 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 				continue
 			}
 			parts = append(parts, genai.NewPartFromBytes(strippedData, c.(*mcp.ImageContent).MIMEType))
-			parts = append(parts, genai.NewPartFromText("\n"))
 		case *mcp.AudioContent:
 			errorStrings = append(errorStrings, "invokeMcpTool: audio content not supported")
 		case *mcp.EmbeddedResource:
-			outputStrings = append(outputStrings, v.Resource.Text)
+			parts = append(parts, genai.NewPartFromFile(genai.File{
+				Name:     v.Resource.Text,
+				MIMEType: v.Resource.MIMEType,
+				URI:      v.Resource.URI,
+			}))
 		}
 	}
 
-	parts = append(parts,
-		genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"output": strings.Join(outputStrings, "\n"),
-			"error":  strings.Join(errorStrings, "\n"),
-		}))
+	if len(errorStrings) > 0 {
+		parts = append(parts,
+			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+				"error": errorStrings,
+			}))
+	}
 	return parts
 }
 
