@@ -11,7 +11,6 @@ import (
 
 func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
 	fs.BoolVar(&params.Verbose, "V", false, "")
-	fs.BoolVar(&params.SegmentBackground, "b", false, "")
 	fs.BoolVar(&params.ChatMode, "c", false, "")
 	fs.BoolVar(&params.CodeGen, "code", false, "")
 	fs.Var(&params.DigestPaths, "d", "")
@@ -33,7 +32,6 @@ func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
 	fs.BoolVar(&params.OnlyKvs, "o", false, "")
 	fs.Var(keyVals, "p", "")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "")
-	fs.BoolVar(&params.Segment, "seg", false, "")
 	fs.BoolVar(&params.TokenCount, "t", false, "")
 	fs.Float64Var(&params.Temp, "temp", 1.0, "")
 	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")

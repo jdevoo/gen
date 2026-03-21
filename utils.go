@@ -384,8 +384,8 @@ func isFlagSet(name string) bool {
 // validPrompts checks prompts against regular interactive vs no redirect or piped content session.
 func validPrompts(params *Parameters) error {
 	if (params.Interactive &&
-		// no regular prompt privided and no segmentation
-		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt) && !params.Segment) ||
+		// no regular prompt privided
+		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
 			// system instruction
 			(params.SystemInstruction &&
 				// not provided as file
@@ -447,15 +447,8 @@ func validRanges(params *Parameters) error {
 
 func validCombos(params *Parameters) error {
 	if
-	// image segmentation
-	(params.Segment &&
-		(len(params.FilePaths) == 0 || !oneMatches(params.FilePaths, ".jpg") ||
-			params.ImgModality || params.CodeGen || params.JSON ||
-			params.Tool || params.GoogleSearch || params.Embed)) ||
-		// improper use of segmentation mode
-		(!params.Segment && params.SegmentBackground) ||
-		// at most one JSON schema
-		(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
+	// at most one JSON schema
+	(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
 		// code execution with incompatible flags
 		(params.CodeGen &&
 			(params.Tool || params.GoogleSearch || params.Embed)) ||
@@ -472,7 +465,7 @@ func validCombos(params *Parameters) error {
 				params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
 		// out path only with -img and no redirect
 		(len(params.OutPath) > 0 &&
-			(!params.ImgModality || params.OutRedirected)) ||
+			(!(params.ImgModality || params.CodeGen) || params.OutRedirected)) ||
 		// walk without file attached that is not some prompt
 		(params.Walk &&
 			(len(params.FilePaths) == 0 ||
@@ -480,7 +473,7 @@ func validCombos(params *Parameters) error {
 		// chat mode
 		(params.ChatMode &&
 			// with incompatible flags
-			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed || params.Segment)) {
+			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) {
 		return fmt.Errorf("invalid options combination")
 	}
 	return nil

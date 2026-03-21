@@ -71,10 +71,6 @@ func (g *Generator) run() error {
 		}
 	}
 
-	if g.params.Segment {
-		return g.segmentImage() // exit after segmentation
-	}
-
 	if err := g.setPromptsAndFiles(); err != nil {
 		return err
 	}
@@ -129,17 +125,6 @@ func (g *Generator) emitModelDetails() error {
 	if g.client.ClientConfig().Backend == genai.BackendVertexAI {
 		backend = "VertexAI"
 	}
-
-	name := g.params.GenModel
-	if g.params.Segment {
-		if !isFlagSet("m") {
-			name = g.params.SegModel
-		}
-		fmt.Fprintf(os.Stderr, infos("%s backend | %s | -/- in/out token limit | %s\n\n"),
-			backend, name, g.params.ThinkingLevel)
-		return nil
-	}
-
 	var m *genai.Model
 	var err error
 	if (g.params.Embed || len(g.params.DigestPaths) > 0) && !isFlagSet("m") {
@@ -199,43 +184,6 @@ func (g *Generator) setPromptsAndFiles() error {
 			if err = glob(g.ctx, g.client, filePathVal, &g.parts, &g.sysParts, &g.schema); err != nil {
 				return err
 			}
-		}
-	}
-
-	return nil
-}
-
-func (g *Generator) segmentImage() error {
-	var img *genai.Image
-	var err error
-
-	if strings.HasPrefix(g.params.FilePaths[0], "gs://") {
-		img = &genai.Image{GCSURI: g.params.FilePaths[0]}
-	} else {
-		img, err = loadImage(g.params.FilePaths[0])
-		if err != nil {
-			return err
-		}
-	}
-
-	res, err := g.client.Models.SegmentImage(g.ctx, g.params.SegModel,
-		&genai.SegmentImageSource{
-			Image: img,
-		},
-		&genai.SegmentImageConfig{
-			Mode: genai.SegmentModeForeground,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	for _, gim := range res.GeneratedMasks {
-		if err = emitImage(g.out, gim.Mask); err != nil {
-			return err
-		}
-		for _, el := range gim.Labels {
-			fmt.Fprintln(g.out, el.Label)
 		}
 	}
 

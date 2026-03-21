@@ -53,9 +53,6 @@ type Parameters struct {
 	OutRedirected     bool
 	OnlyKvs           bool // RAG
 	Interactive       bool // terminal session?
-	Segment           bool // SegmentForeground by default
-	SegmentBackground bool
-	SegModel          string
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
@@ -145,14 +142,12 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	params.Timeout = 300 * time.Second
 	params.EmbModel = "gemini-embedding-001"
 	params.GenModel = "gemini-2.5-flash"
-	params.SegModel = "image-segmentation-001"
 
 	if err := loadPrefs(params); err != nil {
 		return fmt.Errorf("Error loading preferences from %s: %v\n", DotGenRc, err)
 	}
 
 	fs.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
-	fs.BoolVar(&params.SegmentBackground, "b", false, "background segmentation mode (default: foreground)")
 	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json, -img, -code or -g)")
 	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
 	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
@@ -180,7 +175,6 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	fs.Var(keyVals, "p", "prompt parameter value in format key=val")
 	fs.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
-	fs.BoolVar(&params.Segment, "seg", false, fmt.Sprintf("segment image on VertexAI (default model \"%s\")", params.SegModel))
 	fs.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
 	fs.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation [0.0,2.0]")
 	fs.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")

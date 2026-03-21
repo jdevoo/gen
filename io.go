@@ -173,18 +173,19 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
 					}
 				}
-			} else if len(outPath) > 0 {
-				tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
-				defer func() {
-					tmpOut.Close()
-				}()
-				if err != nil {
-					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-				}
-				if err := jpeg.Encode(tmpOut, img, &jpeg.Options{Quality: 100}); err != nil {
-					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-				}
 			} else {
+				if len(outPath) > 0 {
+					tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
+					defer func() {
+						tmpOut.Close()
+					}()
+					if err != nil {
+						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+					}
+					if err := jpeg.Encode(tmpOut, img, &jpeg.Options{Quality: 100}); err != nil {
+						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
+					}
+				}
 				if idx != nil && *idx > 0 {
 					fmt.Fprintf(out, "\n")
 				}
@@ -206,10 +207,10 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 	return nil
 }
 
-// emitImage renders segmentation results
-func emitImage(out io.Writer, img *genai.Image) error {
-	r := bytes.NewReader(img.ImageBytes)
-	mask, _, err := image.Decode(r)
+// emitMask renders segmentation results
+func emitMask(out io.Writer, mask *genai.GeneratedImageMask) error {
+	r := bytes.NewReader(mask.Mask.ImageBytes)
+	img, _, err := image.Decode(r)
 	if err != nil {
 		return err
 	}
@@ -217,18 +218,19 @@ func emitImage(out io.Writer, img *genai.Image) error {
 		if !isEmpty(out) { // output first image only
 			return nil
 		}
-		// encode to jpeg format
-		if err := jpeg.Encode(out, mask, &jpeg.Options{Quality: 100}); err != nil {
+		if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
 			return err
 		}
 	} else {
-		// encode to Sixel format
 		senc := SixelEncoder(out)
 		senc.Dither = true
-		if err := senc.Encode(mask); err != nil {
+		if err := senc.Encode(img); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "\n")
+	}
+	for _, l := range mask.Labels {
+		fmt.Fprintf(out, "%s %f\n", l.Label, l.Score)
 	}
 	return nil
 }

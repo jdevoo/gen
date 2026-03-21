@@ -109,51 +109,50 @@ Usage: gen [options] <prompt>
 
 Options:
 
-  -V	output model details, system instructions, chat history and thoughts
-  -b	background segmentation mode (default: foreground)
-  -c	enter chat mode (incompatible with -json, -img, -code or -g)
+  -V    output model details, system instructions, chat history and thoughts
+  -c    enter chat mode (incompatible with -json, -img, -code or -g)
   -code
-    	code execution tool (incompatible with -g, -json, -img or -tool)
+        code execution tool (incompatible with -g, -img or -tool)
   -d value
-    	path to a digest folder
-  -e	write text embeddings to digest (default model "gemini-embedding-001")
+        path to a digest folder
+  -e    write text embeddings to digest (default model "gemini-embedding-001")
   -f value
-    	GCS URI, file, directory or quoted pattern of files to attach
-  -g	Google search tool (incompatible with -code, -json, -img and -tool)
-  -h	show this help message and exit
-  -i	only store metadata with embeddings and ignore the content
+        GCS URI, file, directory or quoted pattern of files to attach
+  -g    Google search tool (incompatible with -code, -img and -tool)
+  -h    show available tools, this help message and exit
+  -i    only store metadata with embeddings and ignore the content
   -img
-    	generate jpeg images (use -m to set a supported model)
+        generate jpeg images (use -m to set a supported model)
   -json
-    	structured output (incompatible with -g, -code, -img and -tool)
+        structured output (incompatible with -c and -img)
   -k int
-    	maximum number of entries from digest to retrieve (default 3)
+        maximum number of entries from digest to retrieve (default 3)
   -l float
-    	balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
+        balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-    	model name (default "gemini-3-flash-preview")
+        model name (default "gemini-2.5-flash")
   -mcp value
-    	mcp stdio or streamable server command
+        mcp stdio or streamable server command
+  -out string
+        output path for images (incompatible with a redirect)
   -p value
-    	prompt parameter value in format key=val
-  -r	process directory declared with -f recursively
-  -s	treat argument as system prompt
-  -seg
-    	segment image on VertexAI (default model "image-segmentation-001")
-  -t	output total number of tokens
+        prompt parameter value in format key=val
+  -r    process directory declared with -f recursively
+  -s    treat argument as system prompt
+  -t    output total number of tokens
   -temp float
-    	sampling during response generation [0.0,2.0] (default 1)
+        sampling during response generation [0.0,2.0] (default 1)
   -think value
-    	MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
+        MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -timeout duration
-    	time limit for single turn content generation (default 5m0s)
+        time limit for single turn content generation (default 5m0s)
   -tool
-    	invoke one of the tools (incompatible with -s, -g, -json, -img or -code)
+        invoke one of the tools (incompatible with -s, -g, -img or -code)
   -top_p float
-    	how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
-    	force generation when gen aborts with FinishReasonSafety
-  -v	show version and exit
+        force generation when gen aborts with FinishReasonSafety
+  -v    show version and exit
 ```
 
 ## Preferences
