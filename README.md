@@ -171,6 +171,7 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 [mcpservers]
 #path to STDIO executable1
 #path to STDIO executable2
+#URL to server3
 #...
 
 [digestpaths]
