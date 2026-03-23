@@ -165,6 +165,7 @@ func TestArgsInvalid(t *testing.T) {
 			params = &Parameters{} // Re-initialize the params struct
 			keyVals := ParamMap{}  // Reset the keyVals map
 			params.FilePaths = ParamArray{}
+			params.FileURIs = []string{}
 			params.DigestPaths = ParamArray{}
 			SetupFlags(fs, params, &keyVals)
 

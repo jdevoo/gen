@@ -28,7 +28,7 @@ Attach two files to the prompt and return total token count
 `gen -t -f ../twitter/img/123497680.jpg -f ../twitter/img/123406895.jpg what are the differences between these photos?`
 
 Attach several files using glob patterns  
-`gen -f "src/**/*html" -f "src/*html" "this application is written for Polymer 2 and needs to be migrated to Lit"`
+`gen -f *.html -f "./**/*.html" "this application is written for Polymer 2 and needs to be migrated to Lit"`
 
 Generate an [architecture decision record](https://adr.github.io/madr/) using a parameterized template  
 `gen -p role="an experienced MLOps architect" -f prompts/adr.sprompt "an architecture decision record for selecting between option 1 MLFlow and option 2 Weights & Biases for tracking data science experiments. The team includes 5 data scientists and maintains already 50 models in production. The team produces 5 new models per quarter. Models include regression models, classification models, computer vision models as well as time series models."`
@@ -43,7 +43,7 @@ Extract entities from text
 `w3m -dump https://lite.cnn.com/2024/07/27/asia/us-austin-trilateral-japan-south-korea-intl-hnk/index.html | gen -json -f - extract entities`
 
 Google search  
-`gen -g what are the latest news on Europe from https://lite.cnn.com`
+`gen -g what are the latest news on Europe from lite.cnn.com`
 
 System instruction and prompts as files from iterative Prisonner's Dilemma [paper](https://arxiv.org/html/2406.13605v1)  
 `gen -json -f pd.sprompt -f pd.prompt`
@@ -99,7 +99,7 @@ Query digest and read out loud using TTS system
 
 ## Model Context Protocol
 The following client capabilities are supported:
-- [x] current working directory added as root`
+- [x] current working directory added as root
 - [x] sampling using the model defined by `-m`
 - [x] elicitation looks for inputs defined by `-p`
 

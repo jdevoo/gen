@@ -28,9 +28,9 @@ func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("missing params")
 	}
 	if !params.ChatMode {
-		var genCancel context.CancelFunc
-		ctx, genCancel = context.WithTimeout(ctx, params.Timeout)
-		defer genCancel()
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, params.Timeout)
+		defer cancel()
 	}
 	g, err := newGenerator(ctx, in, out)
 	if err != nil {
@@ -82,30 +82,6 @@ func (g *Generator) run() error {
 	if len(g.params.DigestPaths) > 0 {
 		if err := g.searchDigests(); err != nil {
 			return err
-		}
-	}
-
-	// remove any uploaded media assets on exit
-	if len(g.params.FilePaths) > 0 {
-		var mediaAssets []string
-		for _, p := range g.parts {
-			if p.FileData != nil {
-				mediaAssets = append(mediaAssets, p.FileData.FileURI)
-			}
-		}
-		if len(mediaAssets) > 0 {
-			defer func(verbose bool) {
-				for _, fileURI := range mediaAssets {
-					_, err := g.client.Files.Delete(g.ctx, fileURI, nil)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
-						continue
-					}
-					if verbose {
-						fmt.Fprintf(os.Stderr, infos("%s deleted\n"), fileURI)
-					}
-				}
-			}(g.params.Verbose)
 		}
 	}
 
@@ -183,6 +159,12 @@ func (g *Generator) setPromptsAndFiles() error {
 			// case of regular file, json schema, .prompt, .sprompt or directory
 			if err = glob(g.ctx, g.client, filePathVal, &g.parts, &g.sysParts, &g.schema); err != nil {
 				return err
+			}
+		}
+		// stash URIs of FileData parts for removal
+		for _, p := range g.parts {
+			if p.FileData != nil {
+				g.params.FileURIs = append(g.params.FileURIs, p.FileData.FileURI)
 			}
 		}
 	}

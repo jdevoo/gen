@@ -137,6 +137,9 @@ func knownTools(ctx context.Context) (string, error) {
 
 	// MCP tools
 	for _, sess := range params.MCPSessions {
+		if sess == nil {
+			return "", fmt.Errorf("knownTools: nil session pointer found")
+		}
 		ltr, err := sess.ListTools(ctx, nil)
 		if err != nil {
 			return "", err

@@ -40,6 +40,7 @@ type Parameters struct {
 	Embed             bool       // RAG
 	EmbModel          string
 	FilePaths         ParamArray
+	FileURIs          []string
 	GenModel          string
 	GoogleSearch      bool
 	Help              bool
@@ -256,6 +257,30 @@ func cleanup(params *Parameters) {
 	for _, sess := range params.MCPSessions {
 		if sess != nil {
 			sess.Close()
+		}
+	}
+	// delete uploaded files
+	if len(params.FileURIs) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		client, err := genai.NewClient(ctx, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup: failed to create client %v\n", err)
+		}
+		for _, fileURI := range params.FileURIs {
+			_, err := client.Files.Delete(ctx, fileURI, nil)
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					fmt.Fprintf(os.Stderr, "cancel during cleanup %s: %v\n", fileURI, ctx.Err())
+				default:
+					fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
+				}
+				continue
+			}
+			if params.Verbose {
+				fmt.Fprintf(os.Stderr, infos("%s deleted\n"), fileURI)
+			}
 		}
 	}
 	// final token count report
