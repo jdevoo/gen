@@ -142,7 +142,7 @@ func knownTools(ctx context.Context) (string, error) {
 		}
 		ltr, err := sess.ListTools(ctx, nil)
 		if err != nil {
-			return "", err
+			break
 		}
 		for _, tool := range ltr.Tools {
 			res = append(res, fmt.Sprintf("  * %v", tool.Name))

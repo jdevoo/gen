@@ -223,7 +223,6 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 		}
 	}
 	if g.params.Tool {
-		// register tools with genai.FunctionCallingConfigModeAny
 		config.Tools = []*genai.Tool{}
 		if err = registerGenTools(config); err != nil { // see tools.go
 			return err
