@@ -7,7 +7,7 @@ require (
 	github.com/lib/pq v1.12.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/soniakeys/quant v1.0.0
-	golang.org/x/image v0.37.0
+	golang.org/x/image v0.38.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.42.0
 	google.golang.org/genai v1.51.0
