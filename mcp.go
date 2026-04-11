@@ -53,6 +53,8 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 		srvStr := srv // capture for closure
 		g.Go(func() error {
 			var session *mcp.ClientSession
+			var buf bytes.Buffer
+			var connErr error
 
 			options := mcp.ClientOptions{
 				Capabilities: &mcp.ClientCapabilities{
@@ -87,7 +89,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 			defer cancel()
 
 			if isStreamableServer {
-				session, err = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
+				session, connErr = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
 					Endpoint: srvStr,
 				}, nil)
 			} else {
@@ -99,12 +101,17 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 				if err != nil {
 					return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
 				}
-				session, err = client.Connect(mcpCtx, &mcp.CommandTransport{
-					Command: exec.Command(cmdPath, parts[1:]...),
+				cmd := exec.Command(cmdPath, parts[1:]...)
+				cmd.Stderr = &buf
+				session, connErr = client.Connect(mcpCtx, &mcp.CommandTransport{
+					Command: cmd,
 				}, nil)
+				if buf.Len() > 0 {
+					connErr = fmt.Errorf("'%s'", cmdPath)
+				}
 			}
-			if err != nil {
-				return fmt.Errorf("MCP connect error: %v", err)
+			if connErr != nil {
+				return fmt.Errorf("MCP connect error: %v", connErr)
 			}
 			mu.Lock()
 			params.MCPSessions = append(params.MCPSessions, session)

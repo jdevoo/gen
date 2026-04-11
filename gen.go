@@ -329,6 +329,9 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					fcAcc = append(fcAcc, fc...)
 					break
 				}
+				if len(resp.Candidates) == 0 {
+					continue
+				}
 				err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
