@@ -93,116 +93,154 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
-			if !outRedirected {
-				if verbose && p.Thought {
-					fmt.Fprintf(out, infos("%s"), p.Text)
-				} else {
-					s := p.Text
-					if mp != nil {
-						s = mp.Parse(p.Text)
-					}
-					fmt.Fprintf(out, plains("%s"), s)
-				}
-			} else if !imgModality || (verbose && p.Thought) {
-				fmt.Fprintf(out, "%s", p.Text)
-			}
-			if idx != nil {
-				*idx++
-			}
+			emitText(out, p, outRedirected, imgModality, verbose, idx, mp)
 			continue
 		}
-		if verbose && p.FunctionResponse != nil {
-			for _, key := range []string{"output", "error"} {
-				if val, ok := p.FunctionResponse.Response[key].(string); ok && val != "" {
-					if !outRedirected {
-						fmt.Fprintf(out, infos("%s\n"), val)
-					} else {
-						fmt.Fprintf(out, "%s\n", val)
-					}
-				}
-			}
-			if idx != nil {
-				*idx++
-			}
+		if p.FunctionResponse != nil {
+			emitFunctionResponse(out, p, outRedirected, idx, mp, outPath)
 			continue
 		}
 		if verbose && p.ExecutableCode != nil {
-			if p.CodeExecutionResult != nil && p.CodeExecutionResult.Outcome == genai.OutcomeOK {
-				if !outRedirected {
-					fmt.Fprintf(out, infos("```%s\n%s\n```\n"), p.ExecutableCode.Language, p.ExecutableCode.Code)
-				} else {
-					fmt.Fprintf(out, "```%s\n%s\n```\n", p.ExecutableCode.Language, p.ExecutableCode.Code)
-				}
-				if idx != nil {
-					*idx++
-				}
-			}
-		}
-		if verbose && p.FileData != nil {
-			if !outRedirected {
-				fmt.Fprintf(out, infos("[%s](%s)"), p.FileData.DisplayName, p.FileData.FileURI)
-			} else {
-				fmt.Fprintf(out, "[%s](%s)", p.FileData.DisplayName, p.FileData.FileURI)
-			}
-			if idx != nil {
-				*idx++
-			}
-		}
-		if p.InlineData != nil {
-			if strings.HasPrefix(p.InlineData.MIMEType, "text") {
-				if !outRedirected {
-					fmt.Fprintf(out, infos("%s"), p.InlineData.Data)
-				} else {
-					fmt.Fprint(out, p.InlineData.Data)
-				}
-				if idx != nil {
-					*idx++
-				}
-			}
-			if !strings.HasPrefix(p.InlineData.MIMEType, "image") {
-				return fmt.Errorf("emitContent of type %s: not supported", p.InlineData.MIMEType)
-			}
-			reader := bytes.NewReader(p.InlineData.Data)
-			img, _, err := image.Decode(reader)
-			if err != nil {
-				return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-			}
-			if outRedirected {
-				if isEmpty(out) { // output first image only
-					if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
-						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-					}
-				}
-			} else {
-				if len(outPath) > 0 {
-					tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
-					defer func() {
-						tmpOut.Close()
-					}()
-					if err != nil {
-						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-					}
-					if err := jpeg.Encode(tmpOut, img, &jpeg.Options{Quality: 100}); err != nil {
-						return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-					}
-				}
-				if idx != nil && *idx > 0 {
-					fmt.Fprintf(out, "\n")
-				}
-				senc := SixelEncoder(out)
-				senc.Dither = true
-				if err := senc.Encode(img); err != nil {
-					return fmt.Errorf("emitContent of type %s: %v", p.InlineData.MIMEType, err)
-				}
-				//if idx != nil && *idx > 0 {
-				fmt.Fprint(out, "\n")
-				//}
-			}
-			if idx != nil {
-				*idx++
-			}
+			emitExecutableCode(out, p, outRedirected, idx, mp)
 			continue
 		}
+		if p.FileData != nil {
+			emitFileData(out, p, outRedirected, idx, mp)
+			continue
+		}
+		if p.InlineData != nil {
+			emitInlineData(out, p, outRedirected, idx, mp, outPath)
+			continue
+		}
+	}
+	return nil
+}
+
+func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
+	if !outRedirected {
+		if verbose && part.Thought {
+			fmt.Fprintf(out, infos("%s"), part.Text)
+		} else {
+			s := part.Text
+			if mp != nil {
+				s = mp.Parse(part.Text)
+			}
+			fmt.Fprintf(out, plains("%s"), s)
+		}
+	} else if !imgModality || (verbose && part.Thought) {
+		fmt.Fprintf(out, "%s", part.Text)
+	}
+	if idx != nil {
+		*idx++
+	}
+	return nil
+}
+
+func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser, outPath string) error {
+	for _, p := range part.FunctionResponse.Parts {
+		if p.FileData != nil {
+			emitFileData(out, &genai.Part{
+				FileData: &genai.FileData{
+					DisplayName: p.FileData.DisplayName,
+					FileURI:     p.FileData.FileURI,
+					MIMEType:    p.FileData.MIMEType,
+				},
+			}, outRedirected, idx, mp)
+			continue
+		}
+		if p.InlineData != nil {
+			emitInlineData(out, &genai.Part{
+				InlineData: &genai.Blob{
+					DisplayName: p.InlineData.DisplayName,
+					Data:        p.InlineData.Data,
+					MIMEType:    p.InlineData.MIMEType,
+				},
+			}, outRedirected, idx, mp, outPath)
+			continue
+		}
+	}
+	return nil
+}
+
+func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser) error {
+	if part.CodeExecutionResult != nil && part.CodeExecutionResult.Outcome == genai.OutcomeOK {
+		if !outRedirected {
+			fmt.Fprintf(out, infos("```%s\n%s\n```\n"), part.ExecutableCode.Language, part.ExecutableCode.Code)
+		} else {
+			fmt.Fprintf(out, "```%s\n%s\n```\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
+		}
+		if idx != nil {
+			*idx++
+		}
+	}
+	return nil
+}
+
+func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser) error {
+	if !outRedirected {
+		fmt.Fprintf(out, infos("[%s](%s)"), part.FileData.DisplayName, part.FileData.FileURI)
+	} else {
+		fmt.Fprintf(out, "[%s](%s)", part.FileData.DisplayName, part.FileData.FileURI)
+	}
+	if idx != nil {
+		*idx++
+	}
+	return nil
+}
+
+func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser, outPath string) error {
+	if strings.HasPrefix(part.InlineData.MIMEType, "text") {
+		if !outRedirected {
+			fmt.Fprintf(out, infos("%s"), part.InlineData.Data)
+		} else {
+			fmt.Fprint(out, part.InlineData.Data)
+		}
+		if idx != nil {
+			*idx++
+		}
+		return nil
+	}
+	if !strings.HasPrefix(part.InlineData.MIMEType, "image") {
+		return fmt.Errorf("emitContent of type %s: not supported", part.InlineData.MIMEType)
+	}
+	reader := bytes.NewReader(part.InlineData.Data)
+	img, _, err := image.Decode(reader)
+	if err != nil {
+		return fmt.Errorf("emitInlineData of type %s: %v", part.InlineData.MIMEType, err)
+	}
+	if outRedirected {
+		if isEmpty(out) { // output first image only
+			if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
+				return fmt.Errorf("emitInlineData of type %s: %v", part.InlineData.MIMEType, err)
+			}
+		}
+	} else {
+		if len(outPath) > 0 {
+			tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
+			defer func() {
+				tmpOut.Close()
+			}()
+			if err != nil {
+				return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
+			}
+			if err := jpeg.Encode(tmpOut, img, &jpeg.Options{Quality: 100}); err != nil {
+				return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
+			}
+		}
+		if idx != nil && *idx > 0 {
+			fmt.Fprintf(out, "\n")
+		}
+		senc := SixelEncoder(out)
+		senc.Dither = true
+		if err := senc.Encode(img); err != nil {
+			return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
+		}
+		//if idx != nil && *idx > 0 {
+		fmt.Fprint(out, "\n")
+		//}
+	}
+	if idx != nil {
+		*idx++
 	}
 	return nil
 }

@@ -53,7 +53,6 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 		srvStr := srv // capture for closure
 		g.Go(func() error {
 			var session *mcp.ClientSession
-			var buf bytes.Buffer
 			var connErr error
 
 			options := mcp.ClientOptions{
@@ -81,9 +80,9 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 
 			isStreamableServer := strings.HasPrefix(srvStr, "http://") ||
 				strings.HasPrefix(srvStr, "https://")
-			timeout := 30 * time.Second
+			timeout := 2 * time.Second
 			if isStreamableServer {
-				timeout = 120 * time.Second
+				timeout = 30 * time.Second
 			}
 			mcpCtx, cancel := context.WithTimeout(gCtx, timeout)
 			defer cancel()
@@ -101,14 +100,9 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 				if err != nil {
 					return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
 				}
-				cmd := exec.Command(cmdPath, parts[1:]...)
-				cmd.Stderr = &buf
 				session, connErr = client.Connect(mcpCtx, &mcp.CommandTransport{
-					Command: cmd,
+					Command: exec.Command(cmdPath, parts[1:]...),
 				}, nil)
-				if buf.Len() > 0 {
-					connErr = fmt.Errorf("'%s'", cmdPath)
-				}
 			}
 			if connErr != nil {
 				return fmt.Errorf("MCP connect error: %v", connErr)
@@ -169,20 +163,18 @@ func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
 }
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.
-func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
+func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	params, ok := ctx.Value("params").(*Parameters)
 	if !ok {
-		return []*genai.Part{
-			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"error": "invokeTool: params not found in context",
-			}),
-		}
+		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+			"error": "invokeTool: params not found in context",
+		})
 	}
 
 	// Lookup tool
 	sess, ok := params.ToolRegistry[fc.Name]
 	if !ok {
-		return []*genai.Part{}
+		return nil
 	}
 
 	ctr, err := sess.CallTool(ctx, &mcp.CallToolParams{
@@ -190,48 +182,50 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) []*genai.Part {
 		Arguments: fc.Args,
 	})
 	if err != nil {
-		return []*genai.Part{
-			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"error": fmt.Sprintf("invokeMcpTool: %s", err.Error()),
-			}),
-		}
+		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+			"error": fmt.Sprintf("invokeMcpTool: %s", err.Error()),
+		})
 	}
-
-	var parts []*genai.Part
-	var errorStrings []string
+	var parts []*genai.FunctionResponsePart
+	var outStrings []string
+	var errStrings []string
 
 	for _, c := range ctr.Content {
 		switch v := c.(type) {
 		case *mcp.TextContent:
-			parts = append(parts, genai.NewPartFromText(v.Text+"\n"))
+			outStrings = append(outStrings, v.Text)
 		case *mcp.ResourceLink:
-			parts = append(parts, genai.NewPartFromURI(v.URI, v.MIMEType))
+			parts = append(parts, genai.NewFunctionResponsePartFromURI(v.URI, v.MIMEType))
 		case *mcp.ImageContent:
 			stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(v.Data)}
 			strippedData, err := io.ReadAll(stripper)
 			if err != nil {
-				errorStrings = append(errorStrings, "invokeMcpTool: error in PNG ancillary chunk stripper")
+				errStrings = append(errStrings, "invokeMcpTool: error in PNG ancillary chunk stripper")
 				continue
 			}
-			parts = append(parts, genai.NewPartFromBytes(strippedData, c.(*mcp.ImageContent).MIMEType))
+			parts = append(parts, genai.NewFunctionResponsePartFromBytes(strippedData, c.(*mcp.ImageContent).MIMEType))
 		case *mcp.AudioContent:
-			errorStrings = append(errorStrings, "invokeMcpTool: audio content not supported")
+			errStrings = append(errStrings, "invokeMcpTool: audio content not supported")
 		case *mcp.EmbeddedResource:
-			parts = append(parts, genai.NewPartFromFile(genai.File{
-				Name:     v.Resource.Text,
-				MIMEType: v.Resource.MIMEType,
-				URI:      v.Resource.URI,
-			}))
+			parts = append(parts, &genai.FunctionResponsePart{
+				FileData: &genai.FunctionResponseFileData{
+					FileURI:     v.Resource.URI,
+					MIMEType:    v.Resource.MIMEType,
+					DisplayName: v.Resource.Text,
+				}})
 		}
 	}
 
-	if len(errorStrings) > 0 {
-		parts = append(parts,
-			genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"error": errorStrings,
-			}))
+	if len(errStrings) > 0 {
+		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+			"error": errStrings,
+		})
 	}
-	return parts
+	return genai.NewPartFromFunctionResponseWithParts(
+		fc.Name,
+		map[string]any{"output": strings.Join(outStrings, "\n")},
+		parts,
+	)
 }
 
 // convertMCPType attempts to convert a string value to a target type as defined in the JSON schema.

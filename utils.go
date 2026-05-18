@@ -20,6 +20,7 @@ import (
 type MarkdownParser struct {
 	mu     sync.Mutex
 	isBold bool
+	buffer string
 }
 
 // ParamMap holds key-value pairs for string replacement.
@@ -277,16 +278,16 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (string, string)
 }
 
 // processFunctionCalls attempts function calls across MCP sessions and gen tools.
-func processFunctionCalls(ctx context.Context, parts []*genai.FunctionCall) *genai.Candidate {
+func processFunctionCalls(ctx context.Context, fcMap map[string]*genai.FunctionCall) *genai.Candidate {
 	var res []*genai.Part
-	for _, fc := range parts {
+	for _, fc := range fcMap {
 		mcpRes := invokeMCPTool(ctx, fc)
-		if len(mcpRes) > 0 {
-			res = append(res, mcpRes...)
+		if mcpRes != nil {
+			res = append(res, mcpRes)
 			continue
 		}
+		// fc not an MCP tool, must be a native gen tool
 		genRes, genErr := invokeGenTool(ctx, fc)
-		// always return a response
 		res = append(res, genai.NewPartFromFunctionResponse(fc.Name, map[string]any{"output": genRes, "error": genErr}))
 	}
 	return &genai.Candidate{
@@ -549,8 +550,10 @@ func (p *MarkdownParser) Parse(s string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var sb strings.Builder
+	s = p.buffer + s
+	p.buffer = ""
 
+	var sb strings.Builder
 	for i := 0; i < len(s); {
 		if i+1 < len(s) && s[i:i+2] == "**" {
 			if p.isBold {
@@ -560,6 +563,9 @@ func (p *MarkdownParser) Parse(s string) string {
 			}
 			p.isBold = !p.isBold
 			i += 2
+		} else if i == len(s)-1 && s[i] == '*' {
+			p.buffer = "*"
+			i++
 		} else {
 			sb.WriteByte(s[i])
 			i++

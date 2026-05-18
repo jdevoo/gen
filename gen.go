@@ -313,38 +313,34 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 	}
 
 	// main interaction loop
-	var visited bool // avoid tool call loops
 	for {
 		if len(g.parts) > 0 {
 			i := 0
 			turnParts := g.parts
 			g.parts = []*genai.Part{}
-			var fcAcc []*genai.FunctionCall
+			fcMap := map[string]*genai.FunctionCall{}
 			for resp, err := range chat.SendStream(g.ctx, turnParts...) {
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
 				}
-				if fc := resp.FunctionCalls(); len(fc) > 0 {
-					fcAcc = append(fcAcc, fc...)
-					break
+				for _, fc := range resp.FunctionCalls() {
+					fcMap[fc.Name] = fc
 				}
-				if len(resp.Candidates) == 0 {
-					continue
-				}
-				err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
-				if err != nil {
-					fmt.Fprintf(g.out, "\n")
-					return err
+				if len(fcMap) == 0 && len(resp.Candidates) > 0 {
+					err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
+					if err != nil {
+						fmt.Fprintf(g.out, "\n")
+						return err
+					}
 				}
 				if g.params.TokenCount && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
-			} // end turn
-			if len(fcAcc) > 0 && !visited {
-				visited = true
-				resCand := processFunctionCalls(g.ctx, fcAcc)
-				if resCand != nil {
+			}
+			if len(fcMap) > 0 {
+				resCand := processFunctionCalls(g.ctx, fcMap)
+				if len(resCand.Content.Parts) > 0 {
 					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
 					if err != nil {
 						fmt.Fprintf(g.out, "\n")
@@ -379,7 +375,6 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			fmt.Fprintf(g.out, "\n%s\n\n", input)
 		}
 		g.parts = append(g.parts, &genai.Part{Text: input})
-		visited = false
 	} // end main interaction loop
 
 	if g.params.ChatMode {
