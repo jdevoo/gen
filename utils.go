@@ -574,3 +574,50 @@ func (p *MarkdownParser) Parse(s string) string {
 
 	return sb.String()
 }
+
+// alignSchema between JSON type fields in MCP vs genai SDK
+func alignSchema(m map[string]any) {
+	if m == nil {
+		return
+	}
+	// Handle nullable types
+	if t, ok := m["type"].([]any); ok {
+		isNullable := false
+		var primaryType string
+		for _, v := range t {
+			if s, ok := v.(string); ok {
+				if s == "null" {
+					isNullable = true
+				} else {
+					primaryType = s
+				}
+			}
+		}
+		if primaryType != "" {
+			m["type"] = primaryType
+		}
+		if isNullable {
+			m["nullable"] = true
+		}
+	}
+	// Recursively clean properties
+	if props, ok := m["properties"].(map[string]any); ok {
+		for _, v := range props {
+			if sub, ok := v.(map[string]any); ok {
+				alignSchema(sub)
+			}
+		}
+	}
+	// Handle array items
+	if items, ok := m["items"].(map[string]any); ok {
+		alignSchema(items)
+	}
+	// Handle additionalProperties
+	if addProps, ok := m["additionalProperties"].(map[string]any); ok {
+		alignSchema(addProps)
+	}
+	// Remove unsupported keywords
+	delete(m, "$schema")
+	delete(m, "definitions")
+	delete(m, "$ref") // GenAI often struggles with local refs
+}
