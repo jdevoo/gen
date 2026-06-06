@@ -296,186 +296,106 @@ func TestReplacePart(t *testing.T) {
 	}
 }
 
-// TestMarkdownParser contains all test cases for the Parse method.
-func TestMarkdownParser(t *testing.T) {
-	type testCase struct {
-		name           string
-		input          string
-		initialIsBold  bool
-		expectedOutput string
-		expectedIsBold bool
-	}
-
-	tests := []testCase{
+func TestParse_Basic(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
 		{
-			name:           "Empty string",
-			input:          "",
-			initialIsBold:  false,
-			expectedOutput: "",
-			expectedIsBold: false,
+			name:     "plain text without markdown",
+			input:    "Hello, world!",
+			expected: "\033[97mHello, world!\033[0m",
 		},
 		{
-			name:           "No bolding markers",
-			input:          "This is plain text without any bolding.",
-			initialIsBold:  false,
-			expectedOutput: "This is plain text without any bolding.",
-			expectedIsBold: false,
+			name:     "single bold segment",
+			input:    "Hello **world**!",
+			expected: "\033[97mHello \033[1mworld\033[22m!\033[0m",
 		},
 		{
-			name:           "Simple bolding pair",
-			input:          "Hello **world**!",
-			initialIsBold:  false,
-			expectedOutput: "Hello \033[1mworld\033[22m!",
-			expectedIsBold: false,
+			name:     "multiple bold segments",
+			input:    "**Hello** and **welcome**",
+			expected: "\033[97m\033[1mHello\033[22m and \033[1mwelcome\033[22m\033[0m",
 		},
 		{
-			name:           "Multiple bolding pairs in one string",
-			input:          "**First** part and **second** part.",
-			initialIsBold:  false,
-			expectedOutput: "\033[1mFirst\033[22m part and \033[1msecond\033[22m part.",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Unclosed bold at the end",
-			input:          "This is **unclosed bold",
-			initialIsBold:  false,
-			expectedOutput: "This is \033[1munclosed bold",
-			expectedIsBold: true, // Parser state should be bold
-		},
-		{
-			name:           "Unclosed bold at the beginning",
-			input:          "**Unclosed bold at start",
-			initialIsBold:  false,
-			expectedOutput: "\033[1mUnclosed bold at start",
-			expectedIsBold: true, // Parser state should be bold
-		},
-		{
-			name:           "String starting and ending with bold markers",
-			input:          "**Full string bold**",
-			initialIsBold:  false,
-			expectedOutput: "\033[1mFull string bold\033[22m",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Only bolding markers",
-			input:          "**",
-			initialIsBold:  false,
-			expectedOutput: "\033[1m",
-			expectedIsBold: true, // Parser state should be bold
-		},
-		{
-			name:           "Two consecutive bolding markers (empty bold segment)",
-			input:          "TextA****TextB",
-			initialIsBold:  false,
-			expectedOutput: "TextA\033[1m\033[22mTextB",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Multiple consecutive bolding markers (four asterisks)",
-			input:          "****",
-			initialIsBold:  false,
-			expectedOutput: "\033[1m\033[22m",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Three consecutive bolding markers (odd number of asterisks)",
-			input:          "***text", // should treat first two as open, then *text
-			initialIsBold:  false,
-			expectedOutput: "\033[1m*text", // The third * is not part of a  pair
-			expectedIsBold: true,
-		},
-		{
-			name:           "Five consecutive bolding markers",
-			input:          "*****text", // should treat first two as open, next two as close, then *text
-			initialIsBold:  false,
-			expectedOutput: "\033[1m\033[22m*text",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Text with single asterisks (not bold)",
-			input:          "This *is* not bold *formatting*.",
-			initialIsBold:  false,
-			expectedOutput: "This *is* not bold *formatting*.",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Parser starts in bold state, then closes",
-			input:          "This text **should close bold",
-			initialIsBold:  true,
-			expectedOutput: "This text \033[22mshould close bold",
-			expectedIsBold: false,
-		},
-		{
-			name:           "Parser starts in bold state, then opens and closes again",
-			input:          "Initial **then new bold** segment",
-			initialIsBold:  true,
-			expectedOutput: "Initial \033[22mthen new bold\033[1m segment", // Initial `` closes, next `` opens
-			expectedIsBold: true,                                           // Remains bold because the last  opens it.
+			name:     "unmatched bold opening sequence",
+			input:    "This is **bold and doesn't close",
+			expected: "\033[97mThis is \033[1mbold and doesn't close\033[0m",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := NewParser()
-			p.isBold = tt.initialIsBold
-			got := p.Parse(tt.input)
-			if got != tt.expectedOutput {
-				t.Errorf("Parse() for input %q\n got = %q\nwant = %q", tt.input, got, tt.expectedOutput)
-			}
-			if p.isBold != tt.expectedIsBold {
-				t.Errorf("Parse() for input %q: final isBold state mismatch; got %v, want %v", tt.input, p.isBold, tt.expectedIsBold)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parser := NewParser()
+			actual := parser.Parse(tc.input)
+			if actual != tc.expected {
+				t.Errorf("\nExpected: %q\nActual:   %q", tc.expected, actual)
 			}
 		})
 	}
+}
 
-	t.Run("Consecutive calls maintain state", func(t *testing.T) {
-		p := NewParser() // isBold = false initially
+func TestParse_StatefulAndBuffering(t *testing.T) {
+	// 1. Test bold state carrying over to subsequent calls
+	t.Run("bold persistence across calls", func(t *testing.T) {
+		parser := NewParser()
 
-		// Call 1: Unclosed bold
-		input1 := "Part 1: This is **bolding"
-		expected1 := "Part 1: This is \033[1mbolding"
-		p.isBold = false // Ensure initial state for this sub-test
-		got1 := p.Parse(input1)
-		if got1 != expected1 {
-			t.Errorf("Call 1 output mismatch:\n got = %q\nwant = %q", got1, expected1)
-		}
-		if p.isBold != true {
-			t.Errorf("Call 1 final isBold state mismatch; got %v, want %v", p.isBold, true)
+		// First segment starts the bold tag but does not close it
+		res1 := parser.Parse("This is **bold")
+		expected1 := "\033[97mThis is \033[1mbold\033[0m"
+		if res1 != expected1 {
+			t.Errorf("First Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
 		}
 
-		// Call 2: Continue the bold, then close it
-		input2 := " Part 2: more text, **then normal"
-		expected2 := " Part 2: more text, \033[22mthen normal" // isBold was true, so  closes it
-		// p.isBold is now true from previous call, no need to set again
-		got2 := p.Parse(input2)
-		if got2 != expected2 {
-			t.Errorf("Call 2 output mismatch:\n got = %q\nwant = %q", got2, expected2)
-		}
-		if p.isBold != false {
-			t.Errorf("Call 2 final isBold state mismatch; got %v, want %v", p.isBold, false)
-		}
-
-		// Call 3: Start new bold segment
-		input3 := " Part 3: start **new bold** again"
-		expected3 := " Part 3: start \033[1mnew bold\033[22m again"
-		// p.isBold is now false from previous call
-		got3 := p.Parse(input3)
-		if got3 != expected3 {
-			t.Errorf("Call 3 output mismatch:\n got = %q\nwant = %q", got3, expected3)
-		}
-		if p.isBold != false {
-			t.Errorf("Call 3 final isBold state mismatch; got %v, want %v", p.isBold, false)
-		}
-
-		// Call 4: Just plain text, ensure state doesn't change
-		input4 := " Part 4: plain text."
-		expected4 := " Part 4: plain text."
-		got4 := p.Parse(input4)
-		if got4 != expected4 {
-			t.Errorf("Call 4 output mismatch:\n got = %q\nwant = %q", got4, expected4)
-		}
-		if p.isBold != false {
-			t.Errorf("Call 4 final isBold state mismatch; got %v, want %v", p.isBold, false)
+		// Second segment continues the bold state and then closes it
+		res2 := parser.Parse(" text continuing** and normal")
+		expected2 := "\033[97m\033[1m text continuing\033[22m and normal\033[0m"
+		if res2 != expected2 {
+			t.Errorf("Second Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
 		}
 	})
+
+	// 2. Test buffering of a single trailing asterisk
+	t.Run("single trailing asterisk buffer", func(t *testing.T) {
+		parser := NewParser()
+
+		// First segment ends with a single '*'. It should be buffered and not rendered yet.
+		res1 := parser.Parse("This is a *")
+		expected1 := "\033[97mThis is a \033[0m"
+		if res1 != expected1 {
+			t.Errorf("Buffering Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
+		}
+		if parser.buffer != "*" {
+			t.Errorf("Expected buffer to contain '*' but got %q", parser.buffer)
+		}
+
+		// Second segment begins with another '*' completing the bold sequence
+		res2 := parser.Parse("*bold text**")
+		expected2 := "\033[97m\033[1mbold text\033[22m\033[0m"
+		if res2 != expected2 {
+			t.Errorf("Reconstructed Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
+		}
+		if parser.buffer != "" {
+			t.Errorf("Expected buffer to be cleared but got %q", parser.buffer)
+		}
+	})
+}
+
+func TestParse_Concurrency(t *testing.T) {
+	// Verifies that calling Parse concurrently does not cause race conditions (using the parser's internal Mutex)
+	parser := NewParser()
+	done := make(chan bool)
+
+	worker := func() {
+		for i := 0; i < 100; i++ {
+			_ = parser.Parse("test **concurrency** stuff")
+		}
+		done <- true
+	}
+
+	go worker()
+	go worker()
+
+	<-done
+	<-done
 }

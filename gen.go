@@ -319,6 +319,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			turnParts := g.parts
 			g.parts = []*genai.Part{}
 			fcMap := map[string]*genai.FunctionCall{}
+			mp := NewParser()
 			for resp, err := range chat.SendStream(g.ctx, turnParts...) {
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
@@ -327,11 +328,13 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				for _, fc := range resp.FunctionCalls() {
 					fcMap[fc.Name] = fc
 				}
-				if len(fcMap) == 0 && len(resp.Candidates) > 0 {
-					err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
-					if err != nil {
-						fmt.Fprintf(g.out, "\n")
-						return err
+				if len(fcMap) == 0 {
+					if len(resp.Candidates) > 0 {
+						err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
+						if err != nil {
+							fmt.Fprintf(g.out, "\n")
+							return err
+						}
 					}
 				}
 				if g.params.TokenCount && resp.UsageMetadata != nil {
@@ -341,7 +344,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			if len(fcMap) > 0 {
 				resCand := processFunctionCalls(g.ctx, fcMap)
 				if len(resCand.Content.Parts) > 0 {
-					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, g.params.OutPath)
+					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {
 						fmt.Fprintf(g.out, "\n")
 						return err
@@ -351,6 +354,9 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					g.parts = append(g.parts, resCand.Content.Parts...)
 					continue
 				}
+			}
+			if len(mp.buffer) > 0 {
+				fmt.Fprint(g.out, mp.Flush(g.params.OutRedirected))
 			}
 		}
 		// exit if not a chat

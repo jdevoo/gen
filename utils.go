@@ -58,11 +58,8 @@ func conjTexts(parts *[]*genai.Part) {
 		return
 	}
 	var buf bytes.Buffer
-	for i, p := range *parts {
+	for _, p := range *parts {
 		if p.Text != "" {
-			if i > 0 && buf.Len() > 0 {
-				buf.WriteString(" ")
-			}
 			buf.WriteString(string(p.Text))
 		}
 	}
@@ -522,10 +519,6 @@ func isArgsInvalid(params *Parameters, keyVals ParamMap) error {
 	return nil
 }
 
-func plains(s string) string {
-	return "\033[97m" + s + "\033[0m"
-}
-
 func infos(s string) string {
 	return "\033[36m" + s + "\033[0m"
 }
@@ -554,6 +547,10 @@ func (p *MarkdownParser) Parse(s string) string {
 	p.buffer = ""
 
 	var sb strings.Builder
+	sb.WriteString("\033[97m")
+	if p.isBold {
+		sb.WriteString("\033[1m")
+	}
 	for i := 0; i < len(s); {
 		if i+1 < len(s) && s[i:i+2] == "**" {
 			if p.isBold {
@@ -571,8 +568,23 @@ func (p *MarkdownParser) Parse(s string) string {
 			i++
 		}
 	}
+	sb.WriteString("\033[0m")
 
 	return sb.String()
+}
+
+func (p *MarkdownParser) Flush(isRedirected bool) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	res := p.buffer
+	p.buffer = ""
+	if p.isBold {
+		if isRedirected {
+			res += "\033[0m"
+		}
+		p.isBold = false
+	}
+	return res
 }
 
 // alignSchema between JSON type fields in MCP vs genai SDK

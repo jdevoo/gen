@@ -65,12 +65,11 @@ func isValidPath(path string) bool {
 }
 
 // emitCandidate is a wrapper to emitContent.
-func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, imgModality bool, verbose bool, idx *int, outPath string) error {
+func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	var finish genai.FinishReason
 	if cand == nil || cand.Content == nil {
 		return nil
 	}
-	mp := NewParser()
 	if err := emitContent(out, cand.Content, outRedirected, imgModality, verbose, idx, mp, outPath); err != nil {
 		return err
 	}
@@ -125,7 +124,7 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 			if mp != nil {
 				s = mp.Parse(part.Text)
 			}
-			fmt.Fprintf(out, plains("%s"), s)
+			fmt.Fprint(out, s)
 		}
 	} else if !imgModality || (verbose && part.Thought) {
 		fmt.Fprintf(out, "%s", part.Text)
@@ -276,18 +275,19 @@ func emitMask(out io.Writer, mask *genai.GeneratedImageMask) error {
 // emitHistory prints the chat history (verbose).
 func emitHistory(out io.Writer, hist []*genai.Content) {
 	var prev string
+	fmt.Fprint(out, "\nHISTORY START\n")
 	for _, c := range hist {
 		if prev != c.Role {
 			if !isRedirected(out) {
 				fmt.Fprintf(out, "\n"+roles("%s")+"\n", c.Role)
 			} else {
-				fmt.Fprintf(out, "\n***%s***\n", c.Role)
+				fmt.Fprintf(out, "\n<%s>\n", c.Role)
 			}
 			prev = c.Role
 		}
 		emitContent(out, c, false, false, true, nil, nil, "")
 	}
-	fmt.Fprint(out, "\n")
+	fmt.Fprint(out, "\nHISTORY END\n")
 }
 
 // uploadFile tracks state until FileStateActive reached.
