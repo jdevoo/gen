@@ -633,3 +633,32 @@ func alignSchema(m map[string]any) {
 	delete(m, "definitions")
 	delete(m, "$ref") // GenAI often struggles with local refs
 }
+
+// isValidPart evaluates whether a part contains non-empty generative payload.
+func isValidPart(p *genai.Part) bool {
+	if p == nil {
+		return false
+	}
+	if p.Text != "" {
+		return true
+	}
+	if p.InlineData != nil && len(p.InlineData.Data) > 0 {
+		return true
+	}
+	if p.FileData != nil && p.FileData.FileURI != "" {
+		return true
+	}
+	if p.FunctionCall != nil && p.FunctionCall.Name != "" {
+		return true
+	}
+	if p.FunctionResponse != nil && p.FunctionResponse.Name != "" {
+		return true
+	}
+	if p.CodeExecutionResult != nil && (p.CodeExecutionResult.Outcome != "" || p.CodeExecutionResult.Output != "") {
+		return true
+	}
+	if p.ExecutableCode != nil && p.ExecutableCode.Code != "" {
+		return true
+	}
+	return false
+}

@@ -526,14 +526,13 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 }
 
 // persistChat saves chat history to .gen in the current directory.
-func persistChat(chat *genai.Chat) error {
+func persistChat(hist []*genai.Content) error {
 	file, err := os.Create(DotGen)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 	encoder := json.NewEncoder(file)
-	hist := chat.History(false)
 	if err := encoder.Encode(hist); err != nil {
 		return err
 	}

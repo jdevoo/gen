@@ -281,6 +281,9 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 }
 
 func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
+	var chat *genai.Chat
+	var userAcc []*genai.Part
+	var modelAcc []*genai.Part
 	var err error
 
 	// retrieve previous session, if any
@@ -297,11 +300,6 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 		}
 	}
 
-	chat, err := g.client.Chats.Create(g.ctx, g.params.GenModel, config, history)
-	if err != nil {
-		return err
-	}
-
 	tty := g.in // assume in is terminal for chat
 
 	if !g.params.Interactive && g.params.ChatMode {
@@ -314,17 +312,45 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 
 	// main interaction loop
 	for {
+		chat, err = g.client.Chats.Create(g.ctx, g.params.GenModel, config, history)
+		if err != nil {
+			return err
+		}
 		if len(g.parts) > 0 {
 			i := 0
-			turnParts := g.parts
+			userAcc = g.parts
+			streamAcc := []*genai.Part{}
 			g.parts = []*genai.Part{}
 			fcMap := map[string]*genai.FunctionCall{}
+			var textBuilder strings.Builder
+			var thoughtBuilder strings.Builder
+			var sig []byte
 			mp := NewParser()
-			for resp, err := range chat.SendStream(g.ctx, turnParts...) {
+
+			for resp, err := range chat.SendStream(g.ctx, userAcc...) {
 				if err != nil {
 					fmt.Fprintf(g.out, "\n")
 					return err
 				}
+
+				if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+					for _, p := range resp.Candidates[0].Content.Parts {
+						if !isValidPart(p) {
+							continue
+						}
+						if p.Thought {
+							thoughtBuilder.WriteString(p.Text)
+							if len(p.ThoughtSignature) > 0 {
+								sig = p.ThoughtSignature
+							}
+						} else if p.Text != "" {
+							textBuilder.WriteString(p.Text)
+						} else {
+							streamAcc = append(streamAcc, p)
+						}
+					}
+				}
+
 				for _, fc := range resp.FunctionCalls() {
 					fcMap[fc.Name] = fc
 				}
@@ -337,10 +363,42 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 						}
 					}
 				}
+
 				if g.params.TokenCount && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
 			}
+
+			modelAcc = []*genai.Part{}
+			if thoughtBuilder.Len() > 0 {
+				modelAcc = append(modelAcc, &genai.Part{
+					Text:             thoughtBuilder.String(),
+					Thought:          true,
+					ThoughtSignature: sig,
+				})
+			}
+			if textBuilder.Len() > 0 {
+				modelAcc = append(modelAcc, &genai.Part{
+					Text: textBuilder.String(),
+				})
+			}
+			if len(streamAcc) > 0 {
+				modelAcc = append(modelAcc, streamAcc...)
+			}
+			// fallback in case stream returns completely empty content
+			if len(modelAcc) == 0 {
+				modelAcc = append(modelAcc, &genai.Part{Text: " "})
+			}
+
+			history = append(history, &genai.Content{
+				Role:  "user",
+				Parts: userAcc,
+			})
+			history = append(history, &genai.Content{
+				Role:  "model",
+				Parts: modelAcc,
+			})
+
 			if len(fcMap) > 0 {
 				resCand := processFunctionCalls(g.ctx, fcMap)
 				if len(resCand.Content.Parts) > 0 {
@@ -349,20 +407,22 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 						fmt.Fprintf(g.out, "\n")
 						return err
 					}
-					// see protocol https://ai.google.dev/gemini-api/docs/function-calling
-					g.parts = append(g.parts, turnParts...)
+					// carry forward function response to next iteration
 					g.parts = append(g.parts, resCand.Content.Parts...)
 					continue
 				}
 			}
+
 			if len(mp.buffer) > 0 {
 				fmt.Fprint(g.out, mp.Flush(g.params.OutRedirected))
 			}
 		}
+
 		// exit if not a chat
 		if !g.params.ChatMode {
 			break
 		}
+
 		input, err := readLine(tty)
 		if err != nil {
 			return err
@@ -380,11 +440,12 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 		if g.params.OutRedirected {
 			fmt.Fprintf(g.out, "\n%s\n\n", input)
 		}
+
 		g.parts = append(g.parts, &genai.Part{Text: input})
 	} // end main interaction loop
 
 	if g.params.ChatMode {
-		if err = persistChat(chat); err != nil {
+		if err = persistChat(history); err != nil {
 			fmt.Fprintf(g.out, "\n")
 			return err
 		}
