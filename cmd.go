@@ -142,14 +142,14 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	params.ThinkingLevel = genai.ThinkingLevelUnspecified
 	params.Timeout = 300 * time.Second
 	params.EmbModel = "gemini-embedding-001"
-	params.GenModel = "gemini-2.5-flash"
+	params.GenModel = "gemini-3.5-flash"
 
 	if err := loadPrefs(params); err != nil {
 		return fmt.Errorf("Error loading preferences from %s: %v\n", DotGenRc, err)
 	}
 
 	fs.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
-	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json, -img, -code or -g)")
+	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json or -img)")
 	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
 	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
 	fs.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))

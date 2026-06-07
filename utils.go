@@ -474,7 +474,7 @@ func validCombos(params *Parameters) error {
 		// chat mode
 		(params.ChatMode &&
 			// with incompatible flags
-			(params.JSON || params.GoogleSearch || params.CodeGen || params.Embed)) {
+			(params.JSON || params.ImgModality || params.Embed)) {
 		return fmt.Errorf("invalid options combination")
 	}
 	return nil

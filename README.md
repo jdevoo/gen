@@ -22,7 +22,7 @@ Set a system instruction from stdin and prompt from argument
 `echo "you understand english but always reply in french" | gen -s -f - ten names for flowers`
 
 Set a system instruction from file option and prompt from argument  
-`gen -f french.sprompt ten names for flowers"`
+`gen -f french.sprompt "ten names for flowers"`
 
 Attach two files to the prompt and return total token count  
 `gen -t -f ../twitter/img/123497680.jpg -f ../twitter/img/123406895.jpg what are the differences between these photos?`
