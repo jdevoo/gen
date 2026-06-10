@@ -207,7 +207,7 @@ func printVersion() {
 			}
 		}
 	}
-	fmt.Printf("gen %s (%s sdk %s mcp %s)\n", Version, Githash, genaiVer, mcpVer)
+	fmt.Printf("gen %s (git %s sdk %s mcp %s)\n", Version, Githash, genaiVer, mcpVer)
 }
 
 // emitUsage overrides PrintDefaults to provide custom usage information.

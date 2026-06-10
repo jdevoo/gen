@@ -96,19 +96,19 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 			continue
 		}
 		if p.FunctionResponse != nil {
-			emitFunctionResponse(out, p, outRedirected, idx, mp, outPath)
+			emitFunctionResponse(out, p, outRedirected, idx, outPath)
 			continue
 		}
 		if verbose && p.ExecutableCode != nil {
-			emitExecutableCode(out, p, outRedirected, idx, mp)
+			emitExecutableCode(out, p, outRedirected, idx)
 			continue
 		}
 		if p.FileData != nil {
-			emitFileData(out, p, outRedirected, idx, mp)
+			emitFileData(out, p, outRedirected, idx)
 			continue
 		}
 		if p.InlineData != nil {
-			emitInlineData(out, p, outRedirected, idx, mp, outPath)
+			emitInlineData(out, p, outRedirected, idx, outPath)
 			continue
 		}
 	}
@@ -135,7 +135,7 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 	return nil
 }
 
-func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser, outPath string) error {
+func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, idx *int, outPath string) error {
 	for _, p := range part.FunctionResponse.Parts {
 		if p.FileData != nil {
 			emitFileData(out, &genai.Part{
@@ -144,7 +144,7 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, i
 					FileURI:     p.FileData.FileURI,
 					MIMEType:    p.FileData.MIMEType,
 				},
-			}, outRedirected, idx, mp)
+			}, outRedirected, idx)
 			continue
 		}
 		if p.InlineData != nil {
@@ -154,14 +154,14 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, i
 					Data:        p.InlineData.Data,
 					MIMEType:    p.InlineData.MIMEType,
 				},
-			}, outRedirected, idx, mp, outPath)
+			}, outRedirected, idx, outPath)
 			continue
 		}
 	}
 	return nil
 }
 
-func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser) error {
+func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
 	if part.CodeExecutionResult != nil && part.CodeExecutionResult.Outcome == genai.OutcomeOK {
 		if !outRedirected {
 			fmt.Fprintf(out, infos("```%s\n%s\n```\n"), part.ExecutableCode.Language, part.ExecutableCode.Code)
@@ -175,7 +175,7 @@ func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx
 	return nil
 }
 
-func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser) error {
+func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
 	if !outRedirected {
 		fmt.Fprintf(out, infos("[%s](%s)"), part.FileData.DisplayName, part.FileData.FileURI)
 	} else {
@@ -187,7 +187,7 @@ func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int,
 	return nil
 }
 
-func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, mp *MarkdownParser, outPath string) error {
+func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, outPath string) error {
 	if strings.HasPrefix(part.InlineData.MIMEType, "text") {
 		if !outRedirected {
 			fmt.Fprintf(out, infos("%s"), part.InlineData.Data)
@@ -234,9 +234,7 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 		if err := senc.Encode(img); err != nil {
 			return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
 		}
-		//if idx != nil && *idx > 0 {
 		fmt.Fprint(out, "\n")
-		//}
 	}
 	if idx != nil {
 		*idx++

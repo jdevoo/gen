@@ -18,9 +18,10 @@ import (
 
 // MarkdownParser holds state across Parse calls.
 type MarkdownParser struct {
-	mu     sync.Mutex
-	isBold bool
-	buffer string
+	mu          sync.Mutex
+	isBold      bool
+	inCodeBlock bool
+	buffer      string
 }
 
 // ParamMap holds key-value pairs for string replacement.
@@ -210,6 +211,9 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (string, string)
 		return "", fmt.Sprintf("invokeTool: %s invocation error", fc.Name)
 	}
 	args := []reflect.Value{reflect.ValueOf(ctx)} // first tool arg is context.Context
+	if f.Type().NumIn()-1 != len(fc.Args) {
+		return "", fmt.Sprintf("invokeTool: %s argument mistmatch", fc.Name)
+	}
 	for i := 1; i < len(fc.Args)+1; i++ {
 		t := f.Type().In(i)
 		v := reflect.New(t).Elem()
@@ -534,7 +538,8 @@ func roles(s string) string {
 // NewParser creates and initializes a new Parser.
 func NewParser() *MarkdownParser {
 	return &MarkdownParser{
-		isBold: false,
+		isBold:      false,
+		inCodeBlock: false,
 	}
 }
 
@@ -547,12 +552,39 @@ func (p *MarkdownParser) Parse(s string) string {
 	p.buffer = ""
 
 	var sb strings.Builder
-	sb.WriteString("\033[97m")
-	if p.isBold {
-		sb.WriteString("\033[1m")
+	if p.inCodeBlock {
+		sb.WriteString("\033[0m")
+	} else {
+		sb.WriteString("\033[97m")
+		if p.isBold {
+			sb.WriteString("\033[1m")
+		}
 	}
-	for i := 0; i < len(s); {
-		if i+1 < len(s) && s[i:i+2] == "**" {
+	n := len(s)
+	for i := 0; i < n; {
+		if i == n-1 && (s[i] == '*' || s[i] == '`') {
+			p.buffer = s[i:]
+			break
+		}
+		if i == n-2 && s[i:i+2] == "``" {
+			p.buffer = s[i:]
+			break
+		}
+		if i+2 < n && s[i:i+3] == "```" {
+			p.inCodeBlock = !p.inCodeBlock
+			sb.WriteString("```")
+			if p.inCodeBlock {
+				sb.WriteString("\033[0m")
+			} else {
+				sb.WriteString("\033[97m")
+				if p.isBold {
+					sb.WriteString("\033[1m")
+				}
+			}
+			i += 3
+			continue
+		}
+		if !p.inCodeBlock && i+1 < n && s[i:i+2] == "**" {
 			if p.isBold {
 				sb.WriteString("\033[22m")
 			} else {
@@ -560,7 +592,7 @@ func (p *MarkdownParser) Parse(s string) string {
 			}
 			p.isBold = !p.isBold
 			i += 2
-		} else if i == len(s)-1 && s[i] == '*' {
+		} else if i == n-1 && s[i] == '*' {
 			p.buffer = "*"
 			i++
 		} else {
@@ -578,8 +610,9 @@ func (p *MarkdownParser) Flush(isRedirected bool) string {
 	defer p.mu.Unlock()
 	res := p.buffer
 	p.buffer = ""
+	p.inCodeBlock = false
 	if p.isBold {
-		if isRedirected {
+		if !isRedirected {
 			res += "\033[0m"
 		}
 		p.isBold = false
