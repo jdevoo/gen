@@ -21,6 +21,7 @@ type MarkdownParser struct {
 	mu          sync.Mutex
 	isBold      bool
 	inCodeBlock bool
+	inThought   bool
 	buffer      string
 }
 
@@ -535,16 +536,24 @@ func roles(s string) string {
 	return "\033[1;37;46m" + s + "\033[0m"
 }
 
-// NewParser creates and initializes a new Parser.
-func NewParser() *MarkdownParser {
+// newParser creates and initializes a new Parser.
+func newParser() *MarkdownParser {
 	return &MarkdownParser{
 		isBold:      false,
 		inCodeBlock: false,
+		inThought:   false,
 	}
 }
 
+// setThought safely updates the MarkdownParser state
+func (p *MarkdownParser) setThought(b bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.inThought = b
+}
+
 // ParseMarkdown turns pairs of `**` to terminal escape sequences
-func (p *MarkdownParser) Parse(s string) string {
+func (p *MarkdownParser) parse(s string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -555,7 +564,11 @@ func (p *MarkdownParser) Parse(s string) string {
 	if p.inCodeBlock {
 		sb.WriteString("\033[0m")
 	} else {
-		sb.WriteString("\033[97m")
+		if p.inThought {
+			sb.WriteString("\033[93m")
+		} else {
+			sb.WriteString("\033[97m")
+		}
 		if p.isBold {
 			sb.WriteString("\033[1m")
 		}
@@ -572,7 +585,11 @@ func (p *MarkdownParser) Parse(s string) string {
 		}
 		if i+2 < n && s[i:i+3] == "```" {
 			if p.inCodeBlock {
-				sb.WriteString("\033[97m")
+				if p.inThought {
+					sb.WriteString("\033[93m")
+				} else {
+					sb.WriteString("\033[97m")
+				}
 				sb.WriteString("```")
 			} else {
 				sb.WriteString("```")
@@ -612,6 +629,7 @@ func (p *MarkdownParser) Flush(isRedirected bool) string {
 	res := p.buffer
 	p.buffer = ""
 	p.inCodeBlock = false
+	p.inThought = false
 	if p.isBold {
 		if !isRedirected {
 			res += "\033[0m"

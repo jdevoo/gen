@@ -325,7 +325,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			var textBuilder strings.Builder
 			var thoughtBuilder strings.Builder
 			var sig []byte
-			mp := NewParser()
+			mp := newParser()
 
 			for resp, err := range chat.SendStream(g.ctx, userAcc...) {
 				if err != nil {

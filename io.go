@@ -117,16 +117,13 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 
 func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
 	if !outRedirected {
-		if verbose && part.Thought {
-			fmt.Fprintf(out, infos("%s"), part.Text)
-		} else {
-			s := part.Text
-			if mp != nil {
-				s = mp.Parse(part.Text)
-			}
-			fmt.Fprint(out, s)
+		mp.setThought(part.Thought)
+		s := part.Text
+		if mp != nil {
+			s = mp.parse(part.Text)
 		}
-	} else if !imgModality || (verbose && part.Thought) {
+		fmt.Fprint(out, s)
+	} else if !imgModality || part.Thought {
 		fmt.Fprintf(out, "%s", part.Text)
 	}
 	if idx != nil {

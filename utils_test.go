@@ -326,8 +326,8 @@ func TestParse_Basic(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			parser := NewParser()
-			actual := parser.Parse(tc.input)
+			parser := newParser()
+			actual := parser.parse(tc.input)
 			if actual != tc.expected {
 				t.Errorf("\nExpected: %q\nActual:   %q", tc.expected, actual)
 			}
@@ -338,17 +338,17 @@ func TestParse_Basic(t *testing.T) {
 func TestParse_StatefulAndBuffering(t *testing.T) {
 	// 1. Test bold state carrying over to subsequent calls
 	t.Run("bold persistence across calls", func(t *testing.T) {
-		parser := NewParser()
+		parser := newParser()
 
 		// First segment starts the bold tag but does not close it
-		res1 := parser.Parse("This is **bold")
+		res1 := parser.parse("This is **bold")
 		expected1 := "\033[97mThis is \033[1mbold\033[0m"
 		if res1 != expected1 {
 			t.Errorf("First Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
 		}
 
 		// Second segment continues the bold state and then closes it
-		res2 := parser.Parse(" text continuing** and normal")
+		res2 := parser.parse(" text continuing** and normal")
 		expected2 := "\033[97m\033[1m text continuing\033[22m and normal\033[0m"
 		if res2 != expected2 {
 			t.Errorf("Second Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
@@ -357,10 +357,10 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 
 	// 2. Test buffering of a single trailing asterisk
 	t.Run("single trailing asterisk buffer", func(t *testing.T) {
-		parser := NewParser()
+		parser := newParser()
 
 		// First segment ends with a single '*'. It should be buffered and not rendered yet.
-		res1 := parser.Parse("This is a *")
+		res1 := parser.parse("This is a *")
 		expected1 := "\033[97mThis is a \033[0m"
 		if res1 != expected1 {
 			t.Errorf("Buffering Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
@@ -370,7 +370,7 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 		}
 
 		// Second segment begins with another '*' completing the bold sequence
-		res2 := parser.Parse("*bold text**")
+		res2 := parser.parse("*bold text**")
 		expected2 := "\033[97m\033[1mbold text\033[22m\033[0m"
 		if res2 != expected2 {
 			t.Errorf("Reconstructed Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
@@ -383,12 +383,12 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 
 func TestParse_Concurrency(t *testing.T) {
 	// Verifies that calling Parse concurrently does not cause race conditions (using the parser's internal Mutex)
-	parser := NewParser()
+	parser := newParser()
 	done := make(chan bool)
 
 	worker := func() {
 		for i := 0; i < 100; i++ {
-			_ = parser.Parse("test **concurrency** stuff")
+			_ = parser.parse("test **concurrency** stuff")
 		}
 		done <- true
 	}
