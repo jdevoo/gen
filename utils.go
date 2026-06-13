@@ -571,16 +571,17 @@ func (p *MarkdownParser) Parse(s string) string {
 			break
 		}
 		if i+2 < n && s[i:i+3] == "```" {
-			p.inCodeBlock = !p.inCodeBlock
-			sb.WriteString("```")
 			if p.inCodeBlock {
-				sb.WriteString("\033[0m")
-			} else {
 				sb.WriteString("\033[97m")
+				sb.WriteString("```")
+			} else {
+				sb.WriteString("```")
+				sb.WriteString("\033[0m")
 				if p.isBold {
 					sb.WriteString("\033[1m")
 				}
 			}
+			p.inCodeBlock = !p.inCodeBlock
 			i += 3
 			continue
 		}
