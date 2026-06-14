@@ -325,7 +325,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			var textBuilder strings.Builder
 			var thoughtBuilder strings.Builder
 			var sig []byte
-			mp := newParser()
+			mp := &MarkdownParser{}
 
 			for resp, err := range chat.SendStream(g.ctx, userAcc...) {
 				if err != nil {
@@ -407,6 +407,9 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 						fmt.Fprintf(g.out, "\n")
 						return err
 					}
+					if len(mp.buffer) > 0 {
+						fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
+					}
 					// carry forward function response to next iteration
 					g.parts = append(g.parts, resCand.Content.Parts...)
 					continue
@@ -414,7 +417,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			}
 
 			if len(mp.buffer) > 0 {
-				fmt.Fprint(g.out, mp.Flush(g.params.OutRedirected))
+				fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 			}
 		}
 

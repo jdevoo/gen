@@ -115,7 +115,7 @@ func run(ctx context.Context) error {
 	}
 
 	// argument validation
-	if err := isArgsInvalid(params, keyVals); err != nil {
+	if err := isArgsInvalid(flag.CommandLine, params, keyVals); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n\n", err)
 		emitUsage(ctx, os.Stdout, false)
 		return fmt.Errorf("")

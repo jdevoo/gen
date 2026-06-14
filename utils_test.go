@@ -326,7 +326,7 @@ func TestParse_Basic(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			parser := newParser()
+			parser := &MarkdownParser{}
 			actual := parser.parse(tc.input)
 			if actual != tc.expected {
 				t.Errorf("\nExpected: %q\nActual:   %q", tc.expected, actual)
@@ -338,7 +338,7 @@ func TestParse_Basic(t *testing.T) {
 func TestParse_StatefulAndBuffering(t *testing.T) {
 	// 1. Test bold state carrying over to subsequent calls
 	t.Run("bold persistence across calls", func(t *testing.T) {
-		parser := newParser()
+		parser := &MarkdownParser{}
 
 		// First segment starts the bold tag but does not close it
 		res1 := parser.parse("This is **bold")
@@ -357,7 +357,7 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 
 	// 2. Test buffering of a single trailing asterisk
 	t.Run("single trailing asterisk buffer", func(t *testing.T) {
-		parser := newParser()
+		parser := &MarkdownParser{}
 
 		// First segment ends with a single '*'. It should be buffered and not rendered yet.
 		res1 := parser.parse("This is a *")
@@ -383,7 +383,7 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 
 func TestParse_Concurrency(t *testing.T) {
 	// Verifies that calling Parse concurrently does not cause race conditions (using the parser's internal Mutex)
-	parser := newParser()
+	parser := &MarkdownParser{}
 	done := make(chan bool)
 
 	worker := func() {

@@ -75,6 +75,9 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 	}
 	finish = cand.FinishReason
 	if finish != "" {
+		if mp != nil && len(mp.buffer) > 0 {
+			fmt.Fprint(out, mp.flush(outRedirected))
+		}
 		if verbose {
 			if !outRedirected {
 				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
@@ -117,7 +120,9 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 
 func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
 	if !outRedirected {
-		mp.setThought(part.Thought)
+		if mp != nil {
+			mp.setThought(part.Thought)
+		}
 		s := part.Text
 		if mp != nil {
 			s = mp.parse(part.Text)
@@ -255,7 +260,6 @@ func emitMask(out io.Writer, mask *genai.GeneratedImageMask) error {
 		}
 	} else {
 		senc := SixelEncoder(out)
-		senc.Dither = true
 		if err := senc.Encode(img); err != nil {
 			return err
 		}

@@ -507,8 +507,29 @@ func validEmbeddings(params *Parameters, keyVals ParamMap) error {
 	return nil
 }
 
+// validArgs checks if there are still unhandled flags inside params.Args
+func validArgs(fs *flag.FlagSet, params *Parameters) error {
+	var err error
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		if err != nil {
+			return
+		}
+		for _, arg := range params.Args {
+			if arg == "-"+f.Name || strings.HasPrefix(arg, "-"+f.Name+"=") {
+				err = fmt.Errorf("misplaced or unhandled flag '%s'", arg)
+				return
+			}
+
+		}
+	})
+	return err
+}
+
 // isArgsInvalid performs a complete argument validation.
-func isArgsInvalid(params *Parameters, keyVals ParamMap) error {
+func isArgsInvalid(fs *flag.FlagSet, params *Parameters, keyVals ParamMap) error {
+	if err := validArgs(fs, params); err != nil {
+		return err
+	}
 	if err := validPrompts(params); err != nil {
 		return err
 	}
@@ -534,15 +555,6 @@ func important(s string) string {
 
 func roles(s string) string {
 	return "\033[1;37;46m" + s + "\033[0m"
-}
-
-// newParser creates and initializes a new Parser.
-func newParser() *MarkdownParser {
-	return &MarkdownParser{
-		isBold:      false,
-		inCodeBlock: false,
-		inThought:   false,
-	}
 }
 
 // setThought safely updates the MarkdownParser state
@@ -575,14 +587,16 @@ func (p *MarkdownParser) parse(s string) string {
 	}
 	n := len(s)
 	for i := 0; i < n; {
-		if i == n-1 && (s[i] == '*' || s[i] == '`') {
+		// protection for splits at the end of stream
+		if i == n-1 && (s[i] == '*' || s[i] == '`' || s[i] == '$') {
 			p.buffer = s[i:]
 			break
 		}
-		if i == n-2 && s[i:i+2] == "``" {
+		if i == n-2 && (s[i:i+2] == "``" || (s[i] == '$' && s[i+1] != '$')) {
 			p.buffer = s[i:]
 			break
 		}
+		// block code
 		if i+2 < n && s[i:i+3] == "```" {
 			if p.inCodeBlock {
 				if p.inThought {
@@ -602,7 +616,14 @@ func (p *MarkdownParser) parse(s string) string {
 			i += 3
 			continue
 		}
-		if !p.inCodeBlock && i+1 < n && s[i:i+2] == "**" {
+		// skip LaTeX, bold if inside code block
+		if p.inCodeBlock {
+			sb.WriteByte(s[i])
+			i++
+			continue
+		}
+		// bold delimiter
+		if i+1 < n && s[i:i+2] == "**" {
 			if p.isBold {
 				sb.WriteString("\033[22m")
 			} else {
@@ -610,33 +631,47 @@ func (p *MarkdownParser) parse(s string) string {
 			}
 			p.isBold = !p.isBold
 			i += 2
-		} else if i == n-1 && s[i] == '*' {
-			p.buffer = "*"
-			i++
-		} else {
-			sb.WriteByte(s[i])
-			i++
+			continue
 		}
+		// normal character
+		sb.WriteByte(s[i])
+		i++
 	}
 	sb.WriteString("\033[0m")
 
 	return sb.String()
 }
 
-func (p *MarkdownParser) Flush(isRedirected bool) string {
+func (p *MarkdownParser) flush(isRedirected bool) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	res := p.buffer
+	if p.buffer == "" {
+		return ""
+	}
+	var sb strings.Builder
+	if !isRedirected {
+		if p.inCodeBlock {
+			sb.WriteString("\033[0m")
+		} else {
+			if p.inThought {
+				sb.WriteString("\033[93m") // Yellow for thoughts
+			} else {
+				sb.WriteString("\033[97m") // Bright white for standard text
+			}
+			if p.isBold {
+				sb.WriteString("\033[1m")
+			}
+		}
+	}
+	sb.WriteString(p.buffer)
+	if !isRedirected {
+		sb.WriteString("\033[0m") // Reset style at the very end
+	}
 	p.buffer = ""
+	p.isBold = false
 	p.inCodeBlock = false
 	p.inThought = false
-	if p.isBold {
-		if !isRedirected {
-			res += "\033[0m"
-		}
-		p.isBold = false
-	}
-	return res
+	return sb.String()
 }
 
 // alignSchema between JSON type fields in MCP vs genai SDK

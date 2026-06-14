@@ -175,7 +175,7 @@ func TestArgsInvalid(t *testing.T) {
 			params.Args = fs.Args()
 			params.Interactive = tc.interactive
 
-			actual := isArgsInvalid(params, keyVals)
+			actual := isArgsInvalid(flag.CommandLine, params, keyVals)
 			if (actual != nil) != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)
 			}
