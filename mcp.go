@@ -80,7 +80,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 
 			isStreamableServer := strings.HasPrefix(srvStr, "http://") ||
 				strings.HasPrefix(srvStr, "https://")
-			timeout := 2 * time.Second
+			timeout := 10 * time.Second
 			if isStreamableServer {
 				timeout = 30 * time.Second
 			}
@@ -100,8 +100,14 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 				if err != nil {
 					return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
 				}
+				cmd := exec.Command(cmdPath, parts[1:]...)
+				if params.Verbose {
+					cmd.Stderr = os.Stderr
+				} else {
+					cmd.Stderr = io.Discard
+				}
 				session, connErr = client.Connect(mcpCtx, &mcp.CommandTransport{
-					Command: exec.Command(cmdPath, parts[1:]...),
+					Command: cmd,
 				}, nil)
 			}
 			if connErr != nil {
@@ -129,6 +135,7 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 			return fmt.Errorf("failed to list MCP tools: %v", err)
 		}
 
+		// TODO risk of name collision
 		mcpDecls := []*genai.FunctionDeclaration{}
 		for _, tool := range ltr.Tools {
 			params.ToolRegistry[tool.Name] = sess
@@ -187,9 +194,21 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	})
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": fmt.Sprintf("invokeMcpTool: %s", err.Error()),
+			"error": fmt.Sprintf("invokeMcpTool: transport error: %s", err.Error()),
 		})
 	}
+	if ctr.IsError {
+		var errText []string
+		for _, c := range ctr.Content {
+			if tc, ok := c.(*mcp.TextContent); ok {
+				errText = append(errText, tc.Text)
+			}
+		}
+		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+			"error": fmt.Sprintf("invokeMcpTool: tool execution failed: %s", strings.Join(errText, "\n")),
+		})
+	}
+
 	var parts []*genai.FunctionResponsePart
 	var outStrings []string
 	var errStrings []string
@@ -207,7 +226,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				errStrings = append(errStrings, "invokeMcpTool: error in PNG ancillary chunk stripper")
 				continue
 			}
-			parts = append(parts, genai.NewFunctionResponsePartFromBytes(strippedData, c.(*mcp.ImageContent).MIMEType))
+			parts = append(parts, genai.NewFunctionResponsePartFromBytes(strippedData, v.MIMEType))
 		case *mcp.AudioContent:
 			errStrings = append(errStrings, "invokeMcpTool: audio content not supported")
 		case *mcp.EmbeddedResource:
