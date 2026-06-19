@@ -254,6 +254,15 @@ func validateEnv() error {
 }
 
 func cleanup(params *Parameters) {
+	// close MCP sessions
+	if len(params.MCPSessions) > 0 {
+		for _, session := range params.MCPSessions {
+			if session != nil {
+				session.Close()
+			}
+		}
+	}
+
 	// delete uploaded files
 	if len(params.FileURIs) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -353,21 +353,13 @@ func zeroOrOneMatches(strArray []string, cand string) bool {
 }
 
 // QueryPostgres submits query to database set by DSN parameter.
-func queryPostgres(ctx context.Context, query string) (string, error) {
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
-	if !ok {
-		return "", fmt.Errorf("queryPostgres: keyVals not found in context")
-	}
-	var res []string
-	dsn, ok := keyVals["DSN"]
-	if !ok || len(dsn) == 0 {
-		return "", fmt.Errorf("DSN parameter missing")
-	}
+func queryPostgres(ctx context.Context, query string, dsn string) (string, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return "", fmt.Errorf("opening DSN '%s': %v", dsn, err)
 	}
 	defer db.Close()
+	var res []string
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("for query '%s': %v", query, err)

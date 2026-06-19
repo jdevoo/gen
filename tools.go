@@ -29,7 +29,15 @@ func (t Tool) FetchKnownGeminiModels(ctx context.Context) (string, error) {
 
 // FetchAWSServices returns a list of services via Steampipe.
 func (t Tool) FetchAWSServices(ctx context.Context) (string, error) {
-	return queryPostgres(ctx, "SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'")
+	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	if !ok {
+		return "", fmt.Errorf("queryPostgres: keyVals not found in context")
+	}
+	dsn, ok := keyVals["DSN"]
+	if !ok || len(dsn) == 0 {
+		return "", fmt.Errorf("DSN parameter missing")
+	}
+	return queryPostgres(ctx, "SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'", dsn)
 }
 
 // GetPrompt lists available prompts from available MCP servers.
