@@ -132,7 +132,7 @@ func knownTools(ctx context.Context) (string, error) {
 	// gen tools
 	genTool := reflect.TypeOf(Tool{})
 	for i := 0; i < genTool.NumMethod(); i++ {
-		res = append(res, fmt.Sprintf("  * %s", genTool.Method(i).Name))
+		res = append(res, sigGenTool(genTool.Method(i)))
 	}
 
 	// MCP tools
@@ -145,11 +145,28 @@ func knownTools(ctx context.Context) (string, error) {
 			break
 		}
 		for _, tool := range ltr.Tools {
-			res = append(res, fmt.Sprintf("  * %v", tool.Name))
+			res = append(res, sigMCPTool(tool))
 		}
 	}
 
 	return strings.Join(res, "\n"), nil
+}
+
+// sigGenTool inspects a native Gen Tool and returns its signature.
+func sigGenTool(m reflect.Method) string {
+	f := reflect.ValueOf(Tool{}).MethodByName(m.Name)
+	t := f.Type()
+	var params []string
+	// First arg is always context.Context, start inspecting from index 1
+	for j := 1; j < t.NumIn(); j++ {
+		argType := t.In(j)
+		name := argType.Kind().String()
+		params = append(params, fmt.Sprintf("%s*", name))
+	}
+	if len(params) == 0 {
+		return fmt.Sprintf("  • %s", m.Name)
+	}
+	return fmt.Sprintf("  • %s %s", m.Name, strings.Join(params, ", "))
 }
 
 // registerTools declares functions of type Tool in genai.FunctionDeclaration format.
@@ -221,8 +238,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (string, string)
 		argName := f.Type().In(i).Name()
 		argVal, ok := fc.Args[argName]
 		if !ok {
-			args = append(args, v) // arg missing, use zero value
-			continue
+			return "", fmt.Sprintf("%s missing parameter: '%s'", fc.Name, argName)
 		}
 		switch t.Kind() {
 		case reflect.String:

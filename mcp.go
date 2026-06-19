@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -167,6 +168,59 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 		}
 	}
 	return nil
+}
+
+// sigMCPTool parses the input schema of an MCP Tool and returns its signature.
+func sigMCPTool(tool *mcp.Tool) string {
+	schemaBytes, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		return fmt.Sprintf("  • %s ?", tool.Name)
+	}
+	var schemaMap map[string]any
+	if err := json.Unmarshal(schemaBytes, &schemaMap); err != nil {
+		return fmt.Sprintf("  • %s ?", tool.Name)
+	}
+
+	props, _ := schemaMap["properties"].(map[string]any)
+	reqs, _ := schemaMap["required"].([]any)
+	requiredSet := make(map[string]bool)
+	for _, r := range reqs {
+		if s, ok := r.(string); ok {
+			requiredSet[s] = true
+		}
+	}
+
+	var keys []string
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var params []string
+	for _, k := range keys {
+		prop, ok := props[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		pType, _ := prop["type"].(string)
+		if pType == "" {
+			pType = "any"
+		}
+		reqStr := ""
+		if requiredSet[k] {
+			reqStr = "*"
+		}
+		if pType == "string" {
+			params = append(params, fmt.Sprintf("%s%s", k, reqStr))
+		} else {
+			params = append(params, fmt.Sprintf("%s%s (%s)", k, reqStr, pType))
+		}
+	}
+
+	if len(params) == 0 {
+		return fmt.Sprintf("  • %s", tool.Name)
+	}
+	return fmt.Sprintf("  • %s %s", tool.Name, strings.Join(params, ", "))
 }
 
 func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
