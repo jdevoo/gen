@@ -45,6 +45,7 @@ type Parameters struct {
 	GoogleSearch      bool
 	Help              bool
 	ImgModality       bool
+	Interactive       bool // terminal session?
 	JSON              bool
 	K                 int
 	Lambda            float64
@@ -53,7 +54,6 @@ type Parameters struct {
 	OutPath           string
 	OutRedirected     bool
 	OnlyKvs           bool // RAG
-	Interactive       bool // terminal session?
 	SystemInstruction bool
 	TokenCount        bool
 	Temp              float64
@@ -262,7 +262,6 @@ func cleanup(params *Parameters) {
 			}
 		}
 	}
-
 	// delete uploaded files
 	if len(params.FileURIs) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
