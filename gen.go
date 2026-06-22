@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -401,6 +402,18 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 
 			if len(fcMap) > 0 {
 				resCand := processFunctionCalls(g.ctx, fcMap)
+				if g.params.Verbose { // Replace with your custom flag if needed
+					for _, part := range resCand.Content.Parts {
+						if part.FunctionResponse != nil {
+							fmt.Fprintf(os.Stderr, "\n[Function Call %s]\n", part.FunctionResponse.Name)
+							if jsonBytes, err := json.MarshalIndent(part.FunctionResponse.Response, "", "  "); err == nil {
+								fmt.Fprintf(os.Stderr, "%s\n\n", string(jsonBytes))
+							} else {
+								fmt.Fprintf(os.Stderr, "%+v\n\n", part.FunctionResponse.Response)
+							}
+						}
+					}
+				}
 				if len(resCand.Content.Parts) > 0 {
 					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {

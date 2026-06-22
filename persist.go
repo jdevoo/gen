@@ -377,6 +377,7 @@ func (l *Log) Segments() int {
 	return len(l.segments)
 }
 
+// TODO concurrency race risk on lazy segment loading
 func (l *Log) Read(segment, index uint64) (data []byte, err error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
