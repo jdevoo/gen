@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -210,6 +213,224 @@ func TestLoadPrompt(t *testing.T) {
 		expected := subContent + " and again " + subContent
 		if strings.TrimSpace(result) != expected {
 			t.Errorf("Expected %q, got %q", expected, result)
+		}
+	})
+}
+
+// TestIsEmpty tests detection of empty files.
+func TestIsEmpty(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test-empty-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if !isEmpty(tmpFile) {
+		t.Errorf("Expected empty file to be detected as empty")
+	}
+
+	if _, err := tmpFile.WriteString("non-empty"); err != nil {
+		t.Fatal(err)
+	}
+
+	if isEmpty(tmpFile) {
+		t.Errorf("Expected non-empty file to NOT be detected as empty")
+	}
+
+	// Non-*os.File should return false
+	if isEmpty(nil) {
+		t.Errorf("Expected non-*os.File to return false")
+	}
+}
+
+// TestIsValidPath tests directory validity evaluation.
+func TestIsValidPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	if !isValidPath(tmpDir) {
+		t.Errorf("Expected directory %s to be valid", tmpDir)
+	}
+
+	tmpFile := filepath.Join(tmpDir, "file.txt")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if isValidPath(tmpFile) {
+		t.Errorf("Expected file %s NOT to be a directory (valid path in gen-cli terms means IsDir)", tmpFile)
+	}
+}
+
+// TestPersistChatAndRetrieveHistory tests serialized chat history persistence.
+func TestPersistChatAndRetrieveHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldWd)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	hist := []*genai.Content{
+		{
+			Role: "user",
+			Parts: []*genai.Part{
+				{Text: "Hello!"},
+			},
+		},
+	}
+
+	if err := persistChat(hist); err != nil {
+		t.Fatalf("persistChat failed: %v", err)
+	}
+
+	var loadedHist []*genai.Content
+	if err := retrieveHistory(&loadedHist); err != nil {
+		t.Fatalf("retrieveHistory failed: %v", err)
+	}
+
+	if len(loadedHist) != 1 || loadedHist[0].Role != "user" || loadedHist[0].Parts[0].Text != "Hello!" {
+		t.Errorf("Retrieved history mismatch: %+v", loadedHist)
+	}
+}
+
+// TestLoadPrefs tests user preferences parsing and parameter assignment.
+func TestLoadPrefs(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	rcContent := `[flags]
+k = 5
+lambda = 0.7
+thinkinglevel = MEDIUM
+temp = 1.5
+timeout = 10s
+topp = 0.8
+embmodel = custom-emb
+genmodel = custom-gen
+
+[digestpaths]
+path/to/digest1
+path/to/digest2
+
+[mcpservers]
+cmd1
+cmd2
+`
+	err := os.WriteFile(filepath.Join(tmpDir, DotGenRc), []byte(rcContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := &Parameters{}
+	if err := loadPrefs(params); err != nil {
+		t.Fatalf("loadPrefs failed: %v", err)
+	}
+
+	if params.K != 5 {
+		t.Errorf("Expected K=5, got %d", params.K)
+	}
+	if params.Lambda != 0.7 {
+		t.Errorf("Expected Lambda=0.7, got %v", params.Lambda)
+	}
+	if params.ThinkingLevel != genai.ThinkingLevelMedium {
+		t.Errorf("Expected ThinkingLevel=MEDIUM, got %v", params.ThinkingLevel)
+	}
+	if params.Temp != 1.5 {
+		t.Errorf("Expected Temp=1.5, got %v", params.Temp)
+	}
+	if params.Timeout != 10*time.Second {
+		t.Errorf("Expected Timeout=10s, got %v", params.Timeout)
+	}
+	if params.TopP != 0.8 {
+		t.Errorf("Expected TopP=0.8, got %v", params.TopP)
+	}
+	if params.EmbModel != "custom-emb" {
+		t.Errorf("Expected EmbModel=custom-emb, got %q", params.EmbModel)
+	}
+	if params.GenModel != "custom-gen" {
+		t.Errorf("Expected GenModel=custom-gen, got %q", params.GenModel)
+	}
+	if len(params.DigestPaths) != 2 || params.DigestPaths[0] != "path/to/digest1" {
+		t.Errorf("Unexpected DigestPaths: %v", params.DigestPaths)
+	}
+	if len(params.MCPServers) != 2 || params.MCPServers[0] != "cmd1" {
+		t.Errorf("Unexpected MCPServers: %v", params.MCPServers)
+	}
+}
+
+// TestPNGAncillaryChunkStripper tests stripping ancillary chunks from PNG data streams.
+func TestPNGAncillaryChunkStripper(t *testing.T) {
+	t.Run("Not PNG", func(t *testing.T) {
+		input := []byte("Not a PNG file")
+		stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(input)}
+		out, err := io.ReadAll(stripper)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(out, input) {
+			t.Errorf("Expected identical output for non-PNG, got %s", string(out))
+		}
+	})
+
+	t.Run("PNG with ancillary chunk", func(t *testing.T) {
+		// Prepare a mock PNG
+		magic := []byte("\x89PNG\x0D\x0A\x1A\x0A")
+
+		// IHDR chunk (non-ancillary)
+		ihdrLength := []byte{0, 0, 0, 4}
+		ihdrType := []byte("IHDR")
+		ihdrData := []byte("head")
+		ihdrCrc := []byte{0, 0, 0, 0}
+
+		// gAMA chunk (ancillary, type starts with lowercase 'g', chunkTypeAncillaryBit is set)
+		gamaLength := []byte{0, 0, 0, 4}
+		gamaType := []byte("gAMA")
+		gamaData := []byte("gama")
+		gamaCrc := []byte{0, 0, 0, 0}
+
+		// IDAT chunk (non-ancillary)
+		idatLength := []byte{0, 0, 0, 4}
+		idatType := []byte("IDAT")
+		idatData := []byte("body")
+		idatCrc := []byte{0, 0, 0, 0}
+
+		var mockPNG []byte
+		mockPNG = append(mockPNG, magic...)
+		mockPNG = append(mockPNG, ihdrLength...)
+		mockPNG = append(mockPNG, ihdrType...)
+		mockPNG = append(mockPNG, ihdrData...)
+		mockPNG = append(mockPNG, ihdrCrc...)
+		mockPNG = append(mockPNG, gamaLength...)
+		mockPNG = append(mockPNG, gamaType...)
+		mockPNG = append(mockPNG, gamaData...)
+		mockPNG = append(mockPNG, gamaCrc...)
+		mockPNG = append(mockPNG, idatLength...)
+		mockPNG = append(mockPNG, idatType...)
+		mockPNG = append(mockPNG, idatData...)
+		mockPNG = append(mockPNG, idatCrc...)
+
+		stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(mockPNG)}
+		out, err := io.ReadAll(stripper)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Gama chunk (16 bytes: length(4), type(4), data(4), crc(4)) should be stripped
+		expectedLength := len(mockPNG) - 16
+		if len(out) != expectedLength {
+			t.Errorf("Expected stripped length %d, got %d", expectedLength, len(out))
+		}
+
+		if bytes.Contains(out, gamaData) {
+			t.Errorf("gAMA data should have been stripped")
+		}
+		if !bytes.Contains(out, idatData) {
+			t.Errorf("IDAT data should be preserved")
 		}
 	})
 }

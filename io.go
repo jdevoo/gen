@@ -75,7 +75,7 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 	}
 	finish = cand.FinishReason
 	if finish != "" {
-		if mp != nil && len(mp.buffer) > 0 {
+		if mp != nil {
 			fmt.Fprint(out, mp.flush(outRedirected))
 		}
 		if verbose {
@@ -95,11 +95,11 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
-			emitText(out, p, outRedirected, imgModality, verbose, idx, mp)
+			emitText(out, p, outRedirected, imgModality, idx, mp)
 			continue
 		}
 		if p.FunctionResponse != nil {
-			emitFunctionResponse(out, p, outRedirected, idx, outPath)
+			emitFunctionResponse(out, p, outRedirected, verbose, idx, outPath)
 			continue
 		}
 		if verbose && p.ExecutableCode != nil {
@@ -112,13 +112,12 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 		}
 		if p.InlineData != nil {
 			emitInlineData(out, p, outRedirected, idx, outPath)
-			continue
 		}
 	}
 	return nil
 }
 
-func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
+func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, idx *int, mp *MarkdownParser) error {
 	if !outRedirected {
 		if mp != nil {
 			mp.setThought(part.Thought)
@@ -137,7 +136,27 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 	return nil
 }
 
-func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, idx *int, outPath string) error {
+func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, verbose bool, idx *int, outPath string) error {
+	if verbose {
+		if outRedirected {
+			fmt.Fprintf(os.Stderr, "[Function Call %s]\n", part.FunctionResponse.Name)
+		} else {
+			fmt.Fprintf(os.Stderr, infos("[Function Call %s]")+"\n", part.FunctionResponse.Name)
+		}
+		if jsonBytes, err := json.MarshalIndent(part.FunctionResponse.Response, "", "  "); err == nil {
+			if outRedirected {
+				fmt.Fprintf(os.Stderr, "%s\n", string(jsonBytes))
+			} else {
+				fmt.Fprintf(os.Stderr, infos("%s")+"\n", string(jsonBytes))
+			}
+		} else {
+			if outRedirected {
+				fmt.Fprintf(os.Stderr, "%+v\n", part.FunctionResponse.Response)
+			} else {
+				fmt.Fprintf(os.Stderr, infos("%+v")+"\n", part.FunctionResponse.Response)
+			}
+		}
+	}
 	for _, p := range part.FunctionResponse.Parts {
 		if p.FileData != nil {
 			emitFileData(out, &genai.Part{
@@ -147,7 +166,6 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, i
 					MIMEType:    p.FileData.MIMEType,
 				},
 			}, outRedirected, idx)
-			continue
 		}
 		if p.InlineData != nil {
 			emitInlineData(out, &genai.Part{
@@ -157,7 +175,6 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, i
 					MIMEType:    p.InlineData.MIMEType,
 				},
 			}, outRedirected, idx, outPath)
-			continue
 		}
 	}
 	return nil
@@ -165,10 +182,10 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, i
 
 func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
 	if part.CodeExecutionResult != nil && part.CodeExecutionResult.Outcome == genai.OutcomeOK {
-		if !outRedirected {
-			fmt.Fprintf(out, infos("```%s\n%s\n```\n"), part.ExecutableCode.Language, part.ExecutableCode.Code)
-		} else {
+		if outRedirected {
 			fmt.Fprintf(out, "```%s\n%s\n```\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
+		} else {
+			fmt.Fprintf(out, infos("```%s\n%s\n```")+"\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
 		}
 		if idx != nil {
 			*idx++
@@ -178,10 +195,10 @@ func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx
 }
 
 func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
-	if !outRedirected {
-		fmt.Fprintf(out, infos("[%s](%s)"), part.FileData.DisplayName, part.FileData.FileURI)
+	if outRedirected {
+		fmt.Fprintf(out, "%s\n", part.FileData.FileURI)
 	} else {
-		fmt.Fprintf(out, "[%s](%s)", part.FileData.DisplayName, part.FileData.FileURI)
+		fmt.Fprintf(out, infos("%s")+"\n", part.FileData.FileURI)
 	}
 	if idx != nil {
 		*idx++
@@ -191,10 +208,10 @@ func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int)
 
 func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, outPath string) error {
 	if strings.HasPrefix(part.InlineData.MIMEType, "text") {
-		if !outRedirected {
-			fmt.Fprintf(out, infos("%s"), part.InlineData.Data)
+		if outRedirected {
+			fmt.Fprintf(out, "%s\n", part.InlineData.Data)
 		} else {
-			fmt.Fprint(out, part.InlineData.Data)
+			fmt.Fprintf(out, infos("%s")+"\n", part.InlineData.Data)
 		}
 		if idx != nil {
 			*idx++
@@ -240,33 +257,6 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 	}
 	if idx != nil {
 		*idx++
-	}
-	return nil
-}
-
-// emitMask renders segmentation results
-func emitMask(out io.Writer, mask *genai.GeneratedImageMask) error {
-	r := bytes.NewReader(mask.Mask.ImageBytes)
-	img, _, err := image.Decode(r)
-	if err != nil {
-		return err
-	}
-	if isRedirected(out) {
-		if !isEmpty(out) { // output first image only
-			return nil
-		}
-		if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
-			return err
-		}
-	} else {
-		senc := SixelEncoder(out)
-		if err := senc.Encode(img); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "\n")
-	}
-	for _, l := range mask.Labels {
-		fmt.Fprintf(out, "%s %f\n", l.Label, l.Score)
 	}
 	return nil
 }
@@ -381,7 +371,7 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 // filePathHandler processes a single file path for glob.
 // parts and sysParts are extended with file content.
 func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
 		return fmt.Errorf("filePathHandler: keyVals not found in context")
 	}
@@ -445,7 +435,7 @@ func isHidden(name string) bool {
 
 // glob processes files and directories passed as argument (recursively if walk is true).
 func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return fmt.Errorf("glob: params not found in context")
 	}

@@ -296,106 +296,213 @@ func TestReplacePart(t *testing.T) {
 	}
 }
 
-func TestParse_Basic(t *testing.T) {
+// TestConjTexts tests the conjTexts function.
+func TestConjTexts(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		expected string
+		input    []*genai.Part
+		expected []*genai.Part
 	}{
 		{
-			name:     "plain text without markdown",
-			input:    "Hello, world!",
-			expected: "\033[97mHello, world!\033[0m",
+			name:     "empty",
+			input:    []*genai.Part{},
+			expected: []*genai.Part{},
 		},
 		{
-			name:     "single bold segment",
-			input:    "Hello **world**!",
-			expected: "\033[97mHello \033[1mworld\033[22m!\033[0m",
+			name: "multiple text parts",
+			input: []*genai.Part{
+				{Text: "Hello "},
+				{Text: "World!"},
+			},
+			expected: []*genai.Part{
+				{Text: "Hello World!"},
+			},
 		},
 		{
-			name:     "multiple bold segments",
-			input:    "**Hello** and **welcome**",
-			expected: "\033[97m\033[1mHello\033[22m and \033[1mwelcome\033[22m\033[0m",
-		},
-		{
-			name:     "unmatched bold opening sequence",
-			input:    "This is **bold and doesn't close",
-			expected: "\033[97mThis is \033[1mbold and doesn't close\033[0m",
+			name: "text with some empty parts",
+			input: []*genai.Part{
+				{Text: "A"},
+				{Text: ""},
+				{Text: "B"},
+			},
+			expected: []*genai.Part{
+				{Text: "AB"},
+			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			parser := &MarkdownParser{}
-			actual := parser.parse(tc.input)
-			if actual != tc.expected {
-				t.Errorf("\nExpected: %q\nActual:   %q", tc.expected, actual)
+			input := tc.input
+			conjTexts(&input)
+			if len(input) != len(tc.expected) {
+				t.Fatalf("Expected length %d, got %d", len(tc.expected), len(input))
+			}
+			for i := range input {
+				if input[i].Text != tc.expected[i].Text {
+					t.Errorf("Expected element %d to be %q, got %q", i, tc.expected[i].Text, input[i].Text)
+				}
 			}
 		})
 	}
 }
 
-func TestParse_StatefulAndBuffering(t *testing.T) {
-	// 1. Test bold state carrying over to subsequent calls
-	t.Run("bold persistence across calls", func(t *testing.T) {
-		parser := &MarkdownParser{}
-
-		// First segment starts the bold tag but does not close it
-		res1 := parser.parse("This is **bold")
-		expected1 := "\033[97mThis is \033[1mbold\033[0m"
-		if res1 != expected1 {
-			t.Errorf("First Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
-		}
-
-		// Second segment continues the bold state and then closes it
-		res2 := parser.parse(" text continuing** and normal")
-		expected2 := "\033[97m\033[1m text continuing\033[22m and normal\033[0m"
-		if res2 != expected2 {
-			t.Errorf("Second Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
-		}
-	})
-
-	// 2. Test buffering of a single trailing asterisk
-	t.Run("single trailing asterisk buffer", func(t *testing.T) {
-		parser := &MarkdownParser{}
-
-		// First segment ends with a single '*'. It should be buffered and not rendered yet.
-		res1 := parser.parse("This is a *")
-		expected1 := "\033[97mThis is a \033[0m"
-		if res1 != expected1 {
-			t.Errorf("Buffering Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
-		}
-		if parser.buffer != "*" {
-			t.Errorf("Expected buffer to contain '*' but got %q", parser.buffer)
-		}
-
-		// Second segment begins with another '*' completing the bold sequence
-		res2 := parser.parse("*bold text**")
-		expected2 := "\033[97m\033[1mbold text\033[22m\033[0m"
-		if res2 != expected2 {
-			t.Errorf("Reconstructed Parse failed:\nExpected: %q\nActual:   %q", expected2, res2)
-		}
-		if parser.buffer != "" {
-			t.Errorf("Expected buffer to be cleared but got %q", parser.buffer)
-		}
-	})
+// TestPrependToParts tests prepending documents.
+func TestPrependToParts(t *testing.T) {
+	parts := []*genai.Part{
+		{Text: "Existing"},
+	}
+	selection := []QueryResult{
+		{doc: Document{content: "Doc1"}},
+		{doc: Document{content: "Doc2"}},
+	}
+	prependToParts(&parts, selection)
+	if len(parts) != 3 {
+		t.Fatalf("Expected length 3, got %d", len(parts))
+	}
+	if parts[0].Text != "Doc1" || parts[1].Text != "Doc2" || parts[2].Text != "Existing" {
+		t.Errorf("Unexpected parts after prepend: %v, %v, %v", parts[0].Text, parts[1].Text, parts[2].Text)
+	}
 }
 
-func TestParse_Concurrency(t *testing.T) {
-	// Verifies that calling Parse concurrently does not cause race conditions (using the parser's internal Mutex)
-	parser := &MarkdownParser{}
-	done := make(chan bool)
+// TestAppendToSelection tests extending selections by MMR order.
+func TestAppendToSelection(t *testing.T) {
+	selection := []QueryResult{
+		{doc: Document{content: "Doc1"}, mmr: 0.5},
+		{doc: Document{content: "Doc2"}, mmr: 0.8},
+	}
+	item := QueryResult{doc: Document{content: "Doc3"}, mmr: 0.9}
 
-	worker := func() {
-		for i := 0; i < 100; i++ {
-			_ = parser.parse("test **concurrency** stuff")
+	// append with limit k = 2
+	res := appendToSelection(selection, item, 2)
+	if len(res) != 2 {
+		t.Fatalf("Expected length 2, got %d", len(res))
+	}
+	if res[0].mmr != 0.9 || res[1].mmr != 0.8 {
+		t.Errorf("Expected sorted descending MMR (0.9, 0.8), got: %v, %v", res[0].mmr, res[1].mmr)
+	}
+}
+
+// TestZeroOrOneMatches tests zeroOrOneMatches.
+func TestZeroOrOneMatches(t *testing.T) {
+	tests := []struct {
+		strArray []string
+		cand     string
+		expected bool
+	}{
+		{[]string{"apple", "banana"}, "cherry", true},
+		{[]string{"apple", "banana"}, "apple", true},
+		{[]string{"apple", "apple", "banana"}, "apple", false},
+	}
+	for _, tc := range tests {
+		actual := zeroOrOneMatches(tc.strArray, tc.cand)
+		if actual != tc.expected {
+			t.Errorf("zeroOrOneMatches(%v, %q) = %t, expected %t", tc.strArray, tc.cand, actual, tc.expected)
 		}
-		done <- true
+	}
+}
+
+// TestAlignSchema tests schema alignment function.
+func TestAlignSchema(t *testing.T) {
+	schema := map[string]any{
+		"$schema":     "http://json-schema.org/draft-07/schema#",
+		"definitions": map[string]any{},
+		"$ref":        "#/definitions/foo",
+		"type":        []any{"string", "null"},
+		"properties": map[string]any{
+			"prop1": map[string]any{
+				"type": []any{"integer", "null"},
+			},
+		},
+		"items": map[string]any{
+			"type": []any{"boolean", "null"},
+		},
+		"additionalProperties": map[string]any{
+			"type": "string",
+		},
 	}
 
-	go worker()
-	go worker()
+	alignSchema(schema)
 
-	<-done
-	<-done
+	if _, ok := schema["$schema"]; ok {
+		t.Error("$schema was not deleted")
+	}
+	if _, ok := schema["definitions"]; ok {
+		t.Error("definitions was not deleted")
+	}
+	if _, ok := schema["$ref"]; ok {
+		t.Error("$ref was not deleted")
+	}
+	if val, ok := schema["type"].(string); !ok || val != "string" {
+		t.Errorf("expected type to be string, got %v", schema["type"])
+	}
+	if val, ok := schema["nullable"].(bool); !ok || !val {
+		t.Errorf("expected nullable to be true, got %v", schema["nullable"])
+	}
+
+	// Check properties recursion
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("properties missing or incorrect type")
+	}
+	prop1, ok := props["prop1"].(map[string]any)
+	if !ok {
+		t.Fatal("prop1 missing or incorrect type")
+	}
+	if val, ok := prop1["type"].(string); !ok || val != "integer" {
+		t.Errorf("expected prop1 type to be integer, got %v", prop1["type"])
+	}
+	if val, ok := prop1["nullable"].(bool); !ok || !val {
+		t.Errorf("expected prop1 nullable to be true, got %v", prop1["nullable"])
+	}
+
+	// Check items recursion
+	items, ok := schema["items"].(map[string]any)
+	if !ok {
+		t.Fatal("items missing or incorrect type")
+	}
+	if val, ok := items["type"].(string); !ok || val != "boolean" {
+		t.Errorf("expected items type to be boolean, got %v", items["type"])
+	}
+	if val, ok := items["nullable"].(bool); !ok || !val {
+		t.Errorf("expected items nullable to be true, got %v", items["nullable"])
+	}
+
+	// alignSchema with nil
+	alignSchema(nil) // should not panic
+}
+
+// TestIsValidPart tests part validation checker.
+func TestIsValidPart(t *testing.T) {
+	tests := []struct {
+		name     string
+		part     *genai.Part
+		expected bool
+	}{
+		{"nil", nil, false},
+		{"empty", &genai.Part{}, false},
+		{"text", &genai.Part{Text: "hello"}, true},
+		{"inline data empty", &genai.Part{InlineData: &genai.Blob{}}, false},
+		{"inline data valid", &genai.Part{InlineData: &genai.Blob{Data: []byte{1, 2, 3}}}, true},
+		{"file data empty", &genai.Part{FileData: &genai.FileData{}}, false},
+		{"file data valid", &genai.Part{FileData: &genai.FileData{FileURI: "gs://uri"}}, true},
+		{"function call empty", &genai.Part{FunctionCall: &genai.FunctionCall{}}, false},
+		{"function call valid", &genai.Part{FunctionCall: &genai.FunctionCall{Name: "my_func"}}, true},
+		{"function response empty", &genai.Part{FunctionResponse: &genai.FunctionResponse{}}, false},
+		{"function response valid", &genai.Part{FunctionResponse: &genai.FunctionResponse{Name: "my_func"}}, true},
+		{"code exec result empty", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{}}, false},
+		{"code exec result valid output", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{Output: "ok"}}, true},
+		{"code exec result valid outcome", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: "ok"}}, true},
+		{"executable code empty", &genai.Part{ExecutableCode: &genai.ExecutableCode{}}, false},
+		{"executable code valid", &genai.Part{ExecutableCode: &genai.ExecutableCode{Code: "fmt.Println()"}}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := isValidPart(tc.part)
+			if actual != tc.expected {
+				t.Errorf("isValidPart() = %t, expected %t", actual, tc.expected)
+			}
+		})
+	}
 }

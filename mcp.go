@@ -125,7 +125,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 
 // registerMCPTools declares tools of MCP servers in genai.FunctionDeclaration format.
 func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) error {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return fmt.Errorf("registerMcpTools: params not found in context")
 	}
@@ -229,7 +229,7 @@ func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.
 func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"error": "invokeTool: params not found in context",
@@ -264,13 +264,13 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	}
 
 	var parts []*genai.FunctionResponsePart
-	var outStrings []string
 	var errStrings []string
+	var textStrings []string
 
 	for _, c := range ctr.Content {
 		switch v := c.(type) {
 		case *mcp.TextContent:
-			outStrings = append(outStrings, v.Text)
+			textStrings = append(textStrings, v.Text)
 		case *mcp.ResourceLink:
 			parts = append(parts, genai.NewFunctionResponsePartFromURI(v.URI, v.MIMEType))
 		case *mcp.ImageContent:
@@ -284,12 +284,14 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 		case *mcp.AudioContent:
 			errStrings = append(errStrings, "invokeMcpTool: audio content not supported")
 		case *mcp.EmbeddedResource:
-			parts = append(parts, &genai.FunctionResponsePart{
-				FileData: &genai.FunctionResponseFileData{
-					FileURI:     v.Resource.URI,
-					MIMEType:    v.Resource.MIMEType,
-					DisplayName: v.Resource.Text,
-				}})
+			if v.Resource != nil {
+				if len(v.Resource.Blob) > 0 {
+					parts = append(parts, genai.NewFunctionResponsePartFromBytes(v.Resource.Blob, v.Resource.MIMEType))
+				}
+				if len(v.Resource.Text) > 0 {
+					textStrings = append(textStrings, v.Resource.Text)
+				}
+			}
 		}
 	}
 
@@ -300,7 +302,10 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	}
 	return genai.NewPartFromFunctionResponseWithParts(
 		fc.Name,
-		map[string]any{"output": strings.Join(outStrings, "\n")},
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   textStrings,
+		},
 		parts,
 	)
 }
@@ -354,7 +359,7 @@ func convertMCPType(val string, t string) (any, error) {
 
 // genSampling message callback for MCP servers.
 func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("genSampling: params not found in context")
 	}
@@ -380,7 +385,7 @@ func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.Creat
 
 // genElicitation callback for MCP servers that request inputs not supplied via -p.
 func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("genElicitation: keyVals not found in context")
 	}

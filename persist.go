@@ -34,8 +34,8 @@ func (o *Options) validate() {
 }
 
 var DefaultOptions = &Options{
-	NoSync:      false,    // Fsync after every write
-	SegmentSize: 20971520, // 20 MB log segment files.
+	NoSync:      false,            // Fsync after every write
+	SegmentSize: 20 * 1024 * 1024, // 20 MB log segment files.
 	DirPerms:    0750,
 	FilePerms:   0640,
 }
@@ -378,7 +378,7 @@ func (l *Log) Segments() int {
 }
 
 // TODO concurrency race risk on lazy segment loading
-func (l *Log) Read(segment, index uint64) (data []byte, err error) {
+func (l *Log) Read(segment, index uint64) ([]byte, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
@@ -407,7 +407,7 @@ func (l *Log) Read(segment, index uint64) (data []byte, err error) {
 	if uint64(len(edata)-n) < size {
 		return nil, fmt.Errorf("Log corrupt: entry size exceeds available data")
 	}
-	data = make([]byte, size)
+	data := make([]byte, size)
 	copy(data, edata[n:])
 	return data, nil
 }

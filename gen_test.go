@@ -33,8 +33,8 @@ func prepareTestContext(t *testing.T, interactive bool, args ...string) context.
 	// override from !isRedirected(os.Stdin)
 	params.Interactive = interactive
 
-	ctx := context.WithValue(context.Background(), "params", params)
-	ctx = context.WithValue(ctx, "keyVals", keyVals)
+	ctx := context.WithValue(context.Background(), paramsKey, params)
+	ctx = context.WithValue(ctx, keyValsKey, keyVals)
 
 	return ctx
 }

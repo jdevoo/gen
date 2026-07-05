@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/lib/pq"
 	"google.golang.org/genai"
 )
 
@@ -42,7 +41,7 @@ func validPrompts(params *Parameters) error {
 						// stdin as argument, no prompt as file
 						(len(params.Args) == 1 &&
 							params.Args[0] == "-" && !anyMatches(params.FilePaths, PExt) && !params.ChatMode))))) {
-		return fmt.Errorf("invalid or missing prompts")
+		return fmt.Errorf("invalid or missing prompt")
 	}
 	return nil
 }

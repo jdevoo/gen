@@ -110,7 +110,7 @@ Usage: gen [options] <prompt>
 Options:
 
   -V    output model details, system instructions, chat history and thoughts
-  -c    enter chat mode (incompatible with -json, -img, -code or -g)
+  -c    enter chat mode (incompatible with -json or -img)
   -code
         code execution tool (incompatible with -g, -img or -tool)
   -d value
@@ -130,7 +130,7 @@ Options:
   -l float
         balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-        model name (default "gemini-2.5-flash")
+        model name (default "gemini-3.5-flash")
   -mcp value
         mcp stdio or streamable server command
   -out string

@@ -29,13 +29,13 @@ func (t Tool) ListGeminiModels(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListGeminiModels",
-		map[string]any{"output": strings.Join(res, "\n")},
+		map[string]any{"text": res},
 	), nil
 }
 
 // GetAWSServices returns a list of services via Steampipe.
 func (t Tool) ListAWSServices(ctx context.Context) (*genai.Part, error) {
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("ListAWSServices: keyVals not found in context")
 	}
@@ -49,13 +49,13 @@ func (t Tool) ListAWSServices(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListAWSServices",
-		map[string]any{"output": res},
+		map[string]any{"text": res},
 	), nil
 }
 
 // ListPrompts lists available prompts from available MCP servers.
 func (t Tool) ListMCPPrompts(ctx context.Context) (*genai.Part, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("ListMCPPrompts: params not found in context")
 	}
@@ -85,7 +85,7 @@ func (t Tool) ListMCPPrompts(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListMCPPrompts",
-		map[string]any{"output": strings.Join(res, "\n")},
+		map[string]any{"text": res},
 	), nil
 }
 
@@ -95,11 +95,11 @@ type GetPromptArgs struct {
 
 // GetPrompt retrieves a specific prompt by name from available MCP servers.
 func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("GetMCPPrompt: params not found in context")
 	}
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("GetMCPPrompt: keyVals not found in context")
 	}
@@ -116,29 +116,31 @@ func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part
 				if err != nil {
 					return nil, err
 				}
-				var res []string
+				var textStrings []string
 				var parts []*genai.FunctionResponsePart
 				for _, msg := range prompt.Messages {
-					switch content := msg.Content.(type) {
+					switch c := msg.Content.(type) {
 					case *mcp.TextContent:
-						res = append(res, content.Text)
+						textStrings = append(textStrings, c.Text)
 					case *mcp.ResourceLink:
-						parts = append(parts, genai.NewFunctionResponsePartFromURI(content.URI, content.MIMEType))
+						parts = append(parts, genai.NewFunctionResponsePartFromURI(c.URI, c.MIMEType))
 					case *mcp.EmbeddedResource:
-						if content.Resource != nil {
-							parts = append(parts, &genai.FunctionResponsePart{
-								FileData: &genai.FunctionResponseFileData{
-									FileURI:     content.Resource.URI,
-									MIMEType:    content.Resource.MIMEType,
-									DisplayName: content.Resource.Text,
-								},
-							})
+						if c.Resource != nil {
+							if len(c.Resource.Blob) > 0 {
+								parts = append(parts, genai.NewFunctionResponsePartFromBytes(c.Resource.Blob, c.Resource.MIMEType))
+							}
+							if len(c.Resource.Text) > 0 {
+								textStrings = append(textStrings, c.Resource.Text)
+							}
 						}
 					}
 				}
 				return genai.NewPartFromFunctionResponseWithParts(
 					"GetMCPPrompt",
-					map[string]any{"output": strings.Join(res, "\n")},
+					map[string]any{
+						"output": "SUCCESS",
+						"text":   textStrings,
+					},
 					parts,
 				), nil
 			}
@@ -152,7 +154,7 @@ func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part
 
 // ListResources returns resources available from MCP servers.
 func (t Tool) ListMCPResources(ctx context.Context) (*genai.Part, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("ListResources: params not found in context")
 	}
@@ -167,8 +169,10 @@ func (t Tool) ListMCPResources(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListMCPResources",
-		map[string]any{"output": strings.Join(res, "\n")},
-	), nil
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   res,
+		}), nil
 }
 
 type GetResourceArgs struct {
@@ -177,7 +181,7 @@ type GetResourceArgs struct {
 
 // GetResource retrieves a specific resource by name from available MCP servers.
 func (t Tool) GetMCPResource(ctx context.Context, args GetResourceArgs) (*genai.Part, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("GetResource: params not found in context")
 	}
@@ -193,20 +197,24 @@ func (t Tool) GetMCPResource(ctx context.Context, args GetResourceArgs) (*genai.
 				if err != nil {
 					return nil, err
 				}
+				var textStrings []string
+				var parts []*genai.FunctionResponsePart
 				for _, c := range res.Contents {
 					if len(c.Text) > 0 {
-						return genai.NewPartFromFunctionResponse(
-							"GetMCPResource",
-							map[string]any{"output": c.Text},
-						), nil
+						textStrings = append(textStrings, c.Text)
 					}
 					if len(c.Blob) > 0 {
-						return genai.NewPartFromFunctionResponse(
-							"GetMCPResource",
-							map[string]any{"output": string(c.Blob)},
-						), nil
+						parts = append(parts, genai.NewFunctionResponsePartFromBytes(c.Blob, c.MIMEType))
 					}
 				}
+				return genai.NewPartFromFunctionResponseWithParts(
+					"GetMCPResource",
+					map[string]any{
+						"output": "SUCCESS",
+						"text":   textStrings,
+					},
+					parts,
+				), nil
 			}
 		}
 	}
@@ -243,7 +251,7 @@ func (t Tool) CaptureScreen(ctx context.Context, args CaptureScreenArgs) (*genai
 	return genai.NewPartFromFunctionResponseWithParts(
 		"CaptureScreen",
 		map[string]any{
-			"output": "Success",
+			"output": "SUCCESS",
 		},
 		parts,
 	), nil

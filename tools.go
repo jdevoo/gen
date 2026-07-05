@@ -51,7 +51,7 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 
 	genaiType, err := goTypeToGenAIType(fieldType.Kind())
 	if err != nil {
-		return nil, "", false, fmt.Errorf("field '%s': %w", field.Name, err)
+		return nil, "", false, fmt.Errorf("field '%s': %v", field.Name, err)
 	}
 
 	return &genai.Schema{
@@ -62,7 +62,7 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 
 // knownTools returns string of comma-separated function names.
 func knownTools(ctx context.Context) (string, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return "", fmt.Errorf("knownTools: params not found in context")
 	}
@@ -163,7 +163,7 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 			for j := 0; j < argType.NumField(); j++ {
 				schema, name, isOptional, err := buildFieldSchema(argType.Field(j))
 				if err != nil {
-					return fmt.Errorf("tool '%s': %w", m.Name, err)
+					return fmt.Errorf("tool '%s': %v", m.Name, err)
 				}
 				argMap[name] = schema
 				if !isOptional {
@@ -333,7 +333,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	outVal := vals[0].Interface()
 	if outVal == nil {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"output": "Success",
+			"output": "SUCCESS",
 		})
 	}
 	if p, ok := outVal.(*genai.Part); ok {

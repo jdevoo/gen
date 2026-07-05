@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"google.golang.org/genai"
 )
 
 func TestSerializeDeserialize(t *testing.T) {
@@ -87,5 +89,41 @@ func TestDotProduct(t *testing.T) {
 	got := dotProduct(a, b)
 	if got != expected {
 		t.Errorf("Dot product failed, got %f, expected %f", got, expected)
+	}
+}
+
+func TestAppendAndQueryDigest(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	emb := &genai.ContentEmbedding{
+		Values: []float32{0.1, 0.2, 0.3},
+	}
+	keyVals := ParamMap{"source": "test-doc"}
+	part := &genai.Part{Text: "Test document content."}
+
+	err := appendToDigest(tmpDir, emb, keyVals, false, false, part)
+	if err != nil {
+		t.Fatalf("appendToDigest failed: %v", err)
+	}
+
+	queryEmb := &genai.ContentEmbedding{
+		Values: []float32{0.1, 0.2, 0.3}, // high similarity
+	}
+
+	results, err := queryDigest(tmpDir, queryEmb, nil, 1, 0.5, false)
+	if err != nil {
+		t.Fatalf("queryDigest failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	if results[0].doc.content != "Test document content." {
+		t.Errorf("Expected content 'Test document content.', got %q", results[0].doc.content)
+	}
+
+	if results[0].doc.metadata["source"] != "test-doc" {
+		t.Errorf("Expected metadata source='test-doc', got %q", results[0].doc.metadata["source"])
 	}
 }

@@ -23,14 +23,6 @@ var (
 	TokenCount atomic.Int32
 )
 
-const (
-	SPExt     = ".sprompt" // system prompt extension
-	PExt      = ".prompt"  // regular prompt extension
-	DigestKey = "{digest}" // key to replace with embedded content
-	DotGen    = ".gen"     // name of chat history file
-	DotGenRc  = ".genrc"   // name of preferences file
-)
-
 // Parameters holds gen flag values as well as Args and MCP sessions.
 type Parameters struct {
 	Args              []string // non-flag command-line arguments i.e. prompt
@@ -68,6 +60,16 @@ type Parameters struct {
 	Walk              bool // used with FilePaths
 }
 
+const (
+	SPExt      = ".sprompt" // system prompt extension
+	PExt       = ".prompt"  // regular prompt extension
+	DigestKey  = "{digest}" // key to replace with embedded content
+	DotGen     = ".gen"     // name of chat history file
+	DotGenRc   = ".genrc"   // name of preferences file
+	paramsKey  = "params"   // context key for params
+	keyValsKey = "keyVals"  // context key for keyVals
+)
+
 func main() {
 	// create context that listens for OS interrupt signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -97,13 +99,13 @@ func run(ctx context.Context) error {
 	defer cleanup(params)
 
 	// store keyVals and params in context
-	ctx = context.WithValue(ctx, "keyVals", keyVals)
-	ctx = context.WithValue(ctx, "params", params)
+	ctx = context.WithValue(ctx, keyValsKey, keyVals)
+	ctx = context.WithValue(ctx, paramsKey, params)
 
 	// stash MCP client sessions in params.MCPSessions
 	if params.Help || params.Tool {
 		if err := initMCPSessions(ctx, params); err != nil {
-			return fmt.Errorf("MCP error: %w", err)
+			return fmt.Errorf("MCP error: %v", err)
 		}
 	}
 
@@ -122,11 +124,11 @@ func run(ctx context.Context) error {
 	}
 
 	if err := validateEnv(); err != nil {
-		return fmt.Errorf("Environment error: %w", err)
+		return fmt.Errorf("Environment error: %v", err)
 	}
 
 	if err := genContent(ctx, os.Stdin, os.Stdout); err != nil {
-		return fmt.Errorf("Generation error: %w", err)
+		return fmt.Errorf("Generation error: %v", err)
 	}
 
 	return nil

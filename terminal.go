@@ -3,8 +3,6 @@ package main
 import (
 	"strings"
 	"sync"
-
-	_ "github.com/lib/pq"
 )
 
 const (
@@ -45,15 +43,15 @@ func (p *MarkdownParser) parse(s string) string {
 
 	var sb strings.Builder
 	if p.inCodeBlock {
-		sb.WriteString("\033[0m")
+		sb.WriteString(ansiReset)
 	} else {
 		if p.inThought {
-			sb.WriteString("\033[93m")
+			sb.WriteString(ansiYellow)
 		} else {
-			sb.WriteString("\033[97m")
+			sb.WriteString(ansiWhite)
 		}
 		if p.isBold {
-			sb.WriteString("\033[1m")
+			sb.WriteString(ansiBold)
 		}
 	}
 	n := len(s)
@@ -71,16 +69,16 @@ func (p *MarkdownParser) parse(s string) string {
 		if i+2 < n && s[i:i+3] == "```" {
 			if p.inCodeBlock {
 				if p.inThought {
-					sb.WriteString("\033[93m")
+					sb.WriteString(ansiYellow)
 				} else {
-					sb.WriteString("\033[97m")
+					sb.WriteString(ansiWhite)
 				}
 				sb.WriteString("```")
 			} else {
 				sb.WriteString("```")
-				sb.WriteString("\033[0m")
+				sb.WriteString(ansiReset)
 				if p.isBold {
-					sb.WriteString("\033[1m")
+					sb.WriteString(ansiBold)
 				}
 			}
 			p.inCodeBlock = !p.inCodeBlock
@@ -96,9 +94,9 @@ func (p *MarkdownParser) parse(s string) string {
 		// bold delimiter
 		if i+1 < n && s[i:i+2] == "**" {
 			if p.isBold {
-				sb.WriteString("\033[22m")
+				sb.WriteString(ansiNoBold)
 			} else {
-				sb.WriteString("\033[1m")
+				sb.WriteString(ansiBold)
 			}
 			p.isBold = !p.isBold
 			i += 2
@@ -108,7 +106,7 @@ func (p *MarkdownParser) parse(s string) string {
 		sb.WriteByte(s[i])
 		i++
 	}
-	sb.WriteString("\033[0m")
+	sb.WriteString(ansiReset)
 
 	return sb.String()
 }
@@ -122,21 +120,21 @@ func (p *MarkdownParser) flush(isRedirected bool) string {
 	var sb strings.Builder
 	if !isRedirected {
 		if p.inCodeBlock {
-			sb.WriteString("\033[0m")
+			sb.WriteString(ansiReset)
 		} else {
 			if p.inThought {
-				sb.WriteString("\033[93m") // Yellow for thoughts
+				sb.WriteString(ansiYellow) // Yellow for thoughts
 			} else {
-				sb.WriteString("\033[97m") // Bright white for standard text
+				sb.WriteString(ansiWhite)
 			}
 			if p.isBold {
-				sb.WriteString("\033[1m")
+				sb.WriteString(ansiBold)
 			}
 		}
 	}
 	sb.WriteString(p.buffer)
 	if !isRedirected {
-		sb.WriteString("\033[0m") // Reset style at the very end
+		sb.WriteString(ansiReset)
 	}
 	p.buffer = ""
 	p.isBold = false

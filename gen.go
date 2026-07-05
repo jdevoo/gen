@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +23,7 @@ type Generator struct {
 }
 
 func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return fmt.Errorf("missing params")
 	}
@@ -41,11 +40,11 @@ func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
 }
 
 func newGenerator(ctx context.Context, in io.Reader, out io.Writer) (*Generator, error) {
-	params, ok := ctx.Value("params").(*Parameters)
+	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return nil, fmt.Errorf("missing params")
 	}
-	keyVals, ok := ctx.Value("keyVals").(ParamMap)
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("missing keyVals")
 	}
@@ -402,25 +401,13 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 
 			if len(fcMap) > 0 {
 				resCand := processFunctionCalls(g.ctx, fcMap)
-				if g.params.Verbose { // Replace with your custom flag if needed
-					for _, part := range resCand.Content.Parts {
-						if part.FunctionResponse != nil {
-							fmt.Fprintf(os.Stderr, "\n[Function Call %s]\n", part.FunctionResponse.Name)
-							if jsonBytes, err := json.MarshalIndent(part.FunctionResponse.Response, "", "  "); err == nil {
-								fmt.Fprintf(os.Stderr, "%s\n\n", string(jsonBytes))
-							} else {
-								fmt.Fprintf(os.Stderr, "%+v\n\n", part.FunctionResponse.Response)
-							}
-						}
-					}
-				}
 				if len(resCand.Content.Parts) > 0 {
 					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {
 						fmt.Fprintf(g.out, "\n")
 						return err
 					}
-					if len(mp.buffer) > 0 {
+					if mp != nil {
 						fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 					}
 					// carry forward function response to next iteration
@@ -429,7 +416,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				}
 			}
 
-			if len(mp.buffer) > 0 {
+			if mp != nil {
 				fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 			}
 		}
