@@ -41,7 +41,9 @@ func (t Tool) ListAWSServices(ctx context.Context) (*genai.Part, error) {
 	}
 	dsn, ok := keyVals["DSN"]
 	if !ok || len(dsn) == 0 {
-		return nil, fmt.Errorf("ListAWSServices: DSN parameter missing")
+		return nil, &ParamError{
+			Message: "ListAWSServices: missing parameter\n  -p DSN=postgres://pqgo:password@localhost",
+		}
 	}
 	res, err := queryPostgres(ctx, "SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'", dsn)
 	if err != nil {
@@ -109,8 +111,11 @@ func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part
 				continue // skip this MCP server
 			}
 			if args.Name == p.Name {
+				if err := argsUnsatisfied(p.Arguments, keyVals); err != nil {
+					return nil, err
+				}
 				prompt, err := sess.GetPrompt(ctx, &mcp.GetPromptParams{
-					Name:      args.Name,
+					Name:      p.Name,
 					Arguments: keyVals,
 				})
 				if err != nil {

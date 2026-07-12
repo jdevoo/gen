@@ -13,6 +13,14 @@ import (
 	"google.golang.org/genai"
 )
 
+type ParamError struct {
+	Message string
+}
+
+func (e *ParamError) Error() string {
+	return e.Message
+}
+
 // ParamMap holds key-value pairs for string replacement.
 type ParamMap map[string]string
 
@@ -109,22 +117,29 @@ func appendToSelection(selection []QueryResult, item QueryResult, k int) []Query
 }
 
 // processFunctionCalls attempts function calls, first across MCP sessions then gen tools.
-func processFunctionCalls(ctx context.Context, fcMap map[string]*genai.FunctionCall) *genai.Candidate {
+func processFunctionCalls(ctx context.Context, fcMap map[string]*genai.FunctionCall) (*genai.Candidate, error) {
 	var res []*genai.Part
 	for _, fc := range fcMap {
-		mcpRes := invokeMCPTool(ctx, fc)
+		mcpRes, err := invokeMCPTool(ctx, fc)
+		if err != nil {
+			return nil, err
+		}
 		if mcpRes != nil {
 			res = append(res, mcpRes)
 			continue
 		}
 		// fc not an MCP tool, must be a native gen tool
-		res = append(res, invokeGenTool(ctx, fc))
+		genRes, err := invokeGenTool(ctx, fc)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, genRes)
 	}
 	return &genai.Candidate{
 		Content: &genai.Content{
 			Parts: res,
 		},
-	}
+	}, nil
 }
 
 // countMatches is a helper that returns how many strings in strArray contain cand (case-insensitive).

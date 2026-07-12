@@ -27,6 +27,25 @@ type SessionArray []*mcp.ClientSession
 // ToolRegistry maps tool names to the session
 type ToolMap map[string]*mcp.ClientSession
 
+type ElicitError struct {
+	mu  sync.Mutex
+	err error
+}
+
+func (t *ElicitError) SetError(err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.err == nil {
+		t.err = err
+	}
+}
+
+func (t *ElicitError) Error() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.err
+}
+
 // initMCPSessions starts the MCP server processes and connects clients.
 // TODO timeout hardcoded
 func initMCPSessions(ctx context.Context, params *Parameters) error {
@@ -127,7 +146,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) error {
 	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
-		return fmt.Errorf("registerMcpTools: params not found in context")
+		return fmt.Errorf("registerMCPTools: params not found in context")
 	}
 
 	for _, sess := range params.MCPSessions {
@@ -161,12 +180,12 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 				Parameters:  &mcpInputSchema,
 			})
 		}
-		if len(mcpDecls) > 0 {
-			config.Tools = append(config.Tools, &genai.Tool{
-				FunctionDeclarations: mcpDecls,
-			})
+
+		if len(mcpDecls) > 0 && config.Tools[0].FunctionDeclarations != nil {
+			config.Tools[0].FunctionDeclarations = append(config.Tools[0].FunctionDeclarations, mcpDecls...)
 		}
 	}
+
 	return nil
 }
 
@@ -228,28 +247,37 @@ func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
 }
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.
-func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
+func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, error) {
 	params, ok := ctx.Value(paramsKey).(*Parameters)
 	if !ok {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": "invokeTool: params not found in context",
-		})
+			"error": "invokeMCPTool: params not found in context",
+		}), nil
 	}
 
 	// Lookup tool
 	sess, ok := params.ToolRegistry[fc.Name]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	ctr, err := sess.CallTool(ctx, &mcp.CallToolParams{
 		Name:      fc.Name,
 		Arguments: fc.Args,
 	})
+	if t, ok := ctx.Value(elicitErrKey).(*ElicitError); ok {
+		if elicitErr := t.Error(); elicitErr != nil {
+			if params.ChatMode {
+				err = elicitErr
+			} else {
+				return nil, elicitErr
+			}
+		}
+	}
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": fmt.Sprintf("invokeMcpTool: transport error: %s", err.Error()),
-		})
+			"error": fmt.Sprintf("invokeMCPTool: transport error: %s", err.Error()),
+		}), nil
 	}
 	if ctr.IsError {
 		var errText []string
@@ -259,8 +287,8 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 			}
 		}
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": fmt.Sprintf("invokeMcpTool: tool execution failed: %s", strings.Join(errText, "\n")),
-		})
+			"error": fmt.Sprintf("invokeMCPTool: tool execution failed: %s", strings.Join(errText, "\n")),
+		}), nil
 	}
 
 	var parts []*genai.FunctionResponsePart
@@ -277,12 +305,12 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 			stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(v.Data)}
 			strippedData, err := io.ReadAll(stripper)
 			if err != nil {
-				errStrings = append(errStrings, "invokeMcpTool: error in PNG ancillary chunk stripper")
+				errStrings = append(errStrings, "invokeMCPTool: error in PNG ancillary chunk stripper")
 				continue
 			}
 			parts = append(parts, genai.NewFunctionResponsePartFromBytes(strippedData, v.MIMEType))
 		case *mcp.AudioContent:
-			errStrings = append(errStrings, "invokeMcpTool: audio content not supported")
+			errStrings = append(errStrings, "invokeMCPTool: audio content not supported")
 		case *mcp.EmbeddedResource:
 			if v.Resource != nil {
 				if len(v.Resource.Blob) > 0 {
@@ -298,8 +326,9 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 	if len(errStrings) > 0 {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"error": errStrings,
-		})
+		}), nil
 	}
+
 	return genai.NewPartFromFunctionResponseWithParts(
 		fc.Name,
 		map[string]any{
@@ -307,7 +336,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 			"text":   textStrings,
 		},
 		parts,
-	)
+	), nil
 }
 
 // convertMCPType attempts to convert a string value to a target type as defined in the JSON schema.
@@ -354,7 +383,7 @@ func convertMCPType(val string, t string) (any, error) {
 		}
 		return v, nil
 	}
-	return nil, fmt.Errorf("Unsupported MCP type %s", t)
+	return nil, fmt.Errorf("unsupported MCP type %s", t)
 }
 
 // genSampling message callback for MCP servers.
@@ -363,18 +392,22 @@ func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.Creat
 	if !ok {
 		return nil, fmt.Errorf("genSampling: params not found in context")
 	}
+
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("genSampling: failed to create genai client")
 	}
+
 	if len((*req.Params).Messages) == 0 || (*req.Params).Messages[0].Content == nil {
 		return nil, fmt.Errorf("genSampling: prompt missing")
 	}
 	prompt := genai.Text((*req.Params).Messages[0].Content.(*mcp.TextContent).Text)
+
 	res, err := client.Models.GenerateContent(ctx, params.GenModel, prompt, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	return &mcp.CreateMessageResult{
 		Content: &mcp.TextContent{
 			Text: string(res.Candidates[0].Content.Parts[0].Text),
@@ -385,54 +418,276 @@ func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.Creat
 
 // genElicitation callback for MCP servers that request inputs not supplied via -p.
 func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("genElicitation: keyVals not found in context")
-	}
 	res := mcp.ElicitResult{
-		Action:  "",
+		Action:  "accept",
 		Content: map[string]any{},
 	}
+
 	schemaMap, ok := (*req.Params).RequestedSchema.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("expected map[string]any but got %T", (*req.Params).RequestedSchema)
 	}
+
 	propsMap, ok := schemaMap["properties"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("'properties' not found in RequestedSchema")
+		return nil, fmt.Errorf("'properties' not found in requested schema")
 	}
-	reqIf, ok := schemaMap["required"].([]any)
-	var reqProps []string
-	if ok {
-		for _, i := range reqIf {
-			if p, ok := i.(string); ok {
-				reqProps = append(reqProps, p)
-			}
-		}
+
+	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
+	if !ok {
+		return nil, fmt.Errorf("genElicitation: keyVals not found in context")
 	}
-	for _, p := range reqProps {
-		if _, val := keyVals[p]; !val {
-			res.Action = "cancel"
-		}
+
+	var propNames []string
+	for propName := range propsMap {
+		propNames = append(propNames, propName)
 	}
+	sort.Strings(propNames)
+
 	var out []string
-	for propName, propSchemaIf := range propsMap {
+	for _, propName := range propNames {
+		propSchemaIf := propsMap[propName]
 		if propSchema, ok := propSchemaIf.(map[string]any); ok {
 			propType, _ := propSchema["type"].(string)
 			if valString, ok := keyVals[propName]; ok {
-				propVal, _ := convertMCPType(valString, propType)
-				res.Content[propName] = propVal
+				propVal, err := convertMCPType(valString, propType)
+				if err != nil {
+					out = append(out, fmt.Sprintf("  -p %s: %v", propName, err))
+				} else if err := validateMCPValue(propVal, propSchema); err != nil {
+					out = append(out, fmt.Sprintf("  -p %s: %v", propName, err))
+				} else {
+					res.Content[propName] = propVal
+				}
+			} else if defVal, ok := propSchema["default"]; ok {
+				res.Content[propName] = defVal
 			} else {
-				propDesc, _ := propSchema["description"]
-				out = append(out, fmt.Sprintf("  -p %s=<%s> %s", propName, propType, propDesc))
+				out = append(out, describeElicitField(propName, propSchema))
 			}
 		}
 	}
+
 	if len(out) > 0 {
-		res.Action = "cancel"
 		out = append([]string{(*req.Params).Message}, out...)
-		return nil, fmt.Errorf("missing information\n%s", strings.Join(out, "\n"))
+		paramErr := &ParamError{
+			Message: strings.Join(out, "\n"),
+		}
+		if t, ok := ctx.Value(elicitErrKey).(*ElicitError); ok {
+			t.SetError(paramErr)
+		}
+		return nil, paramErr
 	}
-	res.Action = "accept"
+
 	return &res, nil
+}
+
+// argsUnsatisfied returns a list of prompt parameters missing from keyVals.
+func argsUnsatisfied(args []*mcp.PromptArgument, keyVals ParamMap) *ParamError {
+	var out []string
+	for _, arg := range args {
+		if _, val := keyVals[arg.Name]; !val {
+			out = append(out, fmt.Sprintf("  -p %s", arg.Name))
+		}
+	}
+	if len(out) > 0 {
+		return &ParamError{
+			Message: strings.Join(out, "\n"),
+		}
+	}
+	return nil
+}
+
+// describeElicitField parses an elicitation property schema.
+func describeElicitField(name string, schema map[string]any) string {
+	pType, _ := schema["type"].(string)
+	if pType == "" {
+		pType = "any"
+	}
+
+	// Capture formats (e.g., email, uri, date)
+	if format, ok := schema["format"].(string); ok && format != "" {
+		pType = pType + ":" + format
+	}
+
+	var description string
+	if desc, ok := schema["description"].(string); ok {
+		description = desc
+	}
+
+	var choices []string
+
+	parseOfList := func(ofList []any) {
+		for _, itemIf := range ofList {
+			if item, ok := itemIf.(map[string]any); ok {
+				var constVal string
+				if cv, ok := item["const"]; ok {
+					constVal = fmt.Sprintf("%v", cv)
+				}
+				var title string
+				if t, ok := item["title"].(string); ok {
+					title = t
+				}
+				if constVal != "" {
+					if title != "" {
+						choices = append(choices, fmt.Sprintf("%s (%s)", constVal, title))
+					} else {
+						choices = append(choices, constVal)
+					}
+				}
+			}
+		}
+	}
+
+	if enumVals, ok := schema["enum"].([]any); ok {
+		var enumNames []string
+		if names, ok := schema["enumNames"].([]any); ok {
+			for _, n := range names {
+				enumNames = append(enumNames, fmt.Sprintf("%v", n))
+			}
+		}
+		for i, v := range enumVals {
+			valStr := fmt.Sprintf("%v", v)
+			if i < len(enumNames) {
+				choices = append(choices, fmt.Sprintf("%s (%s)", valStr, enumNames[i]))
+			} else {
+				choices = append(choices, valStr)
+			}
+		}
+	}
+
+	if oneOfList, ok := schema["oneOf"].([]any); ok {
+		parseOfList(oneOfList)
+	}
+	if anyOfList, ok := schema["anyOf"].([]any); ok {
+		parseOfList(anyOfList)
+	}
+
+	if pType == "array" {
+		if itemsIf, ok := schema["items"].(map[string]any); ok {
+			itemType, _ := itemsIf["type"].(string)
+			if itemType != "" {
+				pType = fmt.Sprintf("array[%s]", itemType)
+			}
+			if itemEnums, ok := itemsIf["enum"].([]any); ok {
+				for _, v := range itemEnums {
+					choices = append(choices, fmt.Sprintf("%v", v))
+				}
+			}
+			if itemOneOf, ok := itemsIf["oneOf"].([]any); ok {
+				parseOfList(itemOneOf)
+			}
+			if itemAnyOf, ok := itemsIf["anyOf"].([]any); ok {
+				parseOfList(itemAnyOf)
+			}
+		}
+	}
+
+	var limits []string
+	if min, ok := schema["minimum"]; ok {
+		limits = append(limits, fmt.Sprintf("min: %v", min))
+	}
+	if max, ok := schema["maximum"]; ok {
+		limits = append(limits, fmt.Sprintf("max: %v", max))
+	}
+	if minItems, ok := schema["minItems"]; ok {
+		limits = append(limits, fmt.Sprintf("minItems: %v", minItems))
+	}
+	if maxItems, ok := schema["maxItems"]; ok {
+		limits = append(limits, fmt.Sprintf("maxItems: %v", maxItems))
+	}
+
+	var defaultStr string
+	if defVal, ok := schema["default"]; ok {
+		if arr, ok := defVal.([]any); ok {
+			var arrStrs []string
+			for _, el := range arr {
+				arrStrs = append(arrStrs, fmt.Sprintf("%v", el))
+			}
+			defaultStr = "[" + strings.Join(arrStrs, ", ") + "]"
+		} else {
+			defaultStr = fmt.Sprintf("%v", defVal)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("  -p %s <%s>", name, pType))
+	if len(limits) > 0 {
+		sb.WriteString(fmt.Sprintf(" (%s)", strings.Join(limits, ", ")))
+	}
+	if description != "" {
+		sb.WriteString(" - " + description)
+	}
+	if len(choices) > 0 {
+		sb.WriteString(fmt.Sprintf(" (options: %s)", strings.Join(choices, ", ")))
+	}
+	if defaultStr != "" {
+		sb.WriteString(fmt.Sprintf(" [default: %s]", defaultStr))
+	}
+
+	return sb.String()
+}
+
+// validateMCPValue checks if the converted value satisfies schema constraints.
+func validateMCPValue(val any, schema map[string]any) error {
+	if enumVals, ok := schema["enum"].([]any); ok {
+		found := false
+		for _, ev := range enumVals {
+			if fmt.Sprintf("%v", val) == fmt.Sprintf("%v", ev) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("value '%v' is not one of the allowed options", val)
+		}
+	}
+
+	checkOfList := func(ofList []any) (bool, []string) {
+		var allowed []string
+		hasConst := false
+		for _, itemIf := range ofList {
+			if item, ok := itemIf.(map[string]any); ok {
+				if cv, ok := item["const"]; ok {
+					hasConst = true
+					constStr := fmt.Sprintf("%v", cv)
+					allowed = append(allowed, constStr)
+					if fmt.Sprintf("%v", val) == constStr {
+						return true, nil
+					}
+				}
+			}
+		}
+		return !hasConst, allowed
+	}
+
+	if oneOfList, ok := schema["oneOf"].([]any); ok {
+		if ok, allowed := checkOfList(oneOfList); !ok {
+			return fmt.Errorf("value '%v' is not one of the allowed options: %s", val, strings.Join(allowed, ", "))
+		}
+	}
+	if anyOfList, ok := schema["anyOf"].([]any); ok {
+		if ok, allowed := checkOfList(anyOfList); !ok {
+			return fmt.Errorf("value '%v' is not one of the allowed options: %s", val, strings.Join(allowed, ", "))
+		}
+	}
+
+	if min, ok := schema["minimum"]; ok {
+		if minF, err := strconv.ParseFloat(fmt.Sprintf("%v", min), 64); err == nil {
+			if valF, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
+				if valF < minF {
+					return fmt.Errorf("value %v is less than minimum %v", val, min)
+				}
+			}
+		}
+	}
+	if max, ok := schema["maximum"]; ok {
+		if maxF, err := strconv.ParseFloat(fmt.Sprintf("%v", max), 64); err == nil {
+			if valF, err := strconv.ParseFloat(fmt.Sprintf("%v", val), 64); err == nil {
+				if valF > maxF {
+					return fmt.Errorf("value %v is greater than maximum %v", val, max)
+				}
+			}
+		}
+	}
+
+	return nil
 }

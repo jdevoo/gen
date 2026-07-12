@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -127,7 +128,7 @@ func sigGenTool(m reflect.Method) string {
 				}
 				var paramStr string
 				if fieldType.Kind() == reflect.String {
-					paramStr = fmt.Sprintf("%s", name)
+					paramStr = name
 				} else {
 					paramStr = fmt.Sprintf("%s (%s)", name, fieldType.Kind().String())
 				}
@@ -192,12 +193,12 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 }
 
 // invokeGenTool looks for exported symbols under Tool matching the provided FunctionCall signature.
-func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
+func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, error) {
 	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
 	if !f.IsValid() {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": fmt.Sprintf("invokeTool: %s invocation error", fc.Name),
-		})
+			"error": fmt.Sprintf("invokeGenTool: %s invocation error", fc.Name),
+		}), nil
 	}
 
 	args := []reflect.Value{reflect.ValueOf(ctx)} // first tool arg is context.Context
@@ -205,8 +206,8 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 		structType := f.Type().In(1)
 		if structType.Kind() != reflect.Struct {
 			return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-				"error": fmt.Sprintf("invokeTool: %s expected second argument to be a struct", fc.Name),
-			})
+				"error": fmt.Sprintf("invokeGenTool: %s expected second argument to be a struct", fc.Name),
+			}), nil
 		}
 
 		structVal := reflect.New(structType).Elem()
@@ -235,7 +236,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				if !isOptional {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s missing parameter: '%s'", fc.Name, name),
-					})
+					}), nil
 				}
 				continue
 			}
@@ -261,7 +262,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				} else {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s type mismatch: '%s' expected string, got %T", fc.Name, name, argVal),
-					})
+					}), nil
 				}
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 				if fv, ok := argVal.(float64); ok {
@@ -271,7 +272,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				} else {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s type mismatch: '%s' expected integer, got %T", fc.Name, name, argVal),
-					})
+					}), nil
 				}
 			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 				var uintVal uint64
@@ -279,20 +280,20 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 					if fv < 0 {
 						return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 							"error": fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, name),
-						})
+						}), nil
 					}
 					uintVal = uint64(fv)
 				} else if iv, ok := argVal.(int64); ok {
 					if iv < 0 {
 						return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 							"error": fmt.Sprintf("%s error: negative value for unsigned integer '%s'", fc.Name, name),
-						})
+						}), nil
 					}
 					uintVal = uint64(iv)
 				} else {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s type mismatch: '%s' expected unsigned integer, got %T", fc.Name, name, argVal),
-					})
+					}), nil
 				}
 				val.SetUint(uintVal)
 			case reflect.Float32, reflect.Float64:
@@ -303,7 +304,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				} else {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s type mismatch: '%s' expected float, got %T", fc.Name, name, argVal),
-					})
+					}), nil
 				}
 			case reflect.Bool:
 				if b, ok := argVal.(bool); ok {
@@ -311,7 +312,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 				} else {
 					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 						"error": fmt.Sprintf("%s type mismatch: '%s' expected boolean, got %T", fc.Name, name, argVal),
-					})
+					}), nil
 				}
 			}
 
@@ -324,23 +325,27 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) *genai.Part {
 
 	vals := f.Call(args)
 	if !vals[1].IsNil() {
+		var paramErr *ParamError
 		err := vals[1].Interface().(error)
+		if errors.As(err, &paramErr) {
+			return nil, paramErr
+		}
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"error": fmt.Sprintf("%s error: %v", fc.Name, err),
-		})
+		}), nil
 	}
 
 	outVal := vals[0].Interface()
 	if outVal == nil {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"output": "SUCCESS",
-		})
+		}), nil
 	}
 	if p, ok := outVal.(*genai.Part); ok {
-		return p
+		return p, nil
 	}
 	// fallback
 	return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 		"output": fmt.Sprintf("%v", outVal),
-	})
+	}), nil
 }

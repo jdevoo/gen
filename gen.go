@@ -400,7 +400,10 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			})
 
 			if len(fcMap) > 0 {
-				resCand := processFunctionCalls(g.ctx, fcMap)
+				resCand, err := processFunctionCalls(g.ctx, fcMap)
+				if err != nil {
+					return err
+				}
 				if len(resCand.Content.Parts) > 0 {
 					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {

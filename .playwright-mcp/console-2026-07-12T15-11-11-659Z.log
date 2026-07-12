@@ -1,0 +1,7 @@
+[      88ms] [LOG] Rendered http://localhost:3000/styles/main.less successfully. @ http://localhost:3000/lib/less/dist/less.min.js:9
+[      89ms] [LOG] CSS for http://localhost:3000/styles/main.less generated in 52ms @ http://localhost:3000/lib/less/dist/less.min.js:9
+[      89ms] [LOG] Less has finished. CSS generated in 52ms @ http://localhost:3000/lib/less/dist/less.min.js:9
+[     235ms] [WARNING] [JavaScript Warning: "Window.fullScreen attribute is deprecated and will be removed in the future." {file: "http://localhost:3000/lib/systemjs/dist/system.js" line: 4}] @ http://localhost:3000/lib/systemjs/dist/system.js:4
+[     235ms] [WARNING] [JavaScript Warning: "InstallTrigger is deprecated and will be removed in the future." {file: "http://localhost:3000/lib/systemjs/dist/system.js" line: 4}] @ http://localhost:3000/lib/systemjs/dist/system.js:4
+[     235ms] [WARNING] [JavaScript Warning: "onmozfullscreenchange is deprecated." {file: "http://localhost:3000/lib/systemjs/dist/system.js" line: 4}] @ http://localhost:3000/lib/systemjs/dist/system.js:4
+[     235ms] [WARNING] [JavaScript Warning: "onmozfullscreenerror is deprecated." {file: "http://localhost:3000/lib/systemjs/dist/system.js" line: 4}] @ http://localhost:3000/lib/systemjs/dist/system.js:4

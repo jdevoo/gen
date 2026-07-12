@@ -16,7 +16,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// Version and Githash are populated by make
+// Version and Git hash are populated by make
 var (
 	Version    string
 	Githash    string
@@ -61,13 +61,14 @@ type Parameters struct {
 }
 
 const (
-	SPExt      = ".sprompt" // system prompt extension
-	PExt       = ".prompt"  // regular prompt extension
-	DigestKey  = "{digest}" // key to replace with embedded content
-	DotGen     = ".gen"     // name of chat history file
-	DotGenRc   = ".genrc"   // name of preferences file
-	paramsKey  = "params"   // context key for params
-	keyValsKey = "keyVals"  // context key for keyVals
+	SPExt        = ".sprompt"    // system prompt extension
+	PExt         = ".prompt"     // regular prompt extension
+	DigestKey    = "{digest}"    // key to replace with embedded content
+	DotGen       = ".gen"        // name of chat history file
+	DotGenRc     = ".genrc"      // name of preferences file
+	paramsKey    = "params"      // context value key
+	keyValsKey   = "keyVals"     // context value key
+	elicitErrKey = "elicitError" // context value key
 )
 
 func main() {
@@ -86,6 +87,7 @@ func main() {
 func run(ctx context.Context) error {
 	params := &Parameters{}
 	keyVals := ParamMap{}
+	elicitError := &ElicitError{}
 
 	if err := parseFlags(flag.CommandLine, params, &keyVals, os.Args[1:]); err != nil {
 		return err
@@ -101,6 +103,7 @@ func run(ctx context.Context) error {
 	// store keyVals and params in context
 	ctx = context.WithValue(ctx, keyValsKey, keyVals)
 	ctx = context.WithValue(ctx, paramsKey, params)
+	ctx = context.WithValue(ctx, elicitErrKey, elicitError)
 
 	// stash MCP client sessions in params.MCPSessions
 	if params.Help || params.Tool {
