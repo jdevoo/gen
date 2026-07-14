@@ -621,6 +621,16 @@ func loadPrefs(params *Parameters) error {
 			default:
 				return fmt.Errorf("unknown key value %s", key)
 			}
+		case "env":
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("env error on line: %s", line)
+			}
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			if err := os.Setenv(key, val); err != nil {
+				return fmt.Errorf("failed to set env '%s': %v", key, err)
+			}
 		case "digestpaths":
 			params.DigestPaths = append(params.DigestPaths, line)
 		case "mcpservers":
