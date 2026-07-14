@@ -1,4 +1,5 @@
 gen
 .gen
 target/
+.playwright-mcp/
 coverage.out
