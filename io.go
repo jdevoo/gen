@@ -444,6 +444,11 @@ func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *
 		*parts = append(*parts, genai.NewPartFromFile(genai.File{URI: filePathVal}))
 		return nil
 	}
+	// YouTube video
+	if isYouTubeURL(filePathVal) {
+		*parts = append(*parts, genai.NewPartFromURI(filePathVal, "video/mp4"))
+		return nil
+	}
 	// regular file
 	fileInfo, err := os.Stat(filePathVal)
 	if err == nil && fileInfo.IsDir() {

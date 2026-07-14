@@ -326,3 +326,9 @@ func isValidPart(p *genai.Part) bool {
 	}
 	return false
 }
+
+// isYouTubeURL validates the link passed via -f to glob.
+func isYouTubeURL(path string) bool {
+	youtubeRegex := regexp.MustCompile(`(?i)^((?:https?:)?//)?((?:www|m)\.)?((?:youtube(?:-nocookie)?\.com|youtu.be))(/(?:[\w\-]+\?v=|embed/|v/|shorts/|live/)?)([\w\-]+)(\S+)?$`)
+	return youtubeRegex.MatchString(path)
+}

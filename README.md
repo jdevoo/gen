@@ -117,7 +117,7 @@ Options:
         path to a digest folder
   -e    write text embeddings to digest (default model "gemini-embedding-001")
   -f value
-        GCS URI, file, directory or quoted pattern of files to attach
+        GCS or YouTube URL, file, directory or quoted pattern of files to attach
   -g    Google search tool (incompatible with -code, -img and -tool)
   -h    show available tools, this help message and exit
   -i    only store metadata with embeddings and ignore the content

@@ -158,7 +158,7 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
 	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
 	fs.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
-	fs.Var(&params.FilePaths, "f", "GCS URI, file, directory or quoted pattern of files to attach")
+	fs.Var(&params.FilePaths, "f", "GCS or YouTube URL, file, directory or quoted pattern of files to attach")
 	fs.BoolVar(&params.GoogleSearch, "g", false, "Google search tool (incompatible with -code, -img and -tool)")
 	fs.BoolVar(&params.Help, "h", false, "show available tools, this help message and exit")
 	fs.BoolVar(&params.OnlyKvs, "i", false, "only store metadata with embeddings and ignore the content")
@@ -276,6 +276,9 @@ func cleanup(params *Parameters) {
 			fmt.Fprintf(os.Stderr, "cleanup: failed to create client %v\n", err)
 		}
 		for _, fileURI := range params.FileURIs {
+			if isYouTubeURL(fileURI) {
+				continue
+			}
 			_, err := client.Files.Delete(ctx, fileURI, nil)
 			if err != nil {
 				select {
