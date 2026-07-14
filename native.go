@@ -29,29 +29,48 @@ func (t Tool) ListGeminiModels(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListGeminiModels",
-		map[string]any{"text": res},
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   res,
+		},
 	), nil
 }
 
-// GetAWSServices returns a list of services via Steampipe.
-func (t Tool) ListAWSServices(ctx context.Context) (*genai.Part, error) {
+type ExploreDataSetArgs struct {
+	SQL string `json:"sql"`
+}
+
+// ExecuteSQL executes any SQL query against a PostgreSQL database.
+func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*genai.Part, error) {
 	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
 	if !ok {
-		return nil, fmt.Errorf("ListAWSServices: keyVals not found in context")
+		return nil, fmt.Errorf("ExploreDataSet: keyVals not found in context")
 	}
+
 	dsn, ok := keyVals["DSN"]
-	if !ok || len(dsn) == 0 {
+	if !ok {
 		return nil, &ParamError{
-			Message: "ListAWSServices: missing parameter\n  -p DSN=postgres://pqgo:password@localhost",
+			Message: "ExploreDataSet: missing parameter\n  -p DSN=postgres://pqgo:password@localhost",
 		}
 	}
-	res, err := queryPostgres(ctx, "SELECT DISTINCT foreign_table_name FROM information_schema.foreign_tables WHERE foreign_table_schema='aws'", dsn)
+
+	res, err := executePostgresQuery(ctx, dsn, args.SQL)
 	if err != nil {
-		return nil, err
+		return genai.NewPartFromFunctionResponse(
+			"ExecuteSQL",
+			map[string]any{
+				"output": "ERROR",
+				"error":  err.Error(),
+			},
+		), nil
 	}
+
 	return genai.NewPartFromFunctionResponse(
-		"ListAWSServices",
-		map[string]any{"text": res},
+		"ExecuteSQL",
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   res,
+		},
 	), nil
 }
 
@@ -87,7 +106,10 @@ func (t Tool) ListMCPPrompts(ctx context.Context) (*genai.Part, error) {
 	}
 	return genai.NewPartFromFunctionResponse(
 		"ListMCPPrompts",
-		map[string]any{"text": res},
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   res,
+		},
 	), nil
 }
 
