@@ -364,7 +364,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					}
 				}
 
-				if g.params.TokenCount && resp.UsageMetadata != nil {
+				if g.params.CountTokens && resp.UsageMetadata != nil {
 					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
 				}
 			}

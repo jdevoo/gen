@@ -32,7 +32,7 @@ func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
 	fs.BoolVar(&params.OnlyKvs, "o", false, "")
 	fs.Var(keyVals, "p", "")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "")
-	fs.BoolVar(&params.TokenCount, "t", false, "")
+	fs.BoolVar(&params.CountTokens, "t", false, "")
 	fs.Float64Var(&params.Temp, "temp", 1.0, "")
 	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
 	fs.BoolVar(&params.Tool, "tool", false, "")

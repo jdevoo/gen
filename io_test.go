@@ -303,6 +303,11 @@ func TestLoadPrefs(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
+	// Clean up environment variables set during this test
+	t.Cleanup(func() {
+		os.Unsetenv("TEST_GENRC_ENV_VAR")
+	})
+
 	rcContent := `[flags]
 k = 5
 lambda = 0.7
@@ -320,6 +325,9 @@ path/to/digest2
 [mcpservers]
 cmd1
 cmd2
+
+[env]
+TEST_GENRC_ENV_VAR = hello_from_genrc
 `
 	err := os.WriteFile(filepath.Join(tmpDir, DotGenRc), []byte(rcContent), 0644)
 	if err != nil {
@@ -360,6 +368,9 @@ cmd2
 	}
 	if len(params.MCPServers) != 2 || params.MCPServers[0] != "cmd1" {
 		t.Errorf("Unexpected MCPServers: %v", params.MCPServers)
+	}
+	if val := os.Getenv("TEST_GENRC_ENV_VAR"); val != "hello_from_genrc" {
+		t.Errorf("Expected TEST_GENRC_ENV_VAR=hello_from_genrc, got %q", val)
 	}
 }
 

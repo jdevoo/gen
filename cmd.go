@@ -28,6 +28,7 @@ type Parameters struct {
 	Args              []string // non-flag command-line arguments i.e. prompt
 	ChatMode          bool
 	CodeGen           bool
+	CountTokens       bool
 	DigestPaths       ParamArray // RAG
 	Embed             bool       // RAG
 	EmbModel          string
@@ -47,7 +48,6 @@ type Parameters struct {
 	OutRedirected     bool
 	OnlyKvs           bool // RAG
 	SystemInstruction bool
-	TokenCount        bool
 	Temp              float64
 	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration
@@ -181,7 +181,7 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	fs.Var(keyVals, "p", "prompt parameter value in format key=val")
 	fs.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
-	fs.BoolVar(&params.TokenCount, "t", false, "output total number of tokens")
+	fs.BoolVar(&params.CountTokens, "t", false, "output total number of tokens")
 	fs.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation [0.0,2.0]")
 	fs.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")
 	fs.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -g, -img or -code)")
@@ -260,11 +260,9 @@ func validateEnv() error {
 
 func cleanup(params *Parameters) {
 	// close MCP sessions
-	if len(params.MCPSessions) > 0 {
-		for _, session := range params.MCPSessions {
-			if session != nil {
-				session.Close()
-			}
+	for _, session := range params.MCPSessions {
+		if session != nil {
+			session.Close()
 		}
 	}
 	// delete uploaded files
@@ -295,7 +293,7 @@ func cleanup(params *Parameters) {
 		}
 	}
 	// final token count report
-	if params.TokenCount {
+	if params.CountTokens {
 		fmt.Printf("\n"+important("%d tokens")+"\n", TokenCount.Load())
 	}
 }

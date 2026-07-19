@@ -100,11 +100,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 
 			isStreamableServer := strings.HasPrefix(srvStr, "http://") ||
 				strings.HasPrefix(srvStr, "https://")
-			timeout := 10 * time.Second
-			if isStreamableServer {
-				timeout = 30 * time.Second
-			}
-			mcpCtx, cancel := context.WithTimeout(gCtx, timeout)
+			mcpCtx, cancel := context.WithTimeout(gCtx, 30*time.Second)
 			defer cancel()
 
 			if isStreamableServer {

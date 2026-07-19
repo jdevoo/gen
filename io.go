@@ -167,7 +167,7 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, v
 				},
 			}, outRedirected, idx)
 		}
-		if p.InlineData != nil {
+		if p.InlineData != nil && part.FunctionResponse.Name != "CaptureScreen" {
 			emitInlineData(out, &genai.Part{
 				InlineData: &genai.Blob{
 					DisplayName: p.InlineData.DisplayName,

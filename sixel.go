@@ -82,10 +82,25 @@ func (e *Encoder) Encode(img image.Image) error {
 	if width == 0 || height == 0 {
 		return nil
 	}
-	if height > 320 {
-		ratio := float64(width) / float64(height) // using original height
-		height = 320
-		width = int(math.Round(float64(height) * ratio))
+	termWidth, termHeight, err := getTerminalSize()
+	if err != nil {
+		return nil
+	}
+	if width > termWidth || height > termHeight { //termHeight {
+		scaleH := float64(termHeight) / float64(height)
+		scaleW := float64(termWidth) / float64(width)
+		ratio := scaleW
+		if scaleH < scaleW {
+			ratio = scaleH
+		}
+		height = int(math.Round(float64(height) * ratio))
+		width = int(math.Round(float64(width) * ratio))
+		if width < 1 {
+			width = 1
+		}
+		if height < 1 {
+			height = 1
+		}
 		simg := image.NewRGBA(image.Rect(0, 0, width, height))
 		draw.CatmullRom.Scale(simg, simg.Bounds(), img, img.Bounds(), draw.Over, nil)
 		img = simg
