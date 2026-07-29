@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -20,7 +21,7 @@ func isFlagSet(name string) bool {
 }
 
 // validPrompts checks prompts against regular interactive vs no redirect or piped content session.
-func validPrompts(params *Parameters) error {
+func validPrompts(params *core.Parameters) error {
 	if (params.Interactive &&
 		// no regular prompt privided
 		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
@@ -46,7 +47,7 @@ func validPrompts(params *Parameters) error {
 	return nil
 }
 
-func validRanges(params *Parameters) error {
+func validRanges(params *core.Parameters) error {
 	// ThinkingLevel
 	if strings.HasPrefix(string(genai.ThinkingLevelMinimal), string(params.ThinkingLevel)) {
 		params.ThinkingLevel = genai.ThinkingLevelMinimal
@@ -83,7 +84,7 @@ func validRanges(params *Parameters) error {
 	return nil
 }
 
-func validCombos(params *Parameters) error {
+func validCombos(params *core.Parameters) error {
 	if
 	// at most one JSON schema
 	(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
@@ -117,7 +118,7 @@ func validCombos(params *Parameters) error {
 	return nil
 }
 
-func validEmbeddings(params *Parameters, keyVals ParamMap) error {
+func validEmbeddings(params *core.Parameters, keyVals core.ParamMap) error {
 	if
 	// embeddings
 	params.Embed &&
@@ -140,7 +141,7 @@ func validEmbeddings(params *Parameters, keyVals ParamMap) error {
 }
 
 // validArgs checks if there are still unhandled flags inside params.Args
-func validArgs(fs *flag.FlagSet, params *Parameters) error {
+func validArgs(fs *flag.FlagSet, params *core.Parameters) error {
 	var err error
 	flag.CommandLine.VisitAll(func(f *flag.Flag) {
 		if err != nil {
@@ -158,7 +159,7 @@ func validArgs(fs *flag.FlagSet, params *Parameters) error {
 }
 
 // isArgsInvalid performs a complete argument validation.
-func isArgsInvalid(fs *flag.FlagSet, params *Parameters, keyVals ParamMap) error {
+func isArgsInvalid(fs *flag.FlagSet, params *core.Parameters, keyVals core.ParamMap) error {
 	if err := validArgs(fs, params); err != nil {
 		return err
 	}

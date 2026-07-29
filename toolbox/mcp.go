@@ -1,82 +1,34 @@
-package main
+package toolbox
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/jpeg"
 	"strings"
 
-	"github.com/kbinani/screenshot"
+	"github.com/jdevoo/gen/core"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/genai"
 )
 
-type Tool struct{}
-
-// GetKnownGeminiModels retrieves the list of available Gemini models.
-func (t Tool) ListGeminiModels(ctx context.Context) (*genai.Part, error) {
-	var res []string
-	client, err := genai.NewClient(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	for m, err := range client.Models.All(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, fmt.Sprintf("%s %s", m.Name, m.Description))
-	}
-	return genai.NewPartFromFunctionResponse(
-		"ListGeminiModels",
-		map[string]any{
-			"output": "SUCCESS",
-			"text":   res,
-		},
-	), nil
-}
-
-type ExploreDataSetArgs struct {
-	SQL string `json:"sql"`
-}
-
-// ExecuteSQL executes any SQL query against a PostgreSQL database.
-func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*genai.Part, error) {
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("ExploreDataSet: keyVals not found in context")
-	}
-
-	dsn, ok := keyVals["DSN"]
-	if !ok {
-		return nil, &ParamError{
-			Message: "ExploreDataSet: missing parameter\n  -p DSN=postgres://pqgo:password@localhost",
+// argsUnsatisfied returns a list of prompt parameters missing from keyVals.
+func argsUnsatisfied(args []*mcp.PromptArgument, keyVals core.ParamMap) *core.ParamError {
+	var out []string
+	for _, arg := range args {
+		if _, val := keyVals[arg.Name]; !val {
+			out = append(out, fmt.Sprintf("  -p %s", arg.Name))
 		}
 	}
-
-	res, err := executePostgresQuery(ctx, dsn, args.SQL)
-	if err != nil {
-		return genai.NewPartFromFunctionResponse(
-			"ExecuteSQL",
-			map[string]any{
-				"output": "ERROR",
-				"error":  err.Error(),
-			},
-		), nil
+	if len(out) > 0 {
+		return &core.ParamError{
+			Message: strings.Join(out, "\n"),
+		}
 	}
-
-	return genai.NewPartFromFunctionResponse(
-		"ExecuteSQL",
-		map[string]any{
-			"output": "SUCCESS",
-			"text":   res,
-		},
-	), nil
+	return nil
 }
 
 // ListPrompts lists available prompts from available MCP servers.
 func (t Tool) ListMCPPrompts(ctx context.Context) (*genai.Part, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("ListMCPPrompts: params not found in context")
 	}
@@ -119,11 +71,11 @@ type GetPromptArgs struct {
 
 // GetPrompt retrieves a specific prompt by name from available MCP servers.
 func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("GetMCPPrompt: params not found in context")
 	}
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("GetMCPPrompt: keyVals not found in context")
 	}
@@ -181,7 +133,7 @@ func (t Tool) GetMCPPrompt(ctx context.Context, args GetPromptArgs) (*genai.Part
 
 // ListResources returns resources available from MCP servers.
 func (t Tool) ListMCPResources(ctx context.Context) (*genai.Part, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("ListResources: params not found in context")
 	}
@@ -208,7 +160,7 @@ type GetResourceArgs struct {
 
 // GetResource retrieves a specific resource by name from available MCP servers.
 func (t Tool) GetMCPResource(ctx context.Context, args GetResourceArgs) (*genai.Part, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("GetResource: params not found in context")
 	}
@@ -246,40 +198,4 @@ func (t Tool) GetMCPResource(ctx context.Context, args GetResourceArgs) (*genai.
 		}
 	}
 	return nil, fmt.Errorf("GetMCPResource: '%s' not found", args.Name)
-}
-
-type CaptureScreenArgs struct {
-	N *int `json:"n,omitempty"`
-}
-
-// Capture uses the kbinani library to capture a given screen to image
-func (t Tool) CaptureScreen(ctx context.Context, args CaptureScreenArgs) (*genai.Part, error) {
-	n := 0
-	if args.N != nil {
-		n = *args.N
-	}
-	bounds := screenshot.GetDisplayBounds(n)
-	img, err := screenshot.CaptureRect(bounds)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, nil); err != nil {
-		return nil, err
-	}
-	parts := []*genai.FunctionResponsePart{
-		{
-			InlineData: &genai.FunctionResponseBlob{
-				MIMEType: "image/jpeg",
-				Data:     buf.Bytes(),
-			},
-		},
-	}
-	return genai.NewPartFromFunctionResponseWithParts(
-		"CaptureScreen",
-		map[string]any{
-			"output": "SUCCESS",
-		},
-		parts,
-	), nil
 }

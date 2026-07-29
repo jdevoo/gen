@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -10,38 +11,38 @@ import (
 func TestParamMapSet(t *testing.T) {
 	tests := []struct {
 		arg         string
-		expected    ParamMap
+		expected    core.ParamMap
 		expectedErr bool
 	}{
 		{
 			arg:         "name=John",
-			expected:    ParamMap{"name": "John"},
+			expected:    core.ParamMap{"name": "John"},
 			expectedErr: false,
 		},
 		{
 			arg:         "invalid",
-			expected:    ParamMap{},
+			expected:    core.ParamMap{},
 			expectedErr: true,
 		},
 		{
 			arg:         "missing equal",
-			expected:    ParamMap{},
+			expected:    core.ParamMap{},
 			expectedErr: true,
 		},
 		{
 			arg:         "name==",
-			expected:    ParamMap{"name": "="},
+			expected:    core.ParamMap{"name": "="},
 			expectedErr: false,
 		},
 		{
 			arg:         "blank=",
-			expected:    ParamMap{"blank": ""},
+			expected:    core.ParamMap{"blank": ""},
 			expectedErr: false,
 		},
 	}
 
 	for _, test := range tests {
-		res := ParamMap{}
+		res := core.ParamMap{}
 		err := res.Set(test.arg)
 		if (err != nil) != test.expectedErr {
 			t.Errorf("Set(%q) error = %v, expectedErr %v", test.arg, err, test.expectedErr)
@@ -57,27 +58,27 @@ func TestParamMapSet(t *testing.T) {
 func TestSearchReplace(t *testing.T) {
 	tests := []struct {
 		prompt   string
-		params   ParamMap
+		params   core.ParamMap
 		expected string
 	}{
 		{
 			prompt:   "Hello {NAME}, how are you? Long live {name}!",
-			params:   ParamMap{"name": "World"},
+			params:   core.ParamMap{"name": "World"},
 			expected: "Hello World, how are you? Long live World!",
 		},
 		{
 			prompt:   "This is a {adjective} {noun}.",
-			params:   ParamMap{"adjective": "beautiful", "noun": "day"},
+			params:   core.ParamMap{"adjective": "beautiful", "noun": "day"},
 			expected: "This is a beautiful day.",
 		},
 		{
 			prompt:   "This is a test string.",
-			params:   ParamMap{},
+			params:   core.ParamMap{},
 			expected: "This is a test string.",
 		},
 		{
 			prompt:   "This is a {empty} test string.",
-			params:   ParamMap{"empty": ""},
+			params:   core.ParamMap{"empty": ""},
 			expected: "This is a  test string.",
 		},
 	}

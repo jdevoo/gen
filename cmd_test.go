@@ -5,6 +5,8 @@ import (
 	"context"
 	"flag"
 	"testing"
+
+	"github.com/jdevoo/gen/core"
 )
 
 // TestValidateEnv tests the credentials environment variables validation.
@@ -90,7 +92,7 @@ func TestValidateEnv(t *testing.T) {
 // TestEmitUsage tests the customized CLI usage instructions output.
 func TestEmitUsage(t *testing.T) {
 	var buf bytes.Buffer
-	ctx := context.WithValue(context.Background(), paramsKey, &Parameters{})
+	ctx := context.WithValue(context.Background(), core.ParamsKey, &core.Parameters{})
 
 	oldOutput := flag.CommandLine.Output()
 	flag.CommandLine.SetOutput(&buf)

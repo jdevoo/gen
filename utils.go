@@ -3,51 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/jdevoo/gen/core"
 	_ "github.com/lib/pq"
 	"google.golang.org/genai"
 )
-
-type ParamError struct {
-	Message string
-}
-
-func (e *ParamError) Error() string {
-	return e.Message
-}
-
-// ParamMap holds key-value pairs for string replacement.
-type ParamMap map[string]string
-
-// String implements the flag.Value interface for ParamMap.
-func (*ParamMap) String() string { return "" }
-
-// Set implements the flag.Value interface for ParamMap.
-func (m *ParamMap) Set(kv string) error {
-	parts := strings.SplitN(kv, "=", 2) // limit splits to 2
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid parameter %s", kv)
-	}
-	(*m)[parts[0]] = parts[1]
-	return nil
-}
-
-// ParamArray holds a list of strings e.g. file paths.
-type ParamArray []string
-
-// String implements the flag.Value interface for ParamArray.
-func (*ParamArray) String() string { return "" }
-
-// Set implements the flag.Value interface for ParamArray.
-func (a *ParamArray) Set(val string) error {
-	*a = append(*a, val)
-	return nil
-}
 
 // conjoin returns a single text resulting from concatenation of all original parts.
 // TODO handle other part types
@@ -65,7 +28,7 @@ func conjTexts(parts *[]*genai.Part) {
 }
 
 // searchReplace performs string replacement based on key-value pairs.
-func searchReplace(prompt string, pm ParamMap) string {
+func searchReplace(prompt string, pm core.ParamMap) string {
 	res := prompt
 	for k, v := range pm {
 		searchRegex := regexp.MustCompile("(?i){" + regexp.QuoteMeta(k) + "}")
@@ -177,78 +140,6 @@ func oneMatches(strArray []string, cand string) bool {
 // oneMatches returns true if one and only one matches.
 func zeroOrOneMatches(strArray []string, cand string) bool {
 	return countMatches(strArray, cand) <= 1
-}
-
-func executePostgresQuery(ctx context.Context, dsn string, query string) (string, error) {
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return "", fmt.Errorf("opening database connection: %v", err)
-	}
-	defer db.Close()
-
-	// check if valid statement
-	trimmed := strings.ToLower(strings.TrimSpace(query))
-	isSelect := strings.HasPrefix(trimmed, "select") ||
-		strings.HasPrefix(trimmed, "with") ||
-		strings.HasPrefix(trimmed, "show") ||
-		strings.HasPrefix(trimmed, "explain")
-
-	if isSelect {
-		rows, err := db.QueryContext(ctx, query)
-		if err != nil {
-			return "", err
-		}
-		defer rows.Close()
-		cols, err := rows.Columns()
-		if err != nil {
-			return "", err
-		}
-		var res []string
-		res = append(res, strings.Join(cols, " | ")) // header row
-
-		row := make([]any, len(cols))
-		rowPtr := make([]any, len(cols))
-		for i := range row {
-			rowPtr[i] = &row[i]
-		}
-		for rows.Next() {
-			err := rows.Scan(rowPtr...)
-			if err != nil {
-				return "", err
-			}
-			var rowStr []string
-			for _, val := range row {
-				if val == nil {
-					rowStr = append(rowStr, "NULL")
-				} else {
-					switch v := val.(type) {
-					case []byte:
-						rowStr = append(rowStr, string(v))
-					default:
-						rowStr = append(rowStr, fmt.Sprintf("%v", v))
-					}
-				}
-			}
-			res = append(res, strings.Join(rowStr, " | "))
-		}
-
-		if err := rows.Err(); err != nil {
-			return "", err
-		}
-
-		return strings.Join(res, "\n"), nil
-	} else {
-		result, err := db.ExecContext(ctx, query)
-		if err != nil {
-			return "", err
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			// commands like CREATE TABLE do not support RowsAffected
-			return "Command executed successfully.", nil
-		}
-		return fmt.Sprintf("Command executed successfully. Rows affected: %d", rowsAffected), nil
-	}
 }
 
 // alignSchema between JSON type fields in MCP vs genai SDK.

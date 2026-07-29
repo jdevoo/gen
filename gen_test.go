@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/jdevoo/gen/core"
 )
 
 type OutputExpectations struct {
@@ -20,8 +22,8 @@ type OutputExpectations struct {
 func prepareTestContext(t *testing.T, interactive bool, args ...string) context.Context {
 	t.Helper()
 
-	keyVals := ParamMap{}
-	params := &Parameters{}
+	keyVals := core.ParamMap{}
+	params := &core.Parameters{}
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 
@@ -33,8 +35,8 @@ func prepareTestContext(t *testing.T, interactive bool, args ...string) context.
 	// override from !isRedirected(os.Stdin)
 	params.Interactive = interactive
 
-	ctx := context.WithValue(context.Background(), paramsKey, params)
-	ctx = context.WithValue(ctx, keyValsKey, keyVals)
+	ctx := context.WithValue(context.Background(), core.ParamsKey, params)
+	ctx = context.WithValue(ctx, core.KeyValsKey, keyVals)
 
 	return ctx
 }

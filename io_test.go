@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -334,7 +335,7 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 		t.Fatal(err)
 	}
 
-	params := &Parameters{}
+	params := &core.Parameters{}
 	if err := loadPrefs(params); err != nil {
 		t.Fatalf("loadPrefs failed: %v", err)
 	}

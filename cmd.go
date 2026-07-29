@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -23,52 +24,12 @@ var (
 	TokenCount atomic.Int32
 )
 
-// Parameters holds gen flag values as well as Args and MCP sessions.
-type Parameters struct {
-	Args              []string // non-flag command-line arguments i.e. prompt
-	ChatMode          bool
-	CodeGen           bool
-	CountTokens       bool
-	DigestPaths       ParamArray // RAG
-	Embed             bool       // RAG
-	EmbModel          string
-	FilePaths         ParamArray
-	FileURIs          []string
-	GenModel          string
-	GoogleSearch      bool
-	Help              bool
-	ImgModality       bool
-	Interactive       bool // terminal session?
-	JSON              bool
-	K                 int
-	Lambda            float64
-	MCPServers        ParamArray
-	MCPSessions       SessionArray
-	OutPath           string
-	OutRedirected     bool
-	OnlyKvs           bool // RAG
-	SystemInstruction bool
-	Temp              float64
-	ThinkingLevel     genai.ThinkingLevel
-	Timeout           time.Duration
-	Tool              bool
-	ToolRegistry      ToolMap
-	TopP              float64
-	Unsafe            bool
-	Verbose           bool
-	Version           bool
-	Walk              bool // used with FilePaths
-}
-
 const (
-	SPExt        = ".sprompt"    // system prompt extension
-	PExt         = ".prompt"     // regular prompt extension
-	DigestKey    = "{digest}"    // key to replace with embedded content
-	DotGen       = ".gen"        // name of chat history file
-	DotGenRc     = ".genrc"      // name of preferences file
-	paramsKey    = "params"      // context value key
-	keyValsKey   = "keyVals"     // context value key
-	elicitErrKey = "elicitError" // context value key
+	SPExt     = ".sprompt" // system prompt extension
+	PExt      = ".prompt"  // regular prompt extension
+	DigestKey = "{digest}" // key to replace with embedded content
+	DotGen    = ".gen"     // name of chat history file
+	DotGenRc  = ".genrc"   // name of preferences file
 )
 
 func main() {
@@ -85,8 +46,8 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	params := &Parameters{}
-	keyVals := ParamMap{}
+	params := &core.Parameters{}
+	keyVals := core.ParamMap{}
 	elicitError := &ElicitError{}
 
 	if err := parseFlags(flag.CommandLine, params, &keyVals, os.Args[1:]); err != nil {
@@ -101,9 +62,9 @@ func run(ctx context.Context) error {
 	defer cleanup(params)
 
 	// store keyVals and params in context
-	ctx = context.WithValue(ctx, keyValsKey, keyVals)
-	ctx = context.WithValue(ctx, paramsKey, params)
-	ctx = context.WithValue(ctx, elicitErrKey, elicitError)
+	ctx = context.WithValue(ctx, core.KeyValsKey, keyVals)
+	ctx = context.WithValue(ctx, core.ParamsKey, params)
+	ctx = context.WithValue(ctx, core.ElicitErrKey, elicitError)
 
 	// stash MCP client sessions in params.MCPSessions
 	if params.Help || params.Tool {
@@ -138,7 +99,7 @@ func run(ctx context.Context) error {
 }
 
 // parseFlags handles flag definitions and parameter map for variable substitutions in prompts.
-func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []string) error {
+func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMap, args []string) error {
 	// default parameter values
 	params.K = 3
 	params.Lambda = 0.5
@@ -195,7 +156,7 @@ func parseFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap, args []
 	params.Args = fs.Args()
 	params.Interactive = !isRedirected(os.Stdin)
 	params.OutRedirected = isRedirected(os.Stdout)
-	params.ToolRegistry = ToolMap{}
+	params.ToolRegistry = core.ToolMap{}
 
 	return nil
 }
@@ -258,7 +219,7 @@ func validateEnv() error {
 	return nil
 }
 
-func cleanup(params *Parameters) {
+func cleanup(params *core.Parameters) {
 	// close MCP sessions
 	for _, session := range params.MCPSessions {
 		if session != nil {

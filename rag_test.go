@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -98,7 +99,7 @@ func TestAppendAndQueryDigest(t *testing.T) {
 	emb := &genai.ContentEmbedding{
 		Values: []float32{0.1, 0.2, 0.3},
 	}
-	keyVals := ParamMap{"source": "test-doc"}
+	keyVals := core.ParamMap{"source": "test-doc"}
 	part := &genai.Part{Text: "Test document content."}
 
 	err := appendToDigest(tmpDir, emb, keyVals, false, false, part)

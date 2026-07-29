@@ -16,16 +16,11 @@ import (
 	"time"
 
 	"github.com/google/shlex"
+	"github.com/jdevoo/gen/core"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
-
-// SessionArray holds a list of MCP client session
-type SessionArray []*mcp.ClientSession
-
-// ToolRegistry maps tool names to the session
-type ToolMap map[string]*mcp.ClientSession
 
 type ElicitError struct {
 	mu  sync.Mutex
@@ -48,7 +43,7 @@ func (t *ElicitError) Error() error {
 
 // initMCPSessions starts the MCP server processes and connects clients.
 // TODO timeout hardcoded
-func initMCPSessions(ctx context.Context, params *Parameters) error {
+func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 	if len(params.MCPServers) == 0 {
 		return nil
 	}
@@ -140,7 +135,7 @@ func initMCPSessions(ctx context.Context, params *Parameters) error {
 
 // registerMCPTools declares tools of MCP servers in genai.FunctionDeclaration format.
 func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) error {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return fmt.Errorf("registerMCPTools: params not found in context")
 	}
@@ -244,7 +239,7 @@ func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.
 func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"error": "invokeMCPTool: params not found in context",
@@ -261,7 +256,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 		Name:      fc.Name,
 		Arguments: fc.Args,
 	})
-	if t, ok := ctx.Value(elicitErrKey).(*ElicitError); ok {
+	if t, ok := ctx.Value(core.ElicitErrKey).(*ElicitError); ok {
 		if elicitErr := t.Error(); elicitErr != nil {
 			if params.ChatMode {
 				err = elicitErr
@@ -384,7 +379,7 @@ func convertMCPType(val string, t string) (any, error) {
 
 // genSampling message callback for MCP servers.
 func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("genSampling: params not found in context")
 	}
@@ -429,7 +424,7 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 		return nil, fmt.Errorf("'properties' not found in requested schema")
 	}
 
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("genElicitation: keyVals not found in context")
 	}
@@ -464,10 +459,10 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 
 	if len(out) > 0 {
 		out = append([]string{(*req.Params).Message}, out...)
-		paramErr := &ParamError{
+		paramErr := &core.ParamError{
 			Message: strings.Join(out, "\n"),
 		}
-		if t, ok := ctx.Value(elicitErrKey).(*ElicitError); ok {
+		if t, ok := ctx.Value(core.ElicitErrKey).(*ElicitError); ok {
 			t.SetError(paramErr)
 		}
 		return nil, paramErr
@@ -477,7 +472,7 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 }
 
 // argsUnsatisfied returns a list of prompt parameters missing from keyVals.
-func argsUnsatisfied(args []*mcp.PromptArgument, keyVals ParamMap) *ParamError {
+func argsUnsatisfied(args []*mcp.PromptArgument, keyVals core.ParamMap) *core.ParamError {
 	var out []string
 	for _, arg := range args {
 		if _, val := keyVals[arg.Name]; !val {
@@ -485,7 +480,7 @@ func argsUnsatisfied(args []*mcp.PromptArgument, keyVals ParamMap) *ParamError {
 		}
 	}
 	if len(out) > 0 {
-		return &ParamError{
+		return &core.ParamError{
 			Message: strings.Join(out, "\n"),
 		}
 	}

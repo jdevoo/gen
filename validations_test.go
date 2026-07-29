@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
-func SetupFlags(fs *flag.FlagSet, params *Parameters, keyVals *ParamMap) {
+func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMap) {
 	fs.BoolVar(&params.Verbose, "V", false, "")
 	fs.BoolVar(&params.ChatMode, "c", false, "")
 	fs.BoolVar(&params.CodeGen, "code", false, "")
@@ -156,17 +157,17 @@ func TestArgsInvalid(t *testing.T) {
 		},
 	}
 
-	var params *Parameters
+	var params *core.Parameters
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Reset params for each test case.
 			fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-			params = &Parameters{} // Re-initialize the params struct
-			keyVals := ParamMap{}  // Reset the keyVals map
-			params.FilePaths = ParamArray{}
+			params = &core.Parameters{} // Re-initialize the params struct
+			keyVals := core.ParamMap{}  // Reset the keyVals map
+			params.FilePaths = core.ParamArray{}
 			params.FileURIs = []string{}
-			params.DigestPaths = ParamArray{}
+			params.DigestPaths = core.ParamArray{}
 			SetupFlags(fs, params, &keyVals)
 
 			if err := fs.Parse(tc.args); err != nil {

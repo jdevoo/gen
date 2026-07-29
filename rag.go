@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -24,7 +25,7 @@ type QueryResult struct {
 }
 
 // AppendToDigest saves embedding and content to the digest folder.
-func appendToDigest(path string, embedding *genai.ContentEmbedding, keyVals ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
+func appendToDigest(path string, embedding *genai.ContentEmbedding, keyVals core.ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
 	d, err := Open(path, nil)
 	if err != nil {
 		return err

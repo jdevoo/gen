@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/jdevoo/gen/core"
+	"github.com/jdevoo/gen/toolbox"
 	"google.golang.org/genai"
 )
 
@@ -63,7 +65,7 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 
 // knownTools returns string of comma-separated function names.
 func knownTools(ctx context.Context) (string, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return "", fmt.Errorf("knownTools: params not found in context")
 	}
@@ -71,7 +73,7 @@ func knownTools(ctx context.Context) (string, error) {
 	var res []string
 
 	// gen tools
-	genTool := reflect.TypeOf(Tool{})
+	genTool := reflect.TypeOf(toolbox.Tool{})
 	for i := 0; i < genTool.NumMethod(); i++ {
 		res = append(res, sigGenTool(genTool.Method(i)))
 	}
@@ -95,7 +97,7 @@ func knownTools(ctx context.Context) (string, error) {
 
 // sigGenTool inspects a native Gen Tool and returns its signature.
 func sigGenTool(m reflect.Method) string {
-	f := reflect.ValueOf(Tool{}).MethodByName(m.Name)
+	f := reflect.ValueOf(toolbox.Tool{}).MethodByName(m.Name)
 	t := f.Type()
 	var params []string
 	// First arg is always context.Context, start inspecting from index 1
@@ -147,13 +149,13 @@ func sigGenTool(m reflect.Method) string {
 // registerTools declares functions of type Tool in genai.FunctionDeclaration format.
 // TODO add support for arrays and objects
 func registerGenTools(config *genai.GenerateContentConfig) error {
-	genTool := reflect.TypeOf(Tool{})
+	genTool := reflect.TypeOf(toolbox.Tool{})
 	n := genTool.NumMethod()
 	genDecls := make([]*genai.FunctionDeclaration, n)
 
 	for i := 0; i < n; i++ {
 		m := genTool.Method(i)
-		f := reflect.ValueOf(Tool{}).MethodByName(m.Name)
+		f := reflect.ValueOf(toolbox.Tool{}).MethodByName(m.Name)
 		t := f.Type()
 		argMap := map[string]*genai.Schema{}
 		var req []string
@@ -194,7 +196,7 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 
 // invokeGenTool looks for exported symbols under Tool matching the provided FunctionCall signature.
 func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, error) {
-	f := reflect.ValueOf(Tool{}).MethodByName(fc.Name)
+	f := reflect.ValueOf(toolbox.Tool{}).MethodByName(fc.Name)
 	if !f.IsValid() {
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
 			"error": fmt.Sprintf("invokeGenTool: %s invocation error", fc.Name),
@@ -325,7 +327,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 
 	vals := f.Call(args)
 	if !vals[1].IsNil() {
-		var paramErr *ParamError
+		var paramErr *core.ParamError
 		err := vals[1].Interface().(error)
 		if errors.As(err, &paramErr) {
 			return nil, paramErr

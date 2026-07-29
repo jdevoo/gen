@@ -21,6 +21,7 @@ import (
 	"image/jpeg"
 	_ "image/png"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
@@ -371,7 +372,7 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 // filePathHandler processes a single file path for glob.
 // parts and sysParts are extended with file content.
 func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
 		return fmt.Errorf("filePathHandler: keyVals not found in context")
 	}
@@ -435,7 +436,7 @@ func isHidden(name string) bool {
 
 // glob processes files and directories passed as argument (recursively if walk is true).
 func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return fmt.Errorf("glob: params not found in context")
 	}
@@ -549,7 +550,7 @@ func retrieveHistory(hist *[]*genai.Content) error {
 }
 
 // loadPrefs reads and parses .genrc from the user's home directory.
-func loadPrefs(params *Parameters) error {
+func loadPrefs(params *core.Parameters) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %v", err)

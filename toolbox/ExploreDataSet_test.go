@@ -1,10 +1,12 @@
-package main
+package toolbox
 
 import (
 	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/jdevoo/gen/core"
 )
 
 func TestExploreDataSet(t *testing.T) {
@@ -24,8 +26,8 @@ func TestExploreDataSet(t *testing.T) {
 	}
 
 	// keyVals exists but DSN is not defined
-	keyValsNoDSN := ParamMap{}
-	ctxNoDSN := context.WithValue(ctx, keyValsKey, keyValsNoDSN)
+	keyValsNoDSN := core.ParamMap{}
+	ctxNoDSN := context.WithValue(ctx, core.KeyValsKey, keyValsNoDSN)
 	_, err = tool.ExploreDataSet(ctxNoDSN, argsMissingDSN)
 	if err == nil {
 		t.Fatal("expected ExploreDataSet to return a Go error when DSN is missing from keyVals")
@@ -38,8 +40,8 @@ func TestExploreDataSet(t *testing.T) {
 	argsWithBadDSN := ExploreDataSetArgs{
 		SQL: "SELECT * FROM users;",
 	}
-	keyVals := ParamMap{"DSN": "postgres://postgres:password@localhost:54321/nonexistent?sslmode=disable"}
-	ctxWithBadDSN := context.WithValue(ctx, keyValsKey, keyVals)
+	keyVals := core.ParamMap{"DSN": "postgres://postgres:password@localhost:54321/nonexistent?sslmode=disable"}
+	ctxWithBadDSN := context.WithValue(ctx, core.KeyValsKey, keyVals)
 	part, err := tool.ExploreDataSet(ctxWithBadDSN, argsWithBadDSN)
 	if err != nil {
 		t.Fatalf("ExploreDataSet unexpectedly returned a Go error instead of embedding it in function response: %v", err)

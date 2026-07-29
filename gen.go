@@ -7,13 +7,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
 type Generator struct {
 	ctx      context.Context
-	params   *Parameters
-	keyVals  ParamMap
+	params   *core.Parameters
+	keyVals  core.ParamMap
 	client   *genai.Client
 	in       io.Reader
 	out      io.Writer
@@ -23,7 +24,7 @@ type Generator struct {
 }
 
 func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return fmt.Errorf("missing params")
 	}
@@ -40,11 +41,11 @@ func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
 }
 
 func newGenerator(ctx context.Context, in io.Reader, out io.Writer) (*Generator, error) {
-	params, ok := ctx.Value(paramsKey).(*Parameters)
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("missing params")
 	}
-	keyVals, ok := ctx.Value(keyValsKey).(ParamMap)
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
 		return nil, fmt.Errorf("missing keyVals")
 	}
