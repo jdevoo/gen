@@ -11,23 +11,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// Helper to instantiate the SPARQL client using configurations from the context
-func getSPARQLClient(ctx context.Context, toolName string) (*sparql.Client, error) {
-	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("%s: keyVals not found in context", toolName)
-	}
-
-	endpoint, ok := keyVals["SPARQL_ENDPOINT"]
-	if !ok {
-		return nil, &core.ParamError{
-			Message: fmt.Sprintf("%s: missing parameter\n  -p SPARQL_ENDPOINT=http://localhost:8890/sparql", toolName),
-		}
-	}
-
-	return sparql.New(endpoint)
-}
-
 type ExploreLinkedDataArgs struct {
 	SPARQL string `json:"sparql"`
 }
@@ -53,7 +36,7 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 
 	vars := qr.Variables()
 
-	// 1. ASK Query handling
+	// handle ASK Query
 	if len(vars) == 0 {
 		isTrue, err := qr.Boolean()
 		if err != nil {
@@ -74,7 +57,7 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 		), nil
 	}
 
-	// 2. SELECT or CONSTRUCT/DESCRIBE handling (Table format)
+	// handle SELECT or CONSTRUCT/DESCRIBE query (Table format)
 	var lines []string
 	lines = append(lines, strings.Join(vars, " | ")) // header
 
@@ -111,4 +94,21 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 			"text":   strings.Join(lines, "\n"),
 		},
 	), nil
+}
+
+// Helper to instantiate the SPARQL client using configurations from the context
+func getSPARQLClient(ctx context.Context, toolName string) (*sparql.Client, error) {
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
+	if !ok {
+		return nil, fmt.Errorf("%s: keyVals not found in context", toolName)
+	}
+
+	endpoint, ok := keyVals["SPARQL_ENDPOINT"]
+	if !ok {
+		return nil, &core.ParamError{
+			Message: fmt.Sprintf("%s: missing parameter\n  -p SPARQL_ENDPOINT=http://localhost:8890/sparql", toolName),
+		}
+	}
+
+	return sparql.New(endpoint)
 }

@@ -108,7 +108,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	params.ThinkingLevel = genai.ThinkingLevelUnspecified
 	params.Timeout = 300 * time.Second
 	params.EmbModel = "gemini-embedding-001"
-	params.GenModel = "gemini-3.5-flash"
+	params.GenModel = "gemini-3.5-flash-lite"
 
 	if err := loadPrefs(params); err != nil {
 		return fmt.Errorf("Error loading preferences from %s: %v\n", DotGenRc, err)
