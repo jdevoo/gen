@@ -30,6 +30,7 @@ func TestExploreLinkedData_SELECT(t *testing.T) {
 	))
 	defer server.Close()
 
+	// Test fallback to SPARQL_ENDPOINT
 	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
 		"SPARQL_ENDPOINT": server.URL,
 	})
@@ -59,6 +60,40 @@ func TestExploreLinkedData_SELECT(t *testing.T) {
 	expectedText := "s | p\nhttp://example.org/s | hello"
 	if strings.TrimSpace(text) != expectedText {
 		t.Errorf("got text %q, want %q", text, expectedText)
+	}
+}
+
+func TestExploreLinkedData_QueryServicePrecedence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<sparql xmlns="http://www.w3.org/2005/sparql-results#">
+  <head>
+    <variable name="s"/>
+  </head>
+  <results></results>
+</sparql>`))
+		},
+	))
+	defer server.Close()
+
+	// Test SPARQL_QUERY_SERVICE takes precedence over SPARQL_ENDPOINT
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_QUERY_SERVICE": server.URL,
+		"SPARQL_ENDPOINT":      "http://invalid-endpoint/sparql", // should be ignored
+	})
+
+	tTool := Tool{}
+	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
+		SPARQL: "SELECT ?s WHERE { ?s ?p ?o }",
+	})
+	if err != nil {
+		t.Fatalf("ExploreLinkedData failed: %v", err)
+	}
+
+	resp := part.FunctionResponse.Response
+	if resp["output"] != "SUCCESS" {
+		t.Errorf("expected output SUCCESS, got %v", resp["output"])
 	}
 }
 
@@ -127,6 +162,103 @@ func TestExploreLinkedData_CONSTRUCT(t *testing.T) {
 	expectedText := "subject | predicate | object\nhttp://example.org/s | http://example.org/p | hello"
 	if strings.TrimSpace(text) != expectedText {
 		t.Errorf("got text %q, want %q", text, expectedText)
+	}
+}
+
+func TestUpdateLinkedData_Success(t *testing.T) {
+	var capturedContentType string
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			capturedContentType = r.Header.Get("Content-Type")
+			w.WriteHeader(http.StatusNoContent) // 204
+		},
+	))
+	defer server.Close()
+
+	// Test fallback to SPARQL_ENDPOINT
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_ENDPOINT": server.URL,
+	})
+
+	tTool := Tool{}
+	part, err := tTool.UpdateLinkedData(ctx, UpdateLinkedDataArgs{
+		SPARQL: "INSERT DATA { <http://s> <http://p> <http://o> }",
+	})
+	if err != nil {
+		t.Fatalf("UpdateLinkedData failed: %v", err)
+	}
+
+	resp := part.FunctionResponse.Response
+	if resp["output"] != "SUCCESS" {
+		t.Errorf("expected output SUCCESS, got %v", resp["output"])
+	}
+
+	text := resp["text"].(string)
+	if text != "Update executed successfully." {
+		t.Errorf("expected confirmation string, got %q", text)
+	}
+
+	if capturedContentType != "application/sparql-update" {
+		t.Errorf("expected content type application/sparql-update, got %q", capturedContentType)
+	}
+}
+
+func TestUpdateLinkedData_UpdateServicePrecedence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		},
+	))
+	defer server.Close()
+
+	// Test SPARQL_UPDATE_SERVICE takes precedence over SPARQL_ENDPOINT
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_UPDATE_SERVICE": server.URL,
+		"SPARQL_ENDPOINT":        "http://invalid-endpoint/sparql", // should be ignored
+	})
+
+	tTool := Tool{}
+	part, err := tTool.UpdateLinkedData(ctx, UpdateLinkedDataArgs{
+		SPARQL: "CLEAR ALL",
+	})
+	if err != nil {
+		t.Fatalf("UpdateLinkedData failed: %v", err)
+	}
+
+	resp := part.FunctionResponse.Response
+	if resp["output"] != "SUCCESS" {
+		t.Errorf("expected output SUCCESS, got %v", resp["output"])
+	}
+}
+
+func TestUpdateLinkedData_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Malformed update syntax", http.StatusBadRequest)
+		},
+	))
+	defer server.Close()
+
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_ENDPOINT": server.URL,
+	})
+
+	tTool := Tool{}
+	part, err := tTool.UpdateLinkedData(ctx, UpdateLinkedDataArgs{
+		SPARQL: "INSERT DATA { invalid }",
+	})
+	if err != nil {
+		t.Fatalf("UpdateLinkedData failed: %v", err)
+	}
+
+	resp := part.FunctionResponse.Response
+	if resp["output"] != "ERROR" {
+		t.Errorf("expected output ERROR, got %v", resp["output"])
+	}
+
+	errText := resp["error"].(string)
+	if !strings.Contains(errText, "Malformed update syntax") {
+		t.Errorf("unexpected error text: %q", errText)
 	}
 }
 

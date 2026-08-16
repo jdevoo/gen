@@ -11,13 +11,37 @@ import (
 	"google.golang.org/genai"
 )
 
+// getSPARQLClient instantiates a SPARQL client using configurations from the context.
+func getSPARQLClient(ctx context.Context, toolName string, endpointKeys []string) (*sparql.Client, error) {
+	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
+	if !ok {
+		return nil, fmt.Errorf("%s: keyVals not found in context", toolName)
+	}
+
+	var endpoint string
+	var found bool
+	for _, key := range endpointKeys {
+		if endpoint, found = keyVals[key]; found {
+			break
+		}
+	}
+
+	if !found {
+		return nil, &core.ParamError{
+			Message: fmt.Sprintf("%s: missing parameter\n  -p %s=http://localhost:8890/sparql", toolName, endpointKeys[0]),
+		}
+	}
+
+	return sparql.New(endpoint)
+}
+
 type ExploreLinkedDataArgs struct {
 	SPARQL string `json:"sparql"`
 }
 
 // ExploreLinkedData executes any SPARQL query against a SPARQL endpoint.
 func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs) (*genai.Part, error) {
-	client, err := getSPARQLClient(ctx, "ExploreLinkedData")
+	client, err := getSPARQLClient(ctx, "ExploreLinkedData", []string{"SPARQL_QUERY_ENDPOINT", "SPARQL_QUERY_SERVICE", "SPARQL_ENDPOINT"})
 	if err != nil {
 		return nil, err
 	}
@@ -96,19 +120,33 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 	), nil
 }
 
-// Helper to instantiate the SPARQL client using configurations from the context
-func getSPARQLClient(ctx context.Context, toolName string) (*sparql.Client, error) {
-	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("%s: keyVals not found in context", toolName)
+type UpdateLinkedDataArgs struct {
+	SPARQL string `json:"sparql"`
+}
+
+// UpdateLinkedData executes any SPARQL 1.1 Update operation against a SPARQL endpoint.
+func (t Tool) UpdateLinkedData(ctx context.Context, args UpdateLinkedDataArgs) (*genai.Part, error) {
+	client, err := getSPARQLClient(ctx, "UpdateLinkedData", []string{"SPARQL_UPDATE_ENDPOINT", "SPARQL_UPDATE_SERVICE", "SPARQL_ENDPOINT"})
+	if err != nil {
+		return nil, err
 	}
 
-	endpoint, ok := keyVals["SPARQL_ENDPOINT"]
-	if !ok {
-		return nil, &core.ParamError{
-			Message: fmt.Sprintf("%s: missing parameter\n  -p SPARQL_ENDPOINT=http://localhost:8890/sparql", toolName),
-		}
+	err = client.Update(ctx, args.SPARQL)
+	if err != nil {
+		return genai.NewPartFromFunctionResponse(
+			"UpdateLinkedData",
+			map[string]any{
+				"output": "ERROR",
+				"error":  err.Error(),
+			},
+		), nil
 	}
 
-	return sparql.New(endpoint)
+	return genai.NewPartFromFunctionResponse(
+		"UpdateLinkedData",
+		map[string]any{
+			"output": "SUCCESS",
+			"text":   "Update executed successfully.",
+		},
+	), nil
 }
