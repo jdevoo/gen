@@ -3,6 +3,7 @@ package toolbox
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image/jpeg"
 
 	"github.com/kbinani/screenshot"
@@ -18,6 +19,10 @@ func (t Tool) CaptureScreen(ctx context.Context, args CaptureScreenArgs) (*genai
 	n := 0
 	if args.N != nil {
 		n = *args.N
+	}
+	numDisplays := screenshot.NumActiveDisplays()
+	if n < 0 || n >= numDisplays {
+		return nil, fmt.Errorf("CaptureScreen: invalid argument %d (active displays: %d)", n, numDisplays)
 	}
 	bounds := screenshot.GetDisplayBounds(n)
 	img, err := screenshot.CaptureRect(bounds)

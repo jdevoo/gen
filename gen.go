@@ -102,13 +102,11 @@ func (g *Generator) emitModelDetails() error {
 	if g.client.ClientConfig().Backend == genai.BackendVertexAI {
 		backend = "VertexAI"
 	}
-	var m *genai.Model
-	var err error
-	if (g.params.Embed || len(g.params.DigestPaths) > 0) && !isFlagSet("m") {
-		m, err = g.client.Models.Get(g.ctx, g.params.EmbModel, nil)
-	} else {
-		m, err = g.client.Models.Get(g.ctx, g.params.GenModel, nil)
+	modelName := g.params.GenModel
+	if g.params.Embed {
+		modelName = g.params.EmbModel
 	}
+	m, err := g.client.Models.Get(g.ctx, modelName, nil)
 	if err != nil {
 		return err
 	}
