@@ -215,7 +215,7 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 	} else {
 		config.ResponseModalities = []string{"TEXT"}
 	}
-	if g.params.JSON {
+	if g.params.JSON && !g.params.Tool {
 		config.ResponseMIMEType = "application/json"
 		if g.schema != nil {
 			config.ResponseJsonSchema = g.schema
@@ -411,6 +411,14 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					}
 					if mp != nil {
 						fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
+					}
+					if g.params.JSON {
+						// switch to JSON for final response generation AND disable tools so Gemini doesn't loop
+						config.ResponseMIMEType = "application/json"
+						if g.schema != nil {
+							config.ResponseJsonSchema = g.schema
+						}
+						config.Tools = nil
 					}
 					// carry forward function response to next iteration
 					g.parts = append(g.parts, resCand.Content.Parts...)

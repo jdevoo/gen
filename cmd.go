@@ -116,7 +116,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 
 	fs.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
 	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json or -img)")
-	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img or -tool)")
+	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -g, -img, -json or -tool)")
 	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
 	fs.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
 	fs.Var(&params.FilePaths, "f", "GCS or YouTube URL, file, directory or quoted pattern of files to attach")
@@ -124,7 +124,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.BoolVar(&params.Help, "h", false, "show available tools, this help message and exit")
 	fs.BoolVar(&params.OnlyKvs, "i", false, "only store metadata with embeddings and ignore the content")
 	fs.BoolVar(&params.ImgModality, "img", false, "generate jpeg images (use -m to set a supported model)")
-	fs.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -c and -img)")
+	fs.BoolVar(&params.JSON, "json", false, "structured output (incompatible with -c, -code or -img)")
 	fs.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	fs.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
 	fs.StringVar(&params.OutPath, "out", "", "output path for images (incompatible with a redirect)")

@@ -34,6 +34,7 @@ func TestExploreLinkedData_SELECT(t *testing.T) {
 	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
 		"SPARQL_ENDPOINT": server.URL,
 	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{})
 
 	tTool := Tool{}
 	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
@@ -82,6 +83,7 @@ func TestExploreLinkedData_QueryServicePrecedence(t *testing.T) {
 		"SPARQL_QUERY_SERVICE": server.URL,
 		"SPARQL_ENDPOINT":      "http://invalid-endpoint/sparql", // should be ignored
 	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{})
 
 	tTool := Tool{}
 	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
@@ -112,6 +114,7 @@ func TestExploreLinkedData_ASK(t *testing.T) {
 	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
 		"SPARQL_ENDPOINT": server.URL,
 	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{})
 
 	tTool := Tool{}
 	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
@@ -144,6 +147,7 @@ func TestExploreLinkedData_CONSTRUCT(t *testing.T) {
 	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
 		"SPARQL_ENDPOINT": server.URL,
 	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{})
 
 	tTool := Tool{}
 	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
@@ -280,5 +284,52 @@ func TestExploreLinkedData_MissingEndpoint(t *testing.T) {
 
 	if !strings.Contains(paramErr.Error(), "missing parameter") {
 		t.Errorf("unexpected error message: %v", paramErr.Error())
+	}
+}
+
+func TestExploreLinkedData_JSON_Mode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<sparql xmlns="http://www.w3.org/2005/sparql-results#">
+  <head>
+    <variable name="s"/>
+    <variable name="p"/>
+  </head>
+  <results>
+    <result>
+      <binding name="s"><uri>http://example.org/s</uri></binding>
+      <binding name="p"><literal xml:lang="en">hello</literal></binding>
+    </result>
+  </results>
+</sparql>`))
+		},
+	))
+	defer server.Close()
+
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_ENDPOINT": server.URL,
+	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{JSON: true})
+
+	tTool := Tool{}
+	part, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
+		SPARQL: "SELECT ?s ?p WHERE { ?s ?p ?o }",
+	})
+	if err != nil {
+		t.Fatalf("ExploreLinkedData failed: %v", err)
+	}
+
+	resp := part.FunctionResponse.Response
+	if resp["output"] != "SUCCESS" {
+		t.Errorf("expected output SUCCESS, got %v", resp["output"])
+	}
+
+	bindings, ok := resp["bindings"].([]map[string]string)
+	if !ok || len(bindings) != 1 {
+		t.Fatalf("expected bindings to be []map[string]string with 1 element, got %v", resp["bindings"])
+	}
+	if bindings[0]["s"] != "http://example.org/s" || bindings[0]["p"] != "hello" {
+		t.Errorf("unexpected bindings content: %v", bindings[0])
 	}
 }

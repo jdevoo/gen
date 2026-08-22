@@ -46,6 +46,11 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 		return nil, err
 	}
 
+	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
+	if !ok {
+		return nil, fmt.Errorf("ExploreLinkedData: params not found in context")
+	}
+
 	qr, err := client.Query(ctx, args.SPARQL)
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(
@@ -72,11 +77,53 @@ func (t Tool) ExploreLinkedData(ctx context.Context, args ExploreLinkedDataArgs)
 				},
 			), nil
 		}
+		if params.JSON {
+			return genai.NewPartFromFunctionResponse(
+				"ExploreLinkedData",
+				map[string]any{
+					"output": "SUCCESS",
+					"result": isTrue,
+				},
+			), nil
+		}
 		return genai.NewPartFromFunctionResponse(
 			"ExploreLinkedData",
 			map[string]any{
 				"output": "SUCCESS",
 				"text":   fmt.Sprintf("Result: %t", isTrue),
+			},
+		), nil
+	}
+
+	if params.JSON {
+		var bindings []map[string]string
+		for {
+			row, err := qr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return genai.NewPartFromFunctionResponse(
+					"ExploreLinkedData",
+					map[string]any{
+						"output": "ERROR",
+						"error":  err.Error(),
+					},
+				), nil
+			}
+			rowMap := make(map[string]string)
+			for _, v := range vars {
+				if val, ok := row[v]; ok {
+					rowMap[v] = val.String()
+				}
+			}
+			bindings = append(bindings, rowMap)
+		}
+		return genai.NewPartFromFunctionResponse(
+			"ExploreLinkedData",
+			map[string]any{
+				"output":   "SUCCESS",
+				"bindings": bindings,
 			},
 		), nil
 	}

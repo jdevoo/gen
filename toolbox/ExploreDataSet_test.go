@@ -42,6 +42,7 @@ func TestExploreDataSet(t *testing.T) {
 	}
 	keyVals := core.ParamMap{"DSN": "postgres://postgres:password@localhost:54321/nonexistent?sslmode=disable"}
 	ctxWithBadDSN := context.WithValue(ctx, core.KeyValsKey, keyVals)
+	ctxWithBadDSN = context.WithValue(ctxWithBadDSN, core.ParamsKey, &core.Parameters{})
 	part, err := tool.ExploreDataSet(ctxWithBadDSN, argsWithBadDSN)
 	if err != nil {
 		t.Fatalf("ExploreDataSet unexpectedly returned a Go error instead of embedding it in function response: %v", err)

@@ -90,7 +90,7 @@ func validCombos(params *core.Parameters) error {
 	(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
 		// code execution with incompatible flags
 		(params.CodeGen &&
-			(params.Tool || params.GoogleSearch || params.Embed)) ||
+			(params.Tool || params.GoogleSearch || params.Embed || params.JSON)) ||
 		// tool registration with incompatible flags
 		(params.Tool &&
 			(params.CodeGen || params.GoogleSearch ||

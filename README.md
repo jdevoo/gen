@@ -112,7 +112,7 @@ Options:
   -V    output model details, system instructions, chat history and thoughts
   -c    enter chat mode (incompatible with -json or -img)
   -code
-        code execution tool (incompatible with -g, -img or -tool)
+        code execution tool (incompatible with -g, -img, -json or -tool)
   -d value
         path to a digest folder
   -e    write text embeddings to digest (default model "gemini-embedding-001")
@@ -124,13 +124,13 @@ Options:
   -img
         generate jpeg images (use -m to set a supported model)
   -json
-        structured output (incompatible with -c and -img)
+        structured output (incompatible with -c, -code or -img)
   -k int
         maximum number of entries from digest to retrieve (default 3)
   -l float
         balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-        model name (default "gemini-3.5-flash")
+        model name (default "gemini-3.5-flash-lite")
   -mcp value
         mcp stdio or streamable server command
   -out string
