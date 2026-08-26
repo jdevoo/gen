@@ -320,12 +320,41 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 		}), nil
 	}
 
+	resMap := map[string]any{
+		"output": "SUCCESS",
+	}
+
+	if len(textStrings) > 0 {
+		var parsedItems []any
+		for _, s := range textStrings {
+			var parsed any
+			if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+				parsedItems = append(parsedItems, parsed)
+			} else {
+				parsedItems = append(parsedItems, s)
+			}
+		}
+
+		if params.JSON {
+			if len(parsedItems) == 1 {
+				resMap["result"] = parsedItems[0]
+			} else {
+				resMap["result"] = parsedItems
+			}
+		} else {
+			if len(textStrings) == 1 {
+				resMap["text"] = textStrings[0]
+			} else {
+				resMap["text"] = textStrings
+			}
+		}
+	} else {
+		resMap["text"] = ""
+	}
+
 	return genai.NewPartFromFunctionResponseWithParts(
 		fc.Name,
-		map[string]any{
-			"output": "SUCCESS",
-			"text":   textStrings,
-		},
+		resMap,
 		parts,
 	), nil
 }
