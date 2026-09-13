@@ -50,9 +50,11 @@ func partWithKey(parts []*genai.Part, key string) int {
 // replacePart returns new array with updated entry at idx.
 func replacePart(parts *[]*genai.Part, idx int, key string, selection []QueryResult) {
 	var keyVal string
+	var buf strings.Builder
 	for _, s := range selection {
-		keyVal += s.doc.content
+		buf.WriteString(s.doc.content)
 	}
+	keyVal = buf.String()
 	text := (*parts)[idx].Text
 	(*parts)[idx] = &genai.Part{Text: strings.Replace(string(text), key, keyVal, 1)}
 }

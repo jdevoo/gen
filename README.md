@@ -118,6 +118,8 @@ Options:
   -e    write text embeddings to digest (default model "gemini-embedding-001")
   -f value
         GCS or YouTube URL, file, directory or quoted pattern of files to attach
+  -freqp value
+        penalize tokens on their frequency in the generated text [-2.0,2.0]
   -g    Google search tool (incompatible with -code, -img and -tool)
   -h    show available tools, this help message and exit
   -i    only store metadata with embeddings and ignore the content
@@ -137,8 +139,12 @@ Options:
         output path for images (incompatible with a redirect)
   -p value
         prompt parameter value in format key=val
+  -presp value
+        penalize tokens already present in the generated text [-2.0,2.0]
   -r    process directory declared with -f recursively
   -s    treat argument as system prompt
+  -seed value
+        integer which makes the model's output mostly deterministic
   -t    output total number of tokens
   -temp float
         sampling during response generation [0.0,2.0] (default 1)

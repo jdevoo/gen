@@ -96,23 +96,23 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
-			emitText(out, p, outRedirected, imgModality, idx, mp)
+			_ = emitText(out, p, outRedirected, imgModality, idx, mp)
 			continue
 		}
 		if p.FunctionResponse != nil {
-			emitFunctionResponse(out, p, outRedirected, verbose, idx, outPath)
+			_ = emitFunctionResponse(out, p, outRedirected, verbose, idx, outPath)
 			continue
 		}
 		if verbose && p.ExecutableCode != nil {
-			emitExecutableCode(out, p, outRedirected, idx)
+			_ = emitExecutableCode(out, p, outRedirected, idx)
 			continue
 		}
 		if p.FileData != nil {
-			emitFileData(out, p, outRedirected, idx)
+			_ = emitFileData(out, p, outRedirected, idx)
 			continue
 		}
 		if p.InlineData != nil {
-			emitInlineData(out, p, outRedirected, idx, outPath)
+			_ = emitInlineData(out, p, outRedirected, idx, outPath)
 		}
 	}
 	return nil
@@ -160,7 +160,7 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, v
 	}
 	for _, p := range part.FunctionResponse.Parts {
 		if p.FileData != nil {
-			emitFileData(out, &genai.Part{
+			_ = emitFileData(out, &genai.Part{
 				FileData: &genai.FileData{
 					DisplayName: p.FileData.DisplayName,
 					FileURI:     p.FileData.FileURI,
@@ -169,7 +169,7 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, v
 			}, outRedirected, idx)
 		}
 		if p.InlineData != nil && part.FunctionResponse.Name != "CaptureScreen" {
-			emitInlineData(out, &genai.Part{
+			_ = emitInlineData(out, &genai.Part{
 				InlineData: &genai.Blob{
 					DisplayName: p.InlineData.DisplayName,
 					Data:        p.InlineData.Data,
@@ -237,7 +237,7 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 		if len(outPath) > 0 {
 			tmpOut, err := os.CreateTemp(outPath, "gen-*.jpeg")
 			defer func() {
-				tmpOut.Close()
+				_ = tmpOut.Close()
 			}()
 			if err != nil {
 				return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
@@ -275,7 +275,7 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 			}
 			prev = c.Role
 		}
-		emitContent(out, c, false, false, true, nil, nil, "")
+		_ = emitContent(out, c, false, false, true, nil, nil, "")
 	}
 	fmt.Fprint(out, "\nHISTORY END\n")
 }
@@ -308,30 +308,6 @@ func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.
 	return file, nil
 }
 
-func loadImage(filePathVal string) (*genai.Image, error) {
-	f, err := os.Open(filePathVal)
-	if err != nil {
-		return nil, fmt.Errorf("loadImage error opening file '%s': %v", filePathVal, err)
-	}
-	defer f.Close()
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("loadImage error reading file %s: %v", filePathVal, err)
-	}
-	sniffLen := len(data)
-	if sniffLen > 512 {
-		sniffLen = 512
-	}
-	sniffedType := http.DetectContentType(data[:sniffLen])
-	if !strings.HasPrefix(sniffedType, "image") {
-		return nil, fmt.Errorf("loadImage error reading file %s: type %s not supported", filePathVal, sniffedType)
-	}
-	return &genai.Image{
-		ImageBytes: data,
-		MIMEType:   sniffedType,
-	}, nil
-}
-
 // loadPrompt reads a file and recursively replaces @subprompt with their content.
 func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 	absPath, err := filepath.Abs(filePath)
@@ -352,8 +328,7 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
 		// find text starting with @
-		words := strings.Fields(line)
-		for _, word := range words {
+		for word := range strings.FieldsSeq(line) {
 			if strings.HasPrefix(word, "@") && (strings.HasSuffix(word, PExt) || strings.HasSuffix(word, SPExt)) {
 				subFileName := strings.TrimPrefix(word, "@")
 				subPath := filepath.Join(dir, subFileName)
@@ -415,10 +390,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if err != nil {
 			return fmt.Errorf("reading file %s: %v", filePathVal, err)
 		}
-		sniffLen := len(data)
-		if sniffLen > 512 {
-			sniffLen = 512
-		}
+		sniffLen := min(512, len(data))
 		sniffedType := http.DetectContentType(data[:sniffLen])
 		if !strings.HasPrefix(sniffedType, "text") {
 			return fmt.Errorf("reading file %s: type %s not supported", filePathVal, sniffedType)

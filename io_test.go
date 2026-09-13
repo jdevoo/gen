@@ -182,8 +182,8 @@ func TestLoadPrompt(t *testing.T) {
 	t.Run("Circular Reference Detection", func(t *testing.T) {
 		pathA := filepath.Join(tmpDir, "a"+PExt)
 		pathB := filepath.Join(tmpDir, "b"+PExt)
-		os.WriteFile(pathA, []byte("File A calls @b"+PExt), 0644)
-		os.WriteFile(pathB, []byte("File B calls @a"+PExt), 0644)
+		_ = os.WriteFile(pathA, []byte("File A calls @b"+PExt), 0644)
+		_ = os.WriteFile(pathB, []byte("File B calls @a"+PExt), 0644)
 		seen := make(map[string]bool)
 		_, err := loadPrompt(pathA, seen)
 		if err == nil {
@@ -204,7 +204,7 @@ func TestLoadPrompt(t *testing.T) {
 	t.Run("Multiple References", func(t *testing.T) {
 		multiPath := filepath.Join(tmpDir, "multi"+PExt)
 		content := "@child" + PExt + " and again @child" + PExt
-		os.WriteFile(multiPath, []byte(content), 0644)
+		_ = os.WriteFile(multiPath, []byte(content), 0644)
 
 		seen := make(map[string]bool)
 		result, err := loadPrompt(multiPath, seen)
@@ -306,7 +306,7 @@ func TestLoadPrefs(t *testing.T) {
 
 	// Clean up environment variables set during this test
 	t.Cleanup(func() {
-		os.Unsetenv("TEST_GENRC_ENV_VAR")
+		_ = os.Unsetenv("TEST_GENRC_ENV_VAR")
 	})
 
 	rcContent := `[flags]

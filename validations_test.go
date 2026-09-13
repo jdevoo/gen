@@ -17,22 +17,26 @@ func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.Var(&params.DigestPaths, "d", "")
 	fs.BoolVar(&params.Embed, "e", false, "")
 	fs.Var(&params.FilePaths, "f", "")
+	fs.Var(&params.FrequencyPenalty, "freqp", "")
 	fs.BoolVar(&params.GoogleSearch, "g", false, "")
 	fs.BoolVar(&params.Help, "h", false, "")
+	fs.BoolVar(&params.OnlyKvs, "i", false, "")
 	fs.BoolVar(&params.ImgModality, "img", false, "")
 	fs.BoolVar(&params.JSON, "json", false, "")
 	fs.IntVar(&params.K, "k", 3, "")
 	fs.Float64Var(&params.Lambda, "l", 0.5, "")
+	fs.StringVar(&params.OutPath, "out", "", "")
 	fs.Func("think", "", func(v string) error {
 		params.ThinkingLevel = genai.ThinkingLevelUnspecified
 		return nil
 	})
 	fs.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
 	fs.Var(&params.MCPServers, "mcp", "")
-	fs.StringVar(&params.OutPath, "out", "", "")
-	fs.BoolVar(&params.OnlyKvs, "o", false, "")
 	fs.Var(keyVals, "p", "")
+	fs.Var(&params.PresencePenalty, "presp", "")
+	fs.BoolVar(&params.Walk, "r", false, "")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "")
+	fs.Var(&params.Seed, "seed", "")
 	fs.BoolVar(&params.CountTokens, "t", false, "")
 	fs.Float64Var(&params.Temp, "temp", 1.0, "")
 	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
@@ -40,7 +44,6 @@ func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.Float64Var(&params.TopP, "top_p", 0.95, "")
 	fs.BoolVar(&params.Unsafe, "unsafe", false, "")
 	fs.BoolVar(&params.Version, "v", false, "")
-	fs.BoolVar(&params.Walk, "w", false, "")
 }
 
 func TestArgsInvalid(t *testing.T) {
@@ -176,7 +179,7 @@ func TestArgsInvalid(t *testing.T) {
 			params.Args = fs.Args()
 			params.Interactive = tc.interactive
 
-			actual := isArgsInvalid(flag.CommandLine, params, keyVals)
+			actual := isArgsInvalid(params, keyVals)
 			if (actual != nil) != tc.expected {
 				t.Errorf("For test case '%s', expected %t, but got %t, Args: %v", tc.name, tc.expected, actual, tc.args)
 			}

@@ -13,7 +13,7 @@ import (
 func openConsole() (io.Reader, error) {
 	consoleFile, err := os.Open("/dev/tty")
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open /dev/tty")
+		return nil, fmt.Errorf("failed to open /dev/tty")
 	}
 	return consoleFile, nil
 }

@@ -93,14 +93,8 @@ func (e *Encoder) Encode(img image.Image) error {
 		if scaleH < scaleW {
 			ratio = scaleH
 		}
-		height = int(math.Round(float64(height) * ratio))
-		width = int(math.Round(float64(width) * ratio))
-		if width < 1 {
-			width = 1
-		}
-		if height < 1 {
-			height = 1
-		}
+		height = max(1, int(math.Round(float64(height)*ratio)))
+		width = max(1, int(math.Round(float64(width)*ratio)))
 		simg := image.NewRGBA(image.Rect(0, 0, width, height))
 		draw.CatmullRom.Scale(simg, simg.Bounds(), img, img.Bounds(), draw.Over, nil)
 		img = simg
@@ -137,7 +131,7 @@ func (e *Encoder) Encode(img image.Image) error {
 		r = r * 100 / 0xFFFF
 		g = g * 100 / 0xFFFF
 		b = b * 100 / 0xFFFF
-		paletteString.WriteString(fmt.Sprintf("%s%d;%s%d;%d;%d", GraphicsColorIntroducer, n+1, ColorAttributePrefix, r, g, b))
+		fmt.Fprintf(&paletteString, "%s%d;%s%d;%d;%d", GraphicsColorIntroducer, n+1, ColorAttributePrefix, r, g, b)
 	}
 	buf.WriteString(paletteString.String())
 

@@ -76,9 +76,13 @@ func validRanges(params *core.Parameters) error {
 		// invalid lambda values
 		(params.Lambda < 0 || params.Lambda > 1) ||
 		// invalid temperature values
-		(params.Temp < 0 || params.Temp > 2) ||
+		(params.Temp <= 0 || params.Temp > 2) ||
 		// invalid topP values
-		(params.TopP < 0 || params.TopP > 1) {
+		(params.TopP < 0 || params.TopP > 1) ||
+		// invalid frequency penalty value
+		(params.FrequencyPenalty.Defined && (*params.FrequencyPenalty.Value < -2 || *params.FrequencyPenalty.Value > 2)) ||
+		// invalid presence penalty value
+		(params.PresencePenalty.Defined && (*params.PresencePenalty.Value < -2 || *params.PresencePenalty.Value > 2)) {
 		return fmt.Errorf("invalid option values")
 	}
 	return nil
@@ -141,7 +145,7 @@ func validEmbeddings(params *core.Parameters, keyVals core.ParamMap) error {
 }
 
 // validArgs checks if there are still unhandled flags inside params.Args
-func validArgs(fs *flag.FlagSet, params *core.Parameters) error {
+func validArgs(params *core.Parameters) error {
 	var err error
 	flag.CommandLine.VisitAll(func(f *flag.Flag) {
 		if err != nil {
@@ -159,8 +163,8 @@ func validArgs(fs *flag.FlagSet, params *core.Parameters) error {
 }
 
 // isArgsInvalid performs a complete argument validation.
-func isArgsInvalid(fs *flag.FlagSet, params *core.Parameters, keyVals core.ParamMap) error {
-	if err := validArgs(fs, params); err != nil {
+func isArgsInvalid(params *core.Parameters, keyVals core.ParamMap) error {
+	if err := validArgs(params); err != nil {
 		return err
 	}
 	if err := validPrompts(params); err != nil {

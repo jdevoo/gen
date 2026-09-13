@@ -389,8 +389,7 @@ func convertMCPType(val string, t string) (any, error) {
 				return nil, fmt.Errorf("failed to unmarshal '%s' as JSON %s: %v", val, t, err)
 			}
 		} else { // Fallback: treat comma separated as array of strings
-			parts := strings.Split(val, ",")
-			for _, p := range parts {
+			for p := range strings.SplitSeq(val, ",") {
 				v = append(v, strings.TrimSpace(p))
 			}
 		}
@@ -498,22 +497,6 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 	}
 
 	return &res, nil
-}
-
-// argsUnsatisfied returns a list of prompt parameters missing from keyVals.
-func argsUnsatisfied(args []*mcp.PromptArgument, keyVals core.ParamMap) *core.ParamError {
-	var out []string
-	for _, arg := range args {
-		if _, val := keyVals[arg.Name]; !val {
-			out = append(out, fmt.Sprintf("  -p %s", arg.Name))
-		}
-	}
-	if len(out) > 0 {
-		return &core.ParamError{
-			Message: strings.Join(out, "\n"),
-		}
-	}
-	return nil
 }
 
 // describeElicitField parses an elicitation property schema.
@@ -629,18 +612,19 @@ func describeElicitField(name string, schema map[string]any) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("  -p %s <%s>", name, pType))
+	fmt.Fprintf(&sb, "  -p %s <%s>", name, pType)
 	if len(limits) > 0 {
-		sb.WriteString(fmt.Sprintf(" (%s)", strings.Join(limits, ", ")))
+		fmt.Fprintf(&sb, " (%s)", strings.Join(limits, ", "))
 	}
 	if description != "" {
-		sb.WriteString(" - " + description)
+		sb.WriteString(" - ")
+		sb.WriteString(description)
 	}
 	if len(choices) > 0 {
-		sb.WriteString(fmt.Sprintf(" (options: %s)", strings.Join(choices, ", ")))
+		fmt.Fprintf(&sb, " (options: %s)", strings.Join(choices, ", "))
 	}
 	if defaultStr != "" {
-		sb.WriteString(fmt.Sprintf(" [default: %s]", defaultStr))
+		fmt.Fprintf(&sb, " [default: %s]", defaultStr)
 	}
 
 	return sb.String()

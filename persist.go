@@ -162,9 +162,9 @@ func (l *Log) Close() error {
 	defer l.mu.Unlock()
 	if l.closed {
 		if l.corrupt {
-			return fmt.Errorf("Closing corrupt log")
+			return fmt.Errorf("closing corrupt log")
 		}
-		return fmt.Errorf("Closing already closed log")
+		return fmt.Errorf("closing already closed log")
 	}
 	if err := l.sfile.Sync(); err != nil {
 		return err
@@ -174,7 +174,7 @@ func (l *Log) Close() error {
 	}
 	l.closed = true
 	if l.corrupt {
-		return fmt.Errorf("Closing corrupt log")
+		return fmt.Errorf("closing corrupt log")
 	}
 	return nil
 }
@@ -183,9 +183,9 @@ func (l *Log) Write(data []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
-		return fmt.Errorf("Writing to corrupt log")
+		return fmt.Errorf("writing to corrupt log")
 	} else if l.closed {
-		return fmt.Errorf("Writing to closed log")
+		return fmt.Errorf("writing to closed log")
 	}
 	l.wbatch.Clear()
 	l.wbatch.Write(data)
@@ -247,9 +247,9 @@ func (l *Log) WriteBatch(b *Batch) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
-		return fmt.Errorf("Batch write to corrput log")
+		return fmt.Errorf("batch write to corrput log")
 	} else if l.closed {
-		return fmt.Errorf("Batch write to closed log")
+		return fmt.Errorf("batch write to closed log")
 	}
 	if len(b.data) == 0 {
 		return nil
@@ -347,10 +347,10 @@ func loadNextBinaryEntry(data []byte) (n int, err error) {
 	// data_size + data
 	size, n := binary.Uvarint(data)
 	if n <= 0 {
-		return 0, fmt.Errorf("Log corrupt: unable to read entry size")
+		return 0, fmt.Errorf("log corrupt: unable to read entry size")
 	}
 	if uint64(len(data)-n) < size {
-		return 0, fmt.Errorf("Log corrupt: entry size exceeds available data")
+		return 0, fmt.Errorf("log corrupt: entry size exceeds available data")
 	}
 	return n + int(size), nil
 }
@@ -382,12 +382,12 @@ func (l *Log) Read(segment, index uint64) ([]byte, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	if l.corrupt {
-		return nil, fmt.Errorf("Reading from corrupt log")
+		return nil, fmt.Errorf("reading from corrupt log")
 	} else if l.closed {
-		return nil, fmt.Errorf("Reading from closed log")
+		return nil, fmt.Errorf("reading from closed log")
 	}
 	if segment == 0 {
-		return nil, fmt.Errorf("Segment not found while reading from log")
+		return nil, fmt.Errorf("segment not found while reading from log")
 	}
 	s, err := l.loadSegment(segment)
 	if err != nil {
@@ -416,9 +416,9 @@ func (l *Log) Sync() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.corrupt {
-		return fmt.Errorf("Syncing corrupt log")
+		return fmt.Errorf("syncing corrupt log")
 	} else if l.closed {
-		return fmt.Errorf("Syncing closed log")
+		return fmt.Errorf("syncing closed log")
 	}
 	return l.sfile.Sync()
 }

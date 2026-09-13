@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type Parameters struct {
 	EmbModel          string
 	FilePaths         ParamArray
 	FileURIs          []string
+	FrequencyPenalty  OptionalFloat32
 	GenModel          string
 	GoogleSearch      bool
 	Help              bool
@@ -41,7 +43,9 @@ type Parameters struct {
 	OutPath           string
 	OutRedirected     bool
 	OnlyKvs           bool // RAG
+	PresencePenalty   OptionalFloat32
 	SystemInstruction bool
+	Seed              OptionalInt32
 	Temp              float64
 	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration
@@ -53,8 +57,6 @@ type Parameters struct {
 	Version           bool
 	Walk              bool // used with FilePaths
 }
-
-type Tool struct{}
 
 type ParamError struct {
 	Message string
@@ -89,6 +91,57 @@ func (*ParamArray) String() string { return "" }
 // Set implements the flag.Value interface for ParamArray.
 func (a *ParamArray) Set(val string) error {
 	*a = append(*a, val)
+	return nil
+}
+
+// OptionalFloat32 implements the flag.Value interface
+type OptionalFloat32 struct {
+	Value   *float32
+	Defined bool
+}
+
+func (o *OptionalFloat32) String() string {
+	if !o.Defined {
+		return ""
+	}
+	return strconv.FormatFloat(float64(*o.Value), 'g', -1, 32)
+}
+
+// Set is called by the flag package when the flag is provided
+func (o *OptionalFloat32) Set(s string) error {
+	v, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		return err
+	}
+	val := float32(v)
+	o.Value = &val
+	o.Defined = true
+	return nil
+}
+
+// OptionalInt32 implements the flag.Value interface
+type OptionalInt32 struct {
+	Value   *int32
+	Defined bool
+}
+
+// String is required by the flag.Value interface
+func (o *OptionalInt32) String() string {
+	if !o.Defined {
+		return ""
+	}
+	return strconv.Itoa(int(*o.Value))
+}
+
+// Set is called by the flag package when the flag is provided
+func (o *OptionalInt32) Set(s string) error {
+	v, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return err
+	}
+	val := int32(v)
+	o.Value = &val
+	o.Defined = true
 	return nil
 }
 

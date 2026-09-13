@@ -266,7 +266,7 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			Parts: g.sysParts,
 		}
 		if g.params.Verbose {
-			emitContent(os.Stderr, config.SystemInstruction, false, false, true, nil, nil, "")
+			_ = emitContent(os.Stderr, config.SystemInstruction, false, false, true, nil, nil, "")
 		}
 	}
 	if g.params.ThinkingLevel != genai.ThinkingLevelUnspecified {
@@ -274,6 +274,15 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			IncludeThoughts: true,
 			ThinkingLevel:   genai.ThinkingLevel(g.params.ThinkingLevel),
 		}
+	}
+	if g.params.Seed.Defined && g.params.Seed.Value != nil {
+		config.Seed = g.params.Seed.Value
+	}
+	if g.params.PresencePenalty.Defined && g.params.PresencePenalty.Value != nil {
+		config.PresencePenalty = g.params.PresencePenalty.Value
+	}
+	if g.params.FrequencyPenalty.Defined && g.params.FrequencyPenalty.Value != nil {
+		config.FrequencyPenalty = g.params.FrequencyPenalty.Value
 	}
 
 	return nil
