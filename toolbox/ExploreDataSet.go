@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/jdevoo/gen/core"
+	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 	"google.golang.org/genai"
 )
 
@@ -14,7 +16,7 @@ type ExploreDataSetArgs struct {
 	SQL string `json:"sql"`
 }
 
-// ExploreDataSet executes any SQL query against a PostgreSQL database.
+// ExploreDataSet executes any SQL query against a PostgreSQL or SQLite database.
 func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*genai.Part, error) {
 	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
@@ -24,7 +26,7 @@ func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*gen
 	dsn, ok := keyVals["DSN"]
 	if !ok {
 		return nil, &core.ParamError{
-			Message: "ExploreDataSet: missing parameter\n  -p DSN=postgres://pqgo:password@localhost",
+			Message: "ExploreDataSet: missing parameter\n  -p DSN=postgres://pqgo:password@localhost\n  or -p DSN=sqlite:/path/file.db",
 		}
 	}
 
@@ -33,7 +35,7 @@ func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*gen
 		return nil, fmt.Errorf("ExploreDataSet: params not found in context")
 	}
 
-	resMap, err := executePostgresQuery(ctx, dsn, args.SQL, params.JSON)
+	resMap, err := executeSQLQuery(ctx, dsn, args.SQL, params.JSON)
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(
 			"ExploreDataSet",
@@ -48,8 +50,34 @@ func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*gen
 	return genai.NewPartFromFunctionResponse("ExploreDataSet", resMap), nil
 }
 
-func executePostgresQuery(ctx context.Context, dsn string, query string, wantJSON bool) (map[string]any, error) {
-	db, err := sql.Open("postgres", dsn)
+// parseDSN helps determine the right driver and connection string.
+func parseDSN(dsn string) (driver string, connStr string, err error) {
+	trimmed := strings.TrimSpace(dsn)
+	switch {
+	case strings.HasPrefix(trimmed, "sqlite:"):
+		rawPath := strings.TrimPrefix(trimmed, "sqlite:")
+		if strings.HasPrefix(rawPath, "//") {
+			rawPath = strings.TrimPrefix(rawPath, "//")
+		}
+		return "sqlite", rawPath, nil
+	case strings.HasPrefix(trimmed, "postgres://"),
+		strings.HasPrefix(trimmed, "postgresql://"):
+		return "postgres", trimmed, nil
+	default:
+		if strings.HasSuffix(trimmed, ".db") || strings.HasSuffix(trimmed, ".sqlite") {
+			return "sqlite", trimmed, nil
+		}
+		return "postgres", trimmed, nil
+	}
+}
+
+func executeSQLQuery(ctx context.Context, dsn string, query string, wantJSON bool) (map[string]any, error) {
+	driver, connStr, err := parseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parsing DSN: %v", err)
+	}
+
+	db, err := sql.Open(driver, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("opening database connection: %v", err)
 	}
@@ -60,7 +88,8 @@ func executePostgresQuery(ctx context.Context, dsn string, query string, wantJSO
 	isSelect := strings.HasPrefix(trimmed, "select") ||
 		strings.HasPrefix(trimmed, "with") ||
 		strings.HasPrefix(trimmed, "show") ||
-		strings.HasPrefix(trimmed, "explain")
+		strings.HasPrefix(trimmed, "explain") ||
+		strings.HasPrefix(trimmed, "pragma")
 
 	if isSelect {
 		rows, err := db.QueryContext(ctx, query)

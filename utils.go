@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/jdevoo/gen/core"
-	_ "github.com/lib/pq"
 	"google.golang.org/genai"
 )
 
