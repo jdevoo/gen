@@ -327,6 +327,10 @@ path/to/digest2
 cmd1
 cmd2
 
+[parameters]
+SPARQL_USER_AGENT = "gen/1.0 (john_doe@acme.com)"
+CUSTOM_PARAM = value_123
+
 [env]
 TEST_GENRC_ENV_VAR = hello_from_genrc
 `
@@ -336,7 +340,8 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 	}
 
 	params := &core.Parameters{}
-	if err := loadPrefs(params); err != nil {
+	keyVals := &core.ParamMap{}
+	if err := loadPrefs(params, keyVals); err != nil {
 		t.Fatalf("loadPrefs failed: %v", err)
 	}
 
@@ -373,6 +378,24 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 	if val := os.Getenv("TEST_GENRC_ENV_VAR"); val != "hello_from_genrc" {
 		t.Errorf("Expected TEST_GENRC_ENV_VAR=hello_from_genrc, got %q", val)
 	}
+	if (*keyVals)["SPARQL_USER_AGENT"] != "gen/1.0 (john_doe@acme.com)" {
+		t.Errorf("Expected SPARQL_USER_AGENT=gen/1.0 (john_doe@acme.com), got %q", (*keyVals)["SPARQL_USER_AGENT"])
+	}
+	if (*keyVals)["CUSTOM_PARAM"] != "value_123" {
+		t.Errorf("Expected CUSTOM_PARAM=value_123, got %q", (*keyVals)["CUSTOM_PARAM"])
+	}
+
+	t.Run("invalid parameters syntax", func(t *testing.T) {
+		badContent := "[parameters]\ninvalid_line_without_equals\n"
+		if err := os.WriteFile(filepath.Join(tmpDir, DotGenRc), []byte(badContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+		p := &core.Parameters{}
+		kv := &core.ParamMap{}
+		if err := loadPrefs(p, kv); err == nil {
+			t.Error("expected error for invalid parameter syntax, got nil")
+		}
+	})
 }
 
 // TestPNGAncillaryChunkStripper tests stripping ancillary chunks from PNG data streams.

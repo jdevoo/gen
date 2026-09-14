@@ -522,7 +522,7 @@ func retrieveHistory(hist *[]*genai.Content) error {
 }
 
 // loadPrefs reads and parses .genrc from the user's home directory.
-func loadPrefs(params *core.Parameters) error {
+func loadPrefs(params *core.Parameters, keyVals *core.ParamMap) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %v", err)
@@ -608,6 +608,19 @@ func loadPrefs(params *core.Parameters) error {
 			params.DigestPaths = append(params.DigestPaths, line)
 		case "mcpservers":
 			params.MCPServers = append(params.MCPServers, line)
+		case "parameters":
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("parameters error on line: %s", line)
+			}
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			if key != "" && keyVals != nil {
+				if *keyVals == nil {
+					*keyVals = make(core.ParamMap)
+				}
+				(*keyVals)[key] = strings.Trim(val, `"'`)
+			}
 		default:
 			return fmt.Errorf("unknown section: %s", currentSection)
 		}

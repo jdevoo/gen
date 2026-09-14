@@ -174,6 +174,10 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 #EmbModel=gemini-embedding-001
 #GenModel=gemini-2.5-flash
 
+[parameters]
+#key1=val
+#key2=val
+
 [mcpservers]
 #path to STDIO executable1
 #path to STDIO executable2

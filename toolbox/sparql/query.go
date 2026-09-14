@@ -170,6 +170,9 @@ func (c *Client) buildRequest(ctx context.Context, prefix, query string, params 
 		urlParams.Set("format", format)
 		req.URL.RawQuery = urlParams.Encode()
 	}
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 
 	req = req.WithContext(ctx)
 	return req, nil
@@ -200,6 +203,9 @@ func (c *Client) Update(ctx context.Context, update string, params ...Param) err
 		return err
 	}
 	req.Header.Set("Content-Type", "application/sparql-update")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

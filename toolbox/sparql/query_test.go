@@ -309,6 +309,71 @@ func TestQuery_Local(t *testing.T) {
 			t.Errorf("expected error message %q, got %q", expectedErrorMsg, err.Error())
 		}
 	})
+
+	t.Run("User-Agent in GET and POST queries", func(t *testing.T) {
+		var capturedUA string
+		var capturedMethod string
+		server := httptest.NewServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedUA = r.Header.Get("User-Agent")
+				capturedMethod = r.Method
+				_, _ = fmt.Fprint(w, `<?xml version="1.0"?>
+<sparql xmlns="http://www.w3.org/2005/sparql-results#">
+  <head><variable name="x"/></head>
+  <results></results>
+</sparql>`)
+			},
+		))
+		defer server.Close()
+
+		// Test GET
+		c := &Client{
+			HTTPClient:   *server.Client(),
+			Endpoint:     server.URL,
+			ResultParser: NewXMLResultParser(),
+			UserAgent:    "custom-agent-get/1.0",
+		}
+		if _, err := c.Query(context.Background(), "SELECT * WHERE { ?s ?p ?o }"); err != nil {
+			t.Fatalf("GET query failed: %v", err)
+		}
+		if capturedMethod != "GET" || capturedUA != "custom-agent-get/1.0" {
+			t.Errorf("GET query: expected method GET and UA 'custom-agent-get/1.0', got %s, %s", capturedMethod, capturedUA)
+		}
+
+		// Test POST
+		c.Method = "POST"
+		c.UserAgent = "custom-agent-post/1.0"
+		if _, err := c.Query(context.Background(), "SELECT * WHERE { ?s ?p ?o }"); err != nil {
+			t.Fatalf("POST query failed: %v", err)
+		}
+		if capturedMethod != "POST" || capturedUA != "custom-agent-post/1.0" {
+			t.Errorf("POST query: expected method POST and UA 'custom-agent-post/1.0', got %s, %s", capturedMethod, capturedUA)
+		}
+	})
+
+	t.Run("User-Agent in UPDATE", func(t *testing.T) {
+		var capturedUA string
+		server := httptest.NewServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				capturedUA = r.Header.Get("User-Agent")
+				w.WriteHeader(http.StatusNoContent)
+			},
+		))
+		defer server.Close()
+
+		c := &Client{
+			HTTPClient:   *server.Client(),
+			Endpoint:     server.URL,
+			ResultParser: NewXMLResultParser(),
+			UserAgent:    "custom-agent-update/1.0",
+		}
+		if err := c.Update(context.Background(), "CLEAR ALL"); err != nil {
+			t.Fatalf("Update failed: %v", err)
+		}
+		if capturedUA != "custom-agent-update/1.0" {
+			t.Errorf("expected UA 'custom-agent-update/1.0', got %s", capturedUA)
+		}
+	})
 }
 
 func TestQuery_Remote(t *testing.T) {

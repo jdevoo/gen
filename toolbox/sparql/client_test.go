@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+func TestWithUserAgent(t *testing.T) {
+	client := Client{}
+	ua := "test-sparql-agent/1.0"
+	WithUserAgent(ua)(&client)
+	if client.UserAgent != ua {
+		t.Errorf("TestWithUserAgent() = %v, want %v", client.UserAgent, ua)
+	}
+}
+
 func TestWithResultParser(t *testing.T) {
 	resultParser := NewXMLResultParser()
 	client := Client{}
@@ -127,4 +136,24 @@ func TestClient_Ping(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("user agent header", func(t *testing.T) {
+		var capturedUA string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedUA = r.Header.Get("User-Agent")
+			fmt.Fprint(w, "ok")
+		}))
+		defer server.Close()
+
+		c, err := New(server.URL, WithUserAgent("ping-agent/2.0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Ping(context.Background()); err != nil {
+			t.Fatalf("Ping failed: %v", err)
+		}
+		if capturedUA != "ping-agent/2.0" {
+			t.Errorf("expected User-Agent %q, got %q", "ping-agent/2.0", capturedUA)
+		}
+	})
 }

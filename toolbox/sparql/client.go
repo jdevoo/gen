@@ -14,6 +14,14 @@ type Client struct {
 	Prefixes     map[string]URI
 	ResultParser ResultParser
 	Method       string
+	UserAgent    string
+}
+
+// WithUserAgent sets a custom User-Agent header for SPARQL endpoints.
+func WithUserAgent(userAgent string) func(*Client) {
+	return func(c *Client) {
+		c.UserAgent = userAgent
+	}
 }
 
 // WithResultParser sets the parser.
@@ -102,6 +110,10 @@ func (c *Client) Ping(ctx context.Context) (err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.Endpoint, nil)
 	if err != nil {
 		return err
+	}
+
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
 	}
 
 	res, err := c.HTTPClient.Do(req)

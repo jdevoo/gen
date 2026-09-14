@@ -333,3 +333,64 @@ func TestExploreLinkedData_JSON_Mode(t *testing.T) {
 		t.Errorf("unexpected bindings content: %v", bindings[0])
 	}
 }
+
+func TestExploreLinkedData_UserAgent(t *testing.T) {
+	var capturedUA string
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			capturedUA = r.Header.Get("User-Agent")
+			_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<sparql xmlns="http://www.w3.org/2005/sparql-results#">
+  <head><variable name="s"/></head>
+  <results></results>
+</sparql>`))
+		},
+	))
+	defer server.Close()
+
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_ENDPOINT":   server.URL,
+		"SPARQL_USER_AGENT": "gen-test-agent/1.0",
+	})
+	ctx = context.WithValue(ctx, core.ParamsKey, &core.Parameters{})
+
+	tTool := Tool{}
+	_, err := tTool.ExploreLinkedData(ctx, ExploreLinkedDataArgs{
+		SPARQL: "SELECT ?s WHERE { ?s ?p ?o }",
+	})
+	if err != nil {
+		t.Fatalf("ExploreLinkedData failed: %v", err)
+	}
+
+	if capturedUA != "gen-test-agent/1.0" {
+		t.Errorf("expected User-Agent %q, got %q", "gen-test-agent/1.0", capturedUA)
+	}
+}
+
+func TestUpdateLinkedData_UserAgent(t *testing.T) {
+	var capturedUA string
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			capturedUA = r.Header.Get("User-Agent")
+			w.WriteHeader(http.StatusNoContent)
+		},
+	))
+	defer server.Close()
+
+	ctx := context.WithValue(context.Background(), core.KeyValsKey, core.ParamMap{
+		"SPARQL_ENDPOINT":   server.URL,
+		"SPARQL_USER_AGENT": "gen-update-agent/1.0",
+	})
+
+	tTool := Tool{}
+	_, err := tTool.UpdateLinkedData(ctx, UpdateLinkedDataArgs{
+		SPARQL: "CLEAR ALL",
+	})
+	if err != nil {
+		t.Fatalf("UpdateLinkedData failed: %v", err)
+	}
+
+	if capturedUA != "gen-update-agent/1.0" {
+		t.Errorf("expected User-Agent %q, got %q", "gen-update-agent/1.0", capturedUA)
+	}
+}

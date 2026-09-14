@@ -110,7 +110,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	params.EmbModel = "gemini-embedding-001"
 	params.GenModel = "gemini-3.5-flash-lite"
 
-	if err := loadPrefs(params); err != nil {
+	if err := loadPrefs(params, keyVals); err != nil {
 		return fmt.Errorf("error loading preferences from %s: %v", DotGenRc, err)
 	}
 

@@ -25,14 +25,18 @@ func getSPARQLClient(ctx context.Context, toolName string, endpointKeys []string
 			break
 		}
 	}
-
 	if !found {
 		return nil, &core.ParamError{
 			Message: fmt.Sprintf("%s: missing parameter\n  -p %s=http://localhost:8890/sparql", toolName, endpointKeys[0]),
 		}
 	}
 
-	return sparql.New(endpoint)
+	var opts []func(*sparql.Client)
+	if ua, ok := keyVals["SPARQL_USER_AGENT"]; ok && ua != "" {
+		opts = append(opts, sparql.WithUserAgent(ua))
+	}
+
+	return sparql.New(endpoint, opts...)
 }
 
 type ExploreLinkedDataArgs struct {
