@@ -37,6 +37,7 @@ func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.BoolVar(&params.Walk, "r", false, "")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "")
 	fs.Var(&params.Seed, "seed", "")
+	fs.Var(&params.StopSequences, "stop", "")
 	fs.BoolVar(&params.CountTokens, "t", false, "")
 	fs.Float64Var(&params.Temp, "temp", 1.0, "")
 	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")

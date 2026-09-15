@@ -105,7 +105,10 @@ func validCombos(params *core.Parameters) error {
 		// image modality with incompatible flags
 		(params.ImgModality &&
 			(params.GoogleSearch || params.CodeGen ||
-				params.Tool || params.JSON || params.ChatMode || params.Embed)) ||
+				params.Tool || params.JSON || params.ChatMode || params.Embed || isFlagSet("stop"))) ||
+		// stop with incompatible flags
+		(isFlagSet("stop") &&
+			(params.ImgModality || params.Embed || params.CodeGen)) ||
 		// out path only with -img and no redirect
 		(len(params.OutPath) > 0 &&
 			(!(params.ImgModality || params.CodeGen) || params.OutRedirected)) ||

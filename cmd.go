@@ -145,6 +145,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
 	fs.BoolVar(&params.SystemInstruction, "s", false, "treat argument as system prompt")
 	fs.Var(&params.Seed, "seed", "integer which makes the model's output mostly deterministic")
+	fs.Var(&params.StopSequences, "stop", "string that, if generated, tells the model to stop")
 	fs.BoolVar(&params.CountTokens, "t", false, "output total number of tokens")
 	fs.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation (0.0,2.0]")
 	fs.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")

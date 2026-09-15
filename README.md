@@ -145,9 +145,11 @@ Options:
   -s    treat argument as system prompt
   -seed value
         integer which makes the model's output mostly deterministic
+  -stop value
+        string that, if generated, tells the model to stop
   -t    output total number of tokens
   -temp float
-        sampling during response generation [0.0,2.0] (default 1)
+        sampling during response generation (0.0,2.0] (default 1)
   -think value
         MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -timeout duration

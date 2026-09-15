@@ -46,6 +46,7 @@ type Parameters struct {
 	PresencePenalty   OptionalFloat32
 	SystemInstruction bool
 	Seed              OptionalInt32
+	StopSequences     ParamArray
 	Temp              float64
 	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration

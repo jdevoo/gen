@@ -284,6 +284,9 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 	if g.params.FrequencyPenalty.Defined && g.params.FrequencyPenalty.Value != nil {
 		config.FrequencyPenalty = g.params.FrequencyPenalty.Value
 	}
+	if len(g.params.StopSequences) > 0 {
+		config.StopSequences = g.params.StopSequences
+	}
 
 	return nil
 }
