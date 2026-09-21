@@ -77,16 +77,16 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 	finish = cand.FinishReason
 	if finish != "" {
 		if mp != nil {
-			fmt.Fprint(out, mp.flush(outRedirected))
+			_, _ = fmt.Fprint(out, mp.flush(outRedirected))
 		}
 		if verbose {
 			if !outRedirected {
-				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
+				_, _ = fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
 			} else if !imgModality {
-				fmt.Fprintf(out, "\n%s\n", finish)
+				_, _ = fmt.Fprintf(out, "\n%s\n", finish)
 			}
 		} else {
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 		}
 	}
 	return nil
@@ -127,9 +127,9 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 		if mp != nil {
 			s = mp.parse(part.Text)
 		}
-		fmt.Fprint(out, s)
+		_, _ = fmt.Fprint(out, s)
 	} else if !imgModality || part.Thought {
-		fmt.Fprintf(out, "%s", part.Text)
+		_, _ = fmt.Fprintf(out, "%s", part.Text)
 	}
 	if idx != nil {
 		*idx++
@@ -140,21 +140,21 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, verbose bool, idx *int, outPath string) error {
 	if verbose {
 		if outRedirected {
-			fmt.Fprintf(os.Stderr, "[Function Call %s]\n", part.FunctionResponse.Name)
+			_, _ = fmt.Fprintf(os.Stderr, "[Function Call %s]\n", part.FunctionResponse.Name)
 		} else {
-			fmt.Fprintf(os.Stderr, infos("[Function Call %s]")+"\n", part.FunctionResponse.Name)
+			_, _ = fmt.Fprintf(os.Stderr, infos("[Function Call %s]")+"\n", part.FunctionResponse.Name)
 		}
 		if jsonBytes, err := json.MarshalIndent(part.FunctionResponse.Response, "", "  "); err == nil {
 			if outRedirected {
-				fmt.Fprintf(os.Stderr, "%s\n", string(jsonBytes))
+				_, _ = fmt.Fprintf(os.Stderr, "%s\n", string(jsonBytes))
 			} else {
-				fmt.Fprintf(os.Stderr, infos("%s")+"\n", string(jsonBytes))
+				_, _ = fmt.Fprintf(os.Stderr, infos("%s")+"\n", string(jsonBytes))
 			}
 		} else {
 			if outRedirected {
-				fmt.Fprintf(os.Stderr, "%+v\n", part.FunctionResponse.Response)
+				_, _ = fmt.Fprintf(os.Stderr, "%+v\n", part.FunctionResponse.Response)
 			} else {
-				fmt.Fprintf(os.Stderr, infos("%+v")+"\n", part.FunctionResponse.Response)
+				_, _ = fmt.Fprintf(os.Stderr, infos("%+v")+"\n", part.FunctionResponse.Response)
 			}
 		}
 	}
@@ -182,11 +182,11 @@ func emitFunctionResponse(out io.Writer, part *genai.Part, outRedirected bool, v
 }
 
 func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
-	if part.CodeExecutionResult != nil && part.CodeExecutionResult.Outcome == genai.OutcomeOK {
+	if part.ExecutableCode != nil && part.ExecutableCode.Code != "" {
 		if outRedirected {
-			fmt.Fprintf(out, "```%s\n%s\n```\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
+			_, _ = fmt.Fprintf(out, "```%s\n%s\n```\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
 		} else {
-			fmt.Fprintf(out, infos("```%s\n%s\n```")+"\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
+			_, _ = fmt.Fprintf(out, infos("```%s\n%s\n```")+"\n", part.ExecutableCode.Language, part.ExecutableCode.Code)
 		}
 		if idx != nil {
 			*idx++
@@ -197,9 +197,9 @@ func emitExecutableCode(out io.Writer, part *genai.Part, outRedirected bool, idx
 
 func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int) error {
 	if outRedirected {
-		fmt.Fprintf(out, "%s\n", part.FileData.FileURI)
+		_, _ = fmt.Fprintf(out, "%s\n", part.FileData.FileURI)
 	} else {
-		fmt.Fprintf(out, infos("%s")+"\n", part.FileData.FileURI)
+		_, _ = fmt.Fprintf(out, infos("%s")+"\n", part.FileData.FileURI)
 	}
 	if idx != nil {
 		*idx++
@@ -210,9 +210,9 @@ func emitFileData(out io.Writer, part *genai.Part, outRedirected bool, idx *int)
 func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *int, outPath string) error {
 	if strings.HasPrefix(part.InlineData.MIMEType, "text") {
 		if outRedirected {
-			fmt.Fprintf(out, "%s\n", part.InlineData.Data)
+			_, _ = fmt.Fprintf(out, "%s\n", part.InlineData.Data)
 		} else {
-			fmt.Fprintf(out, infos("%s")+"\n", part.InlineData.Data)
+			_, _ = fmt.Fprintf(out, infos("%s")+"\n", part.InlineData.Data)
 		}
 		if idx != nil {
 			*idx++
@@ -247,14 +247,14 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 			}
 		}
 		if idx != nil && *idx > 0 {
-			fmt.Fprintf(out, "\n")
+			_, _ = fmt.Fprintf(out, "\n")
 		}
 		senc := SixelEncoder(out)
 		senc.Dither = true
 		if err := senc.Encode(img); err != nil {
 			return fmt.Errorf("emitContent of type %s: %v", part.InlineData.MIMEType, err)
 		}
-		fmt.Fprint(out, "\n")
+		_, _ = fmt.Fprint(out, "\n")
 	}
 	if idx != nil {
 		*idx++
@@ -265,19 +265,19 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 // emitHistory prints the chat history (verbose).
 func emitHistory(out io.Writer, hist []*genai.Content) {
 	var prev string
-	fmt.Fprint(out, "\nHISTORY START\n")
+	_, _ = fmt.Fprint(out, "\nHISTORY START\n")
 	for _, c := range hist {
 		if prev != c.Role {
 			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n"+roles("%s")+"\n", c.Role)
+				_, _ = fmt.Fprintf(out, "\n"+roles("%s")+"\n", c.Role)
 			} else {
-				fmt.Fprintf(out, "\n<%s>\n", c.Role)
+				_, _ = fmt.Fprintf(out, "\n<%s>\n", c.Role)
 			}
 			prev = c.Role
 		}
 		_ = emitContent(out, c, false, false, true, nil, nil, "")
 	}
-	fmt.Fprint(out, "\nHISTORY END\n")
+	_, _ = fmt.Fprint(out, "\nHISTORY END\n")
 }
 
 // uploadFile tracks state until FileStateActive reached.

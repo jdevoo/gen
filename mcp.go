@@ -159,12 +159,14 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 			}
 			var schemaMap map[string]any
 			if err = json.Unmarshal(schemaBytes, &schemaMap); err != nil {
-				return fmt.Errorf("failed to unmarshal JSON bytes for MCP tool '%s': %v", tool.Name, err)
+				return fmt.Errorf("failed to unmarshal schema map for MCP tool '%s': %v", tool.Name, err)
 			}
 			alignSchema(schemaMap)
 			schemaBytes, _ = json.Marshal(schemaMap)
 			var mcpInputSchema genai.Schema
-			json.Unmarshal(schemaBytes, &mcpInputSchema)
+			if err = json.Unmarshal(schemaBytes, &mcpInputSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal into genai.Schema for MCP tool '%s': %v", tool.Name, err)
+			}
 			mcpDecls = append(mcpDecls, &genai.FunctionDeclaration{
 				Name:        tool.Name,
 				Description: tool.Description,
