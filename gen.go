@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -295,6 +296,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 	var chat *genai.Chat
 	var userAcc []*genai.Part
 	var modelAcc []*genai.Part
+	var inlDatAcc []*genai.Part
 	var err error
 
 	// retrieve previous session, if any
@@ -345,6 +347,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				}
 
 				if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+					partsRetained := []*genai.Part{}
 					for _, p := range resp.Candidates[0].Content.Parts {
 						if !isValidPart(p) {
 							continue
@@ -356,10 +359,25 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 							}
 						} else if p.Text != "" {
 							textBuilder.WriteString(p.Text)
+						} else if p.InlineData != nil {
+							isDupe := false
+							for _, existing := range inlDatAcc {
+								if existing.InlineData != nil && bytes.Equal(existing.InlineData.Data, p.InlineData.Data) {
+									isDupe = true
+									break
+								}
+							}
+							if !isDupe {
+								inlDatAcc = append(inlDatAcc, p)
+								streamAcc = append(streamAcc, p)
+							}
+							continue
 						} else {
 							streamAcc = append(streamAcc, p)
 						}
+						partsRetained = append(partsRetained, p)
 					}
+					resp.Candidates[0].Content.Parts = partsRetained
 				}
 
 				for _, fc := range resp.FunctionCalls() {
@@ -371,6 +389,21 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 						if err != nil {
 							_, _ = fmt.Fprintf(g.out, "\n")
 							return err
+						}
+						for mp != nil && mp.imageFound {
+							mp.imageFound = false
+							if len(inlDatAcc) > 0 {
+								img := inlDatAcc[0]
+								inlDatAcc = inlDatAcc[1:]
+								imgContent := &genai.Content{
+									Parts: []*genai.Part{img},
+								}
+								_ = emitContent(g.out, imgContent, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, nil, g.params.OutPath)
+							}
+							if !g.params.OutRedirected {
+								// drain what's left in mp's buffer
+								_, _ = fmt.Fprint(g.out, mp.parse(""))
+							}
 						}
 					}
 				}
@@ -416,7 +449,47 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					return err
 				}
 				if len(resCand.Content.Parts) > 0 {
-					err := emitCandidate(g.out, resCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
+					displayCand := &genai.Candidate{
+						Content: &genai.Content{
+							Role: resCand.Content.Role,
+						},
+						FinishReason: resCand.FinishReason,
+					}
+					for _, p := range resCand.Content.Parts {
+						if p.FunctionResponse != nil {
+							var partsRetained []*genai.FunctionResponsePart
+							for _, frp := range p.FunctionResponse.Parts {
+								if frp.InlineData != nil && len(frp.InlineData.Data) > 0 && p.FunctionResponse.Name != "CaptureScreen" {
+									isDupe := false
+									for _, existing := range inlDatAcc {
+										if existing.InlineData != nil && bytes.Equal(existing.InlineData.Data, frp.InlineData.Data) {
+											isDupe = true
+											break
+										}
+									}
+									if !isDupe {
+										inlDatAcc = append(inlDatAcc, &genai.Part{
+											InlineData: &genai.Blob{
+												DisplayName: frp.InlineData.DisplayName,
+												Data:        frp.InlineData.Data,
+												MIMEType:    frp.InlineData.MIMEType,
+											},
+										})
+									}
+								} else {
+									partsRetained = append(partsRetained, frp)
+								}
+							}
+							clonedFR := *p.FunctionResponse
+							clonedFR.Parts = partsRetained
+							displayCand.Content.Parts = append(displayCand.Content.Parts, &genai.Part{
+								FunctionResponse: &clonedFR,
+							})
+						} else {
+							displayCand.Content.Parts = append(displayCand.Content.Parts, p)
+						}
+					}
+					err := emitCandidate(g.out, displayCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {
 						_, _ = fmt.Fprintf(g.out, "\n")
 						return err
@@ -440,6 +513,16 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 
 			if mp != nil {
 				_, _ = fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
+			}
+
+			if len(inlDatAcc) > 0 {
+				imgContent := &genai.Content{
+					Parts: inlDatAcc,
+				}
+				if err := emitContent(g.out, imgContent, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath); err != nil {
+					return err
+				}
+				inlDatAcc = []*genai.Part{}
 			}
 		}
 

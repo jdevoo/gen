@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,21 @@ func TestParse_Basic(t *testing.T) {
 			input:    "This is **bold and doesn't close",
 			expected: ansiWhite + "This is " + ansiBold + "bold and doesn't close" + ansiReset,
 		},
+		{
+			name:     "intra-word asterisk redaction like f**king",
+			input:    "78. ‘I’m a f**king US citizen’: Man left injured",
+			expected: ansiWhite + "78. ‘I’m a f**king US citizen’: Man left injured" + ansiReset,
+		},
+		{
+			name:     "word-ending asterisk redaction like f**?",
+			input:    "What the f**?",
+			expected: ansiWhite + "What the f**?" + ansiReset,
+		},
+		{
+			name:     "intra-word redaction inside valid bold segment",
+			input:    "**He shouted ‘I’m a f**king citizen!’ and ran.**",
+			expected: ansiWhite + ansiBold + "He shouted ‘I’m a f**king citizen!’ and ran." + ansiNoBold + ansiReset,
+		},
 	}
 
 	for _, tc := range tests {
@@ -46,18 +62,17 @@ func TestParse_Basic(t *testing.T) {
 
 // TestParse_StatefulAndBuffering tests multi-segment parsing carrying state and buffer across boundaries.
 func TestParse_StatefulAndBuffering(t *testing.T) {
-	// 1. Test bold state carrying over to subsequent calls
 	t.Run("bold persistence across calls", func(t *testing.T) {
 		parser := &MarkdownParser{}
 
-		// First segment starts the bold tag but does not close it
+		// segment starts the bold tag but does not close it
 		res1 := parser.parse("This is **bold")
 		expected1 := ansiWhite + "This is " + ansiBold + "bold" + ansiReset
 		if res1 != expected1 {
 			t.Errorf("First Parse failed:\nExpected: %q\nActual:   %q", expected1, res1)
 		}
 
-		// Second segment continues the bold state and then closes it
+		// segment continues the bold state and then closes it
 		res2 := parser.parse(" text continuing** and normal")
 		expected2 := ansiWhite + ansiBold + " text continuing" + ansiNoBold + " and normal" + ansiReset
 		if res2 != expected2 {
@@ -65,11 +80,10 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 		}
 	})
 
-	// 2. Test buffering of a single trailing asterisk
 	t.Run("single trailing asterisk buffer", func(t *testing.T) {
 		parser := &MarkdownParser{}
 
-		// First segment ends with a single '*'. It should be buffered and not rendered yet.
+		// segment ends with a single '*' should be buffered and not rendered yet
 		res1 := parser.parse("This is a *")
 		expected1 := ansiWhite + "This is a " + ansiReset
 		if res1 != expected1 {
@@ -79,7 +93,7 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 			t.Errorf("Expected buffer to contain '*' but got %q", parser.buffer)
 		}
 
-		// Second segment begins with another '*' completing the bold sequence
+		// segment begins with another '*' completing the bold sequence
 		res2 := parser.parse("*bold text**")
 		expected2 := ansiWhite + ansiBold + "bold text" + ansiNoBold + ansiReset
 		if res2 != expected2 {
@@ -89,11 +103,109 @@ func TestParse_StatefulAndBuffering(t *testing.T) {
 			t.Errorf("Expected buffer to be cleared but got %q", parser.buffer)
 		}
 	})
+
+	t.Run("intra-word split across chunks (f* + *king)", func(t *testing.T) {
+		parser := &MarkdownParser{}
+		res1 := parser.parse("I'm a f*")
+		expected1 := ansiWhite + "I'm a f" + ansiReset
+		if res1 != expected1 {
+			t.Errorf("Chunk 1 failed:\nExpected: %q\nActual:   %q", expected1, res1)
+		}
+		res2 := parser.parse("*king citizen")
+		expected2 := ansiWhite + "**king citizen" + ansiReset
+		if res2 != expected2 {
+			t.Errorf("Chunk 2 failed:\nExpected: %q\nActual:   %q", expected2, res2)
+		}
+	})
+
+	t.Run("intra-word split across chunks (f** + king)", func(t *testing.T) {
+		parser := &MarkdownParser{}
+		res1 := parser.parse("I'm a f**")
+		expected1 := ansiWhite + "I'm a f**" + ansiReset
+		if res1 != expected1 {
+			t.Errorf("Chunk 1 failed:\nExpected: %q\nActual:   %q", expected1, res1)
+		}
+		res2 := parser.parse("king citizen")
+		expected2 := ansiWhite + "king citizen" + ansiReset
+		if res2 != expected2 {
+			t.Errorf("Chunk 2 failed:\nExpected: %q\nActual:   %q", expected2, res2)
+		}
+	})
+}
+
+func TestParse_MarkdownImages(t *testing.T) {
+	t.Run("swallow image and signal imageFound", func(t *testing.T) {
+		parser := &MarkdownParser{}
+
+		input := "Here is the plot:\n![Comparison](comparison.png)\nDone."
+		chunk1 := parser.parse(input)
+
+		if !parser.imageFound {
+			t.Errorf("Expected imageFound to be true")
+		}
+		expected1 := ansiWhite + "Here is the plot:\n" + ansiReset
+		if chunk1 != expected1 {
+			t.Errorf("\nExpected: %q\nActual:   %q", expected1, chunk1)
+		}
+
+		chunk2 := parser.parse("")
+		expected2 := ansiWhite + "Done." + ansiReset
+		if chunk2 != expected2 {
+			t.Errorf("\nExpected: %q\nActual:   %q", expected2, chunk2)
+		}
+	})
+
+	t.Run("handle split between ! and [ across stream chunks", func(t *testing.T) {
+		parser := &MarkdownParser{}
+
+		chunk1 := "!"
+		_ = parser.parse(chunk1)
+
+		if parser.buffer != "!" {
+			t.Fatalf("Expected '!' to be buffered, got %q", parser.buffer)
+		}
+
+		// rest of the image tag
+		chunk2 := "[Distribution Comparison](comparison.png)\n"
+		_ = parser.parse(chunk2)
+
+		if !parser.imageFound {
+			t.Errorf("Expected imageFound to be true across chunk boundary")
+		}
+		if parser.buffer != "" {
+			t.Errorf("Expected buffer to be cleared, got %q", parser.buffer)
+		}
+	})
+
+	t.Run("preserve exclamation mark in sentences without buffering", func(t *testing.T) {
+		parser := &MarkdownParser{}
+		actual := parser.parse("Great job!")
+		expected := ansiWhite + "Great job!" + ansiReset
+		if actual != expected {
+			t.Errorf("\nExpected: %q\nActual:   %q", expected, actual)
+		}
+		if parser.buffer != "" {
+			t.Errorf("Expected buffer to be empty, got %q", parser.buffer)
+		}
+	})
+
+	t.Run("preserve image syntax inside code blocks", func(t *testing.T) {
+		parser := &MarkdownParser{}
+
+		input := "```markdown\n![alt](test.png)\n```"
+		actual := parser.parse(input)
+
+		if parser.imageFound {
+			t.Errorf("imageFound should NOT be true inside code block")
+		}
+		if !strings.Contains(actual, "![alt](test.png)") {
+			t.Errorf("Image syntax inside code block should be preserved, got: %q", actual)
+		}
+	})
 }
 
 // TestParse_Concurrency tests parser safety under concurrent calls.
 func TestParse_Concurrency(t *testing.T) {
-	// Verifies that calling Parse concurrently does not cause race conditions (using the parser's internal Mutex)
 	parser := &MarkdownParser{}
 	done := make(chan bool)
 
@@ -154,13 +266,13 @@ func TestFlush(t *testing.T) {
 
 // TestColorHelpers tests output decorators for terminal formatting.
 func TestColorHelpers(t *testing.T) {
-	if actual := infos("info"); actual != colorCyan + "info" + ansiReset {
-		t.Errorf("infos() = %q, expected %q", actual, colorCyan + "info" + ansiReset)
+	if actual := infos("info"); actual != colorCyan+"info"+ansiReset {
+		t.Errorf("infos() = %q, expected %q", actual, colorCyan+"info"+ansiReset)
 	}
-	if actual := important("important"); actual != colorRed + "important" + ansiReset {
-		t.Errorf("important() = %q, expected %q", actual, colorRed + "important" + ansiReset)
+	if actual := important("important"); actual != colorRed+"important"+ansiReset {
+		t.Errorf("important() = %q, expected %q", actual, colorRed+"important"+ansiReset)
 	}
-	if actual := roles("role"); actual != colorRole + "role" + ansiReset {
-		t.Errorf("roles() = %q, expected %q", actual, colorRole + "role" + ansiReset)
+	if actual := roles("role"); actual != colorRole+"role"+ansiReset {
+		t.Errorf("roles() = %q, expected %q", actual, colorRole+"role"+ansiReset)
 	}
 }
