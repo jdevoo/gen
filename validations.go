@@ -23,8 +23,8 @@ func isFlagSet(name string) bool {
 // validPrompts checks prompts against regular interactive vs no redirect or piped content session.
 func validPrompts(params *core.Parameters) error {
 	if (params.Interactive &&
-		// no regular prompt privided
-		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt)) ||
+		// no regular prompt provided
+		((len(params.Args) == 0 && !anyMatches(params.FilePaths, PExt) && !(params.NoOp && len(params.FilePaths) > 0)) ||
 			// system instruction
 			(params.SystemInstruction &&
 				// not provided as file
@@ -119,7 +119,10 @@ func validCombos(params *core.Parameters) error {
 		// chat mode
 		(params.ChatMode &&
 			// with incompatible flags
-			(params.JSON || params.ImgModality || params.Embed)) {
+			(params.JSON || params.ImgModality || params.Embed)) ||
+		// no-op with incompatible flags
+		(params.NoOp &&
+			(params.ChatMode || params.Embed)) {
 		return fmt.Errorf("invalid options combination")
 	}
 	return nil

@@ -14,9 +14,9 @@ const (
 	ansiYellow = "\033[93m"
 	ansiWhite  = "\033[97m"
 
-	colorCyan = "\033[36m"
-	colorRed  = "\033[31m"
-	colorRole = "\033[1;37;46m"
+	colorInfo      = "\033[36m"
+	colorImportant = "\033[30;47m"
+	colorRole      = "\033[1;37;46m"
 )
 
 // MarkdownParser holds state across Parse calls.
@@ -225,6 +225,6 @@ func (p *MarkdownParser) flush(isRedirected bool) string {
 	return sb.String()
 }
 
-func infos(s string) string     { return colorCyan + s + ansiReset }
-func important(s string) string { return colorRed + s + ansiReset }
+func infos(s string) string     { return colorInfo + s + ansiReset }
+func important(s string) string { return colorImportant + s + ansiReset }
 func roles(s string) string     { return colorRole + s + ansiReset }

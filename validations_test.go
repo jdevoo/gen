@@ -32,6 +32,7 @@ func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	})
 	fs.StringVar(&params.GenModel, "m", "gemini-2.0-flash", "")
 	fs.Var(&params.MCPServers, "mcp", "")
+	fs.BoolVar(&params.NoOp, "no-op", false, "")
 	fs.Var(keyVals, "p", "")
 	fs.Var(&params.PresencePenalty, "presp", "")
 	fs.BoolVar(&params.Walk, "r", false, "")
@@ -159,6 +160,54 @@ func TestArgsInvalid(t *testing.T) {
 			interactive: true,
 			expected:    false,
 		},
+		{
+			name:        "no-op with count tokens and prompt",
+			args:        []string{"--no-op", "-t", "how many tokens?"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "no-op with count tokens and json",
+			args:        []string{"--no-op", "-t", "-json", "how many tokens?"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "no-op with count tokens and file only",
+			args:        []string{"--no-op", "-t", "-f", "example.txt"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "no-op without -t",
+			args:        []string{"--no-op", "how many tokens?"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "no-op without -t and file only",
+			args:        []string{"--no-op", "-f", "example.txt"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "no-op without prompt or files",
+			args:        []string{"--no-op"},
+			interactive: true,
+			expected:    true,
+		},
+		{
+			name:        "no-op with chat mode",
+			args:        []string{"--no-op", "-t", "-c", "how many tokens?"},
+			interactive: true,
+			expected:    true,
+		},
+		{
+			name:        "no-op with embeddings",
+			args:        []string{"--no-op", "-t", "-e", "-d", "/path/to/digest", "content to embed"},
+			interactive: true,
+			expected:    true,
+		},
 	}
 
 	var params *core.Parameters
@@ -167,8 +216,8 @@ func TestArgsInvalid(t *testing.T) {
 			// Reset params for each test case.
 			fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-			params = &core.Parameters{} // Re-initialize the params struct
-			keyVals := core.ParamMap{}  // Reset the keyVals map
+			params = &core.Parameters{}
+			keyVals := core.ParamMap{}
 			params.FilePaths = core.ParamArray{}
 			params.FileURIs = []string{}
 			params.DigestPaths = core.ParamArray{}

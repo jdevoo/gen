@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -17,11 +16,10 @@ import (
 	"google.golang.org/genai"
 )
 
-// Version and Git hash are populated by make
+// Version and Githash are populated by make
 var (
-	Version    string
-	Githash    string
-	TokenCount atomic.Int32
+	Version string
+	Githash string
 )
 
 const (
@@ -140,6 +138,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	})
 	fs.StringVar(&params.GenModel, "m", params.GenModel, "model name")
 	fs.Var(&params.MCPServers, "mcp", "mcp stdio or streamable server command")
+	fs.BoolVar(&params.NoOp, "no-op", params.NoOp, "use with -t for count without generation (incompatible with -e or -c)")
 	fs.Var(keyVals, "p", "prompt parameter value in format key=val")
 	fs.Var(&params.PresencePenalty, "presp", "penalize tokens already present in the generated text [-2.0,2.0]")
 	fs.BoolVar(&params.Walk, "r", false, "process directory declared with -f recursively")
@@ -253,9 +252,5 @@ func cleanup(params *core.Parameters) {
 				fmt.Fprintf(os.Stderr, infos("%s deleted\n"), fileURI)
 			}
 		}
-	}
-	// final token count report
-	if params.CountTokens {
-		fmt.Printf("\n"+important("%d tokens")+"\n", TokenCount.Load())
 	}
 }

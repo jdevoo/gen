@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -95,7 +96,22 @@ func (g *Generator) run() error {
 		return err
 	}
 
-	return g.generateContent(&config)
+	if g.params.NoOp {
+		if g.params.CountTokens {
+			return g.countTokensNoOp(&config)
+		}
+		return nil
+	}
+
+	if err := g.generateContent(&config); err != nil {
+		return err
+	}
+
+	if g.params.CountTokens {
+		g.emitUsageSummary()
+	}
+
+	return nil
 }
 
 func (g *Generator) emitModelDetails() error {
@@ -297,6 +313,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 	var userAcc []*genai.Part
 	var modelAcc []*genai.Part
 	var inlDatAcc []*genai.Part
+	var turnUsage core.TokenUsage
 	var err error
 
 	// retrieve previous session, if any
@@ -340,6 +357,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			var sig []byte
 			mp := &MarkdownParser{}
 
+			var streamUsage *genai.GenerateContentResponseUsageMetadata
 			for resp, err := range chat.SendStream(g.ctx, userAcc...) {
 				if err != nil {
 					_, _ = fmt.Fprintf(g.out, "\n")
@@ -408,9 +426,22 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					}
 				}
 
-				if g.params.CountTokens && resp.UsageMetadata != nil {
-					TokenCount.Store(resp.UsageMetadata.TotalTokenCount)
+				if resp.UsageMetadata != nil {
+					streamUsage = resp.UsageMetadata
 				}
+			}
+
+			if streamUsage != nil {
+				stepUsage := &core.TokenUsage{
+					PromptTokens:        streamUsage.PromptTokenCount,
+					CandidatesTokens:    streamUsage.CandidatesTokenCount,
+					ThoughtsTokens:      streamUsage.ThoughtsTokenCount,
+					CachedContentTokens: streamUsage.CachedContentTokenCount,
+					ToolUsePromptTokens: streamUsage.ToolUsePromptTokenCount,
+					TotalTokens:         streamUsage.TotalTokenCount,
+				}
+				g.params.Usage.Add(stepUsage)
+				turnUsage.Add(stepUsage)
 			}
 
 			modelAcc = []*genai.Part{}
@@ -531,6 +562,20 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			break
 		}
 
+		if g.params.CountTokens && turnUsage.TotalTokens > 0 {
+			dest := g.out
+			if g.params.OutRedirected {
+				dest = os.Stderr
+			}
+			msg := formatTokenUsage(&turnUsage)
+			if g.params.OutRedirected {
+				_, _ = fmt.Fprintf(dest, "\n%s\n", msg)
+			} else {
+				_, _ = fmt.Fprintf(dest, "\n%s\n", important(msg))
+			}
+			turnUsage = core.TokenUsage{}
+		}
+
 		input, err := readLine(tty)
 		if err != nil {
 			return err
@@ -560,4 +605,100 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 	}
 
 	return nil
+}
+
+func (g *Generator) countTokensNoOp(config *genai.GenerateContentConfig) error {
+	contents := []*genai.Content{}
+	if len(g.parts) > 0 {
+		contents = append(contents, &genai.Content{
+			Role:  "user",
+			Parts: g.parts,
+		})
+	}
+
+	countConfig := &genai.CountTokensConfig{
+		SystemInstruction: config.SystemInstruction,
+		Tools:             config.Tools,
+	}
+
+	resp, err := g.client.Models.CountTokens(g.ctx, g.params.GenModel, contents, countConfig)
+	if err != nil {
+		return err
+	}
+
+	g.params.Usage = core.TokenUsage{
+		PromptTokens:        resp.TotalTokens,
+		TotalTokens:         resp.TotalTokens,
+		CachedContentTokens: resp.CachedContentTokenCount,
+	}
+
+	if g.params.JSON {
+		res := struct {
+			Model               string `json:"model"`
+			TotalTokens         int32  `json:"totalTokens"`
+			PromptTokens        int32  `json:"promptTokens"`
+			CachedContentTokens int32  `json:"cachedContentTokens,omitempty"`
+		}{
+			Model:               g.params.GenModel,
+			TotalTokens:         resp.TotalTokens,
+			PromptTokens:        resp.TotalTokens,
+			CachedContentTokens: resp.CachedContentTokenCount,
+		}
+		data, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(g.out, "%s\n", data)
+		return err
+	}
+
+	msg := formatPreFlightUsage(resp.TotalTokens, resp.CachedContentTokenCount)
+	if g.params.OutRedirected {
+		_, err = fmt.Fprintf(g.out, "%s\n", msg)
+	} else {
+		_, err = fmt.Fprintf(g.out, "%s\n", important(msg))
+	}
+	return err
+}
+
+func (g *Generator) emitUsageSummary() {
+	if g.params.Usage.TotalTokens == 0 {
+		return
+	}
+	msg := formatTokenUsage(&g.params.Usage)
+	if g.params.ChatMode {
+		msg = "session total: " + msg
+	}
+
+	if g.params.OutRedirected || g.params.JSON {
+		_, _ = fmt.Fprintf(os.Stderr, "%s\n", important(msg))
+	} else {
+		_, _ = fmt.Fprintf(g.out, "\n%s\n", important(msg))
+	}
+}
+
+func formatTokenUsage(u *core.TokenUsage) string {
+	if u.TotalTokens == 0 {
+		return "0 tokens"
+	}
+	var details []string
+	details = append(details, fmt.Sprintf("prompt: %d", u.PromptTokens))
+	details = append(details, fmt.Sprintf("generation: %d", u.CandidatesTokens))
+	if u.ThoughtsTokens > 0 {
+		details = append(details, fmt.Sprintf("thoughts: %d", u.ThoughtsTokens))
+	}
+	if u.CachedContentTokens > 0 {
+		details = append(details, fmt.Sprintf("cached: %d", u.CachedContentTokens))
+	}
+	if u.ToolUsePromptTokens > 0 {
+		details = append(details, fmt.Sprintf("tool: %d", u.ToolUsePromptTokens))
+	}
+	return fmt.Sprintf("%d tokens (%s)", u.TotalTokens, strings.Join(details, ", "))
+}
+
+func formatPreFlightUsage(totalTokens, cachedTokens int32) string {
+	if cachedTokens > 0 {
+		return fmt.Sprintf("%d tokens (prompt: %d, cached: %d)", totalTokens, totalTokens, cachedTokens)
+	}
+	return fmt.Sprintf("%d tokens (prompt: %d)", totalTokens, totalTokens)
 }

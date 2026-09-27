@@ -135,6 +135,8 @@ Options:
         model name (default "gemini-3.5-flash-lite")
   -mcp value
         mcp stdio or streamable server command
+  -no-op
+        use with -t for count without generation (incompatible with -e or -c)
   -out string
         output path for images (incompatible with a redirect)
   -p value

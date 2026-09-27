@@ -40,6 +40,7 @@ type Parameters struct {
 	Lambda            float64
 	MCPServers        ParamArray
 	MCPSessions       SessionArray
+	NoOp              bool
 	OutPath           string
 	OutRedirected     bool
 	OnlyKvs           bool // RAG
@@ -54,9 +55,33 @@ type Parameters struct {
 	ToolRegistry      ToolMap
 	TopP              float64
 	Unsafe            bool
+	Usage             TokenUsage
 	Verbose           bool
 	Version           bool
 	Walk              bool // used with FilePaths
+}
+
+// TokenUsage holds token metrics across prompt, candidates, thinking, and tools.
+type TokenUsage struct {
+	PromptTokens        int32 `json:"promptTokens"`
+	CandidatesTokens    int32 `json:"candidatesTokens"`
+	ThoughtsTokens      int32 `json:"thoughtsTokens,omitempty"`
+	CachedContentTokens int32 `json:"cachedContentTokens,omitempty"`
+	ToolUsePromptTokens int32 `json:"toolUsePromptTokens,omitempty"`
+	TotalTokens         int32 `json:"totalTokens"`
+}
+
+// Add accumulates token metrics from another TokenUsage instance.
+func (u *TokenUsage) Add(other *TokenUsage) {
+	if other == nil {
+		return
+	}
+	u.PromptTokens += other.PromptTokens
+	u.CandidatesTokens += other.CandidatesTokens
+	u.ThoughtsTokens += other.ThoughtsTokens
+	u.CachedContentTokens += other.CachedContentTokens
+	u.ToolUsePromptTokens += other.ToolUsePromptTokens
+	u.TotalTokens += other.TotalTokens
 }
 
 type ParamError struct {

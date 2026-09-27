@@ -266,11 +266,11 @@ func TestFlush(t *testing.T) {
 
 // TestColorHelpers tests output decorators for terminal formatting.
 func TestColorHelpers(t *testing.T) {
-	if actual := infos("info"); actual != colorCyan+"info"+ansiReset {
-		t.Errorf("infos() = %q, expected %q", actual, colorCyan+"info"+ansiReset)
+	if actual := infos("info"); actual != colorInfo+"info"+ansiReset {
+		t.Errorf("infos() = %q, expected %q", actual, colorInfo+"info"+ansiReset)
 	}
-	if actual := important("important"); actual != colorRed+"important"+ansiReset {
-		t.Errorf("important() = %q, expected %q", actual, colorRed+"important"+ansiReset)
+	if actual := important("important"); actual != colorImportant+"important"+ansiReset {
+		t.Errorf("important() = %q, expected %q", actual, colorImportant+"important"+ansiReset)
 	}
 	if actual := roles("role"); actual != colorRole+"role"+ansiReset {
 		t.Errorf("roles() = %q, expected %q", actual, colorRole+"role"+ansiReset)

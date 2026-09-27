@@ -100,3 +100,40 @@ func TestGenContent_Redirect(t *testing.T) {
 		MinLength: 20,
 	})
 }
+
+func TestFormatPreFlightUsage(t *testing.T) {
+	if got := formatPreFlightUsage(15, 0); got != "15 tokens (prompt: 15)" {
+		t.Errorf("got %q, want %q", got, "15 tokens (prompt: 15)")
+	}
+	if got := formatPreFlightUsage(100, 30); got != "100 tokens (prompt: 100, cached: 30)" {
+		t.Errorf("got %q, want %q", got, "100 tokens (prompt: 100, cached: 30)")
+	}
+}
+
+func TestTokenUsage_Add(t *testing.T) {
+	u1 := &core.TokenUsage{
+		TotalTokens:         100,
+		PromptTokens:        40,
+		CandidatesTokens:    60,
+		ThoughtsTokens:      10,
+		CachedContentTokens: 5,
+		ToolUsePromptTokens: 20,
+	}
+	u2 := &core.TokenUsage{
+		TotalTokens:         200,
+		PromptTokens:        80,
+		CandidatesTokens:    120,
+		ThoughtsTokens:      30,
+		CachedContentTokens: 15,
+		ToolUsePromptTokens: 40,
+	}
+
+	u1.Add(u2)
+	if u1.TotalTokens != 300 || u1.PromptTokens != 120 || u1.CandidatesTokens != 180 ||
+		u1.ThoughtsTokens != 40 || u1.CachedContentTokens != 20 || u1.ToolUsePromptTokens != 60 {
+		t.Errorf("Add resulted in unexpected values: %+v", u1)
+	}
+
+	// test nil add doesn't panic
+	u1.Add(nil)
+}
