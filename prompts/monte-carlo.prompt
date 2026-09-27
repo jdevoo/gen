@@ -1,0 +1,1 @@
+My team has estimated 10 stories with the following cycle time values in days [21,2,7,8,13,6,4,7,22,19]. Use these values to generate 1000 Monte Carlo simulations and show the plot of cumulative probability of completing the project within a given number of days.

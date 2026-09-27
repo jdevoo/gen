@@ -39,6 +39,9 @@ List known Gemini models by invoking tool
 Solve problem through Python code execution  
 `gen -code "What is the sum of the first 50 prime numbers? Generate and run code for the calculation, and make sure you get all 50."`
 
+Estimate project completion through Monte Carlo simulation  
+`gen -code -f monte-carlo.prompt`
+
 Extract entities from text  
 `w3m -dump https://lite.cnn.com/2024/07/27/asia/us-austin-trilateral-japan-south-korea-intl-hnk/index.html | gen -json -f - extract entities`
 
