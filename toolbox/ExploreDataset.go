@@ -8,37 +8,37 @@ import (
 
 	"github.com/jdevoo/gen/core"
 	_ "github.com/lib/pq"
-	_ "modernc.org/sqlite"
 	"google.golang.org/genai"
+	_ "modernc.org/sqlite"
 )
 
-type ExploreDataSetArgs struct {
+type ExploreDatasetArgs struct {
 	SQL string `json:"sql"`
 }
 
-// ExploreDataSet executes any SQL query against a PostgreSQL or SQLite database.
-func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*genai.Part, error) {
+// ExploreDataset executes any SQL query against a PostgreSQL or SQLite database.
+func (t Tool) ExploreDataset(ctx context.Context, args ExploreDatasetArgs) (*genai.Part, error) {
 	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
-		return nil, fmt.Errorf("ExploreDataSet: keyVals not found in context")
+		return nil, fmt.Errorf("ExploreDataset: keyVals not found in context")
 	}
 
 	dsn, ok := keyVals["DSN"]
 	if !ok {
 		return nil, &core.ParamError{
-			Message: "ExploreDataSet: missing parameter\n  -p DSN=postgres://pqgo:password@localhost\n  or -p DSN=sqlite:/path/file.db",
+			Message: "ExploreDataset: missing parameter\n  -p DSN=postgres://pqgo:password@localhost\n  or -p DSN=sqlite:/path/file.db",
 		}
 	}
 
 	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
-		return nil, fmt.Errorf("ExploreDataSet: params not found in context")
+		return nil, fmt.Errorf("ExploreDataset: params not found in context")
 	}
 
 	resMap, err := executeSQLQuery(ctx, dsn, args.SQL, params.JSON)
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(
-			"ExploreDataSet",
+			"ExploreDataset",
 			map[string]any{
 				"output": "ERROR",
 				"error":  err.Error(),
@@ -47,7 +47,7 @@ func (t Tool) ExploreDataSet(ctx context.Context, args ExploreDataSetArgs) (*gen
 	}
 
 	resMap["output"] = "SUCCESS"
-	return genai.NewPartFromFunctionResponse("ExploreDataSet", resMap), nil
+	return genai.NewPartFromFunctionResponse("ExploreDataset", resMap), nil
 }
 
 // parseDSN helps determine the right driver and connection string.
