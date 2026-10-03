@@ -323,7 +323,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			return err
 		}
 		if len(history) > 0 {
-			_, _ = fmt.Fprintf(g.out, important("%s found\n"), DotGen)
+			fmt.Fprintf(g.out, important("%s found\n"), DotGen)
 			if g.params.Verbose {
 				emitHistory(os.Stderr, history)
 			}
@@ -360,7 +360,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			var streamUsage *genai.GenerateContentResponseUsageMetadata
 			for resp, err := range chat.SendStream(g.ctx, userAcc...) {
 				if err != nil {
-					_, _ = fmt.Fprintf(g.out, "\n")
+					fmt.Fprintf(g.out, "\n")
 					return err
 				}
 
@@ -405,7 +405,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					if len(resp.Candidates) > 0 {
 						err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 						if err != nil {
-							_, _ = fmt.Fprintf(g.out, "\n")
+							fmt.Fprintf(g.out, "\n")
 							return err
 						}
 						for mp != nil && mp.imageFound {
@@ -420,7 +420,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 							}
 							if !g.params.OutRedirected {
 								// drain what's left in mp's buffer
-								_, _ = fmt.Fprint(g.out, mp.parse(""))
+								fmt.Fprint(g.out, mp.parse(""))
 							}
 						}
 					}
@@ -522,11 +522,11 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					}
 					err := emitCandidate(g.out, displayCand, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 					if err != nil {
-						_, _ = fmt.Fprintf(g.out, "\n")
+						fmt.Fprintf(g.out, "\n")
 						return err
 					}
 					if mp != nil {
-						_, _ = fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
+						fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 					}
 					if g.params.JSON {
 						// switch to JSON for final response generation AND disable tools so Gemini doesn't loop
@@ -543,7 +543,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			}
 
 			if mp != nil {
-				_, _ = fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
+				fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 			}
 
 			if len(inlDatAcc) > 0 {
@@ -569,9 +569,9 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			}
 			msg := formatTokenUsage(&turnUsage)
 			if g.params.OutRedirected {
-				_, _ = fmt.Fprintf(dest, "\n%s\n", msg)
+				fmt.Fprintf(dest, "\n%s\n", msg)
 			} else {
-				_, _ = fmt.Fprintf(dest, "\n%s\n", important(msg))
+				fmt.Fprintf(dest, "\n%s\n", important(msg))
 			}
 			turnUsage = core.TokenUsage{}
 		}
@@ -591,7 +591,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			}
 		}
 		if g.params.OutRedirected {
-			_, _ = fmt.Fprintf(g.out, "\n%s\n\n", input)
+			fmt.Fprintf(g.out, "\n%s\n\n", input)
 		}
 
 		g.parts = append(g.parts, &genai.Part{Text: input})
@@ -599,7 +599,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 
 	if g.params.ChatMode {
 		if err = persistChat(history); err != nil {
-			_, _ = fmt.Fprintf(g.out, "\n")
+			fmt.Fprintf(g.out, "\n")
 			return err
 		}
 	}
@@ -671,9 +671,9 @@ func (g *Generator) emitUsageSummary() {
 	}
 
 	if g.params.OutRedirected || g.params.JSON {
-		_, _ = fmt.Fprintf(os.Stderr, "%s\n", important(msg))
+		fmt.Fprintf(os.Stderr, "%s\n", important(msg))
 	} else {
-		_, _ = fmt.Fprintf(g.out, "\n%s\n", important(msg))
+		fmt.Fprintf(g.out, "\n%s\n", important(msg))
 	}
 }
 

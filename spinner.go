@@ -69,10 +69,10 @@ func (s *Spinner) Start() *Spinner {
 		return s
 	}
 	atomic.StoreUint64(&s.active, 1)
-	_, _ = fmt.Fprint(s.writer, HideCursor)
+	fmt.Fprint(s.writer, HideCursor)
 	go func() {
 		for atomic.LoadUint64(&s.active) > 0 {
-			_, _ = fmt.Fprintf(s.writer, s.text, s.next())
+			fmt.Fprintf(s.writer, s.text, s.next())
 			time.Sleep(s.tpf)
 		}
 	}()
@@ -82,7 +82,7 @@ func (s *Spinner) Start() *Spinner {
 // Stop hides the spinner.
 func (s *Spinner) Stop() bool {
 	if x := atomic.SwapUint64(&s.active, 0); x > 0 {
-		_, _ = fmt.Fprint(s.writer, ClearLine, ShowCursor)
+		fmt.Fprint(s.writer, ClearLine, ShowCursor)
 		return true
 	}
 	return false
