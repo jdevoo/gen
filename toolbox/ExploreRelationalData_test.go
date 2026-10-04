@@ -9,17 +9,17 @@ import (
 	"github.com/jdevoo/gen/core"
 )
 
-func TestExploreDataset(t *testing.T) {
+func TestExploreRelationalData(t *testing.T) {
 	ctx := context.Background()
 	tool := Tool{}
 
 	// Missing DSN entirely
-	argsMissingDSN := ExploreDatasetArgs{
+	argsMissingDSN := ExploreRelationalDataArgs{
 		SQL: "SELECT 1;",
 	}
-	_, err := tool.ExploreDataset(ctx, argsMissingDSN)
+	_, err := tool.ExploreRelationalData(ctx, argsMissingDSN)
 	if err == nil {
-		t.Fatal("expected ExploreDataset to return a Go error when DSN is missing from keyVals")
+		t.Fatal("expected ExploreRelationalData to return a Go error when DSN is missing from keyVals")
 	}
 	if !strings.Contains(err.Error(), "keyVals not found in context") {
 		t.Errorf("expected error containing 'keyVals not found in context', got: %v", err)
@@ -28,24 +28,24 @@ func TestExploreDataset(t *testing.T) {
 	// keyVals exists but DSN is not defined
 	keyValsNoDSN := core.ParamMap{}
 	ctxNoDSN := context.WithValue(ctx, core.KeyValsKey, keyValsNoDSN)
-	_, err = tool.ExploreDataset(ctxNoDSN, argsMissingDSN)
+	_, err = tool.ExploreRelationalData(ctxNoDSN, argsMissingDSN)
 	if err == nil {
-		t.Fatal("expected ExploreDataset to return a Go error when DSN is missing from keyVals")
+		t.Fatal("expected ExploreRelationalData to return a Go error when DSN is missing from keyVals")
 	}
 	if !strings.Contains(err.Error(), "missing parameter") {
 		t.Errorf("expected error containing 'missing parameter', got: %v", err)
 	}
 
 	// Connection failure (invalid port/host) - expects embedded error response for LLM to handle
-	argsWithBadDSN := ExploreDatasetArgs{
+	argsWithBadDSN := ExploreRelationalDataArgs{
 		SQL: "SELECT * FROM users;",
 	}
 	keyVals := core.ParamMap{"DSN": "postgres://postgres:password@localhost:54321/nonexistent?sslmode=disable"}
 	ctxWithBadDSN := context.WithValue(ctx, core.KeyValsKey, keyVals)
 	ctxWithBadDSN = context.WithValue(ctxWithBadDSN, core.ParamsKey, &core.Parameters{})
-	part, err := tool.ExploreDataset(ctxWithBadDSN, argsWithBadDSN)
+	part, err := tool.ExploreRelationalData(ctxWithBadDSN, argsWithBadDSN)
 	if err != nil {
-		t.Fatalf("ExploreDataset unexpectedly returned a Go error instead of embedding it in function response: %v", err)
+		t.Fatalf("ExploreRelationalData unexpectedly returned a Go error instead of embedding it in function response: %v", err)
 	}
 	if part == nil || part.FunctionResponse == nil {
 		t.Fatal("expected function response part")
@@ -93,7 +93,7 @@ func TestParseDSN(t *testing.T) {
 	}
 }
 
-func TestExploreDataset_SQLite(t *testing.T) {
+func TestExploreRelationalData_SQLite(t *testing.T) {
 	ctx := context.Background()
 	tool := Tool{}
 	dbPath := t.TempDir() + "/test.db"
@@ -105,7 +105,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 1. DDL: CREATE TABLE
-	createPart, err := tool.ExploreDataset(makeCtx(false), ExploreDatasetArgs{
+	createPart, err := tool.ExploreRelationalData(makeCtx(false), ExploreRelationalDataArgs{
 		SQL: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);",
 	})
 	if err != nil {
@@ -116,7 +116,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 2. DML: INSERT INTO
-	insertPart, err := tool.ExploreDataset(makeCtx(false), ExploreDatasetArgs{
+	insertPart, err := tool.ExploreRelationalData(makeCtx(false), ExploreRelationalDataArgs{
 		SQL: "INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob');",
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 3. SELECT (table formatting)
-	selectPart, err := tool.ExploreDataset(makeCtx(false), ExploreDatasetArgs{
+	selectPart, err := tool.ExploreRelationalData(makeCtx(false), ExploreRelationalDataArgs{
 		SQL: "SELECT id, name FROM users ORDER BY id;",
 	})
 	if err != nil {
@@ -144,7 +144,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 4. SELECT (JSON formatting)
-	jsonPart, err := tool.ExploreDataset(makeCtx(true), ExploreDatasetArgs{
+	jsonPart, err := tool.ExploreRelationalData(makeCtx(true), ExploreRelationalDataArgs{
 		SQL: "SELECT id, name FROM users ORDER BY id;",
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 5. PRAGMA statement (schema introspection)
-	pragmaPart, err := tool.ExploreDataset(makeCtx(false), ExploreDatasetArgs{
+	pragmaPart, err := tool.ExploreRelationalData(makeCtx(false), ExploreRelationalDataArgs{
 		SQL: "PRAGMA table_info(users);",
 	})
 	if err != nil {
@@ -171,7 +171,7 @@ func TestExploreDataset_SQLite(t *testing.T) {
 	}
 
 	// 6. SQL Syntax Error returned to LLM
-	errPart, err := tool.ExploreDataset(makeCtx(false), ExploreDatasetArgs{
+	errPart, err := tool.ExploreRelationalData(makeCtx(false), ExploreRelationalDataArgs{
 		SQL: "SELECT * FROM nonexistent_table;",
 	})
 	if err != nil {

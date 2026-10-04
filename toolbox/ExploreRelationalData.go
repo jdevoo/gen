@@ -12,33 +12,33 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type ExploreDatasetArgs struct {
+type ExploreRelationalDataArgs struct {
 	SQL string `json:"sql"`
 }
 
-// ExploreDataset executes any SQL query against a PostgreSQL or SQLite database.
-func (t Tool) ExploreDataset(ctx context.Context, args ExploreDatasetArgs) (*genai.Part, error) {
+// ExploreRelationalData executes any SQL query against a PostgreSQL or SQLite database.
+func (t Tool) ExploreRelationalData(ctx context.Context, args ExploreRelationalDataArgs) (*genai.Part, error) {
 	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
 	if !ok {
-		return nil, fmt.Errorf("ExploreDataset: keyVals not found in context")
+		return nil, fmt.Errorf("ExploreRelationalData: keyVals not found in context")
 	}
 
 	dsn, ok := keyVals["DSN"]
 	if !ok {
 		return nil, &core.ParamError{
-			Message: "ExploreDataset: missing parameter\n  -p DSN=postgres://pqgo:password@localhost\n  or -p DSN=sqlite:/path/file.db",
+			Message: "ExploreRelationalData: missing parameter\n  -p DSN=postgres://pqgo:password@localhost\n  or -p DSN=sqlite:/path/file.db",
 		}
 	}
 
 	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
-		return nil, fmt.Errorf("ExploreDataset: params not found in context")
+		return nil, fmt.Errorf("ExploreRelationalData: params not found in context")
 	}
 
 	resMap, err := executeSQLQuery(ctx, dsn, args.SQL, params.JSON)
 	if err != nil {
 		return genai.NewPartFromFunctionResponse(
-			"ExploreDataset",
+			"ExploreRelationalData",
 			map[string]any{
 				"output": "ERROR",
 				"error":  err.Error(),
@@ -47,7 +47,7 @@ func (t Tool) ExploreDataset(ctx context.Context, args ExploreDatasetArgs) (*gen
 	}
 
 	resMap["output"] = "SUCCESS"
-	return genai.NewPartFromFunctionResponse("ExploreDataset", resMap), nil
+	return genai.NewPartFromFunctionResponse("ExploreRelationalData", resMap), nil
 }
 
 // parseDSN helps determine the right driver and connection string.
