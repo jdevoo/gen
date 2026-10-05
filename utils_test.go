@@ -555,8 +555,9 @@ func TestProcessFunctionCalls(t *testing.T) {
 	ctx := context.WithValue(context.Background(), core.ParamsKey, &core.Parameters{})
 
 	calls := []*genai.FunctionCall{
-		{Name: "NonExistentTool", Args: map[string]any{"id": float64(1)}},
-		{Name: "NonExistentTool", Args: map[string]any{"id": float64(2)}},
+		{Name: "NonExistentToolA", Args: map[string]any{"id": float64(1)}},
+		{Name: "NonExistentToolB", Args: map[string]any{"id": float64(2)}},
+		{Name: "NonExistentToolC", Args: map[string]any{"id": float64(3)}},
 	}
 
 	cand, err := processFunctionCalls(ctx, calls)
@@ -564,16 +565,17 @@ func TestProcessFunctionCalls(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(cand.Content.Parts) != 2 {
-		t.Fatalf("expected 2 responses, got %d", len(cand.Content.Parts))
+	if len(cand.Content.Parts) != len(calls) {
+		t.Fatalf("expected %d responses, got %d", len(calls), len(cand.Content.Parts))
 	}
 
+	expectedNames := []string{"NonExistentToolA", "NonExistentToolB", "NonExistentToolC"}
 	for i, part := range cand.Content.Parts {
 		if part.FunctionResponse == nil {
 			t.Fatalf("part %d missing FunctionResponse", i)
 		}
-		if part.FunctionResponse.Name != "NonExistentTool" {
-			t.Errorf("part %d expected name NonExistentTool, got %s", i, part.FunctionResponse.Name)
+		if part.FunctionResponse.Name != expectedNames[i] {
+			t.Errorf("part %d expected name %s, got %s", i, expectedNames[i], part.FunctionResponse.Name)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jdevoo/gen/core"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
 
@@ -80,25 +81,35 @@ func appendToSelection(selection []QueryResult, item QueryResult, k int) []Query
 	return result
 }
 
-// processFunctionCalls attempts function calls, first across MCP sessions then gen tools.
+// processFunctionCalls attempts function calls concurrently, first across MCP sessions then gen tools.
 func processFunctionCalls(ctx context.Context, funCalls []*genai.FunctionCall) (*genai.Candidate, error) {
-	var res []*genai.Part
-	for _, fc := range funCalls {
-		mcpRes, err := invokeMCPTool(ctx, fc)
-		if err != nil {
-			return nil, err
-		}
-		if mcpRes != nil {
-			res = append(res, mcpRes)
-			continue
-		}
-		// fc not an MCP tool, must be a native gen tool
-		genRes, err := invokeGenTool(ctx, fc)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, genRes)
+	res := make([]*genai.Part, len(funCalls))
+	g, gCtx := errgroup.WithContext(ctx)
+
+	for i, fc := range funCalls {
+		g.Go(func() error {
+			mcpRes, err := invokeMCPTool(gCtx, fc)
+			if err != nil {
+				return err
+			}
+			if mcpRes != nil {
+				res[i] = mcpRes
+				return nil
+			}
+			// fc not an MCP tool, must be a native gen tool
+			genRes, err := invokeGenTool(gCtx, fc)
+			if err != nil {
+				return err
+			}
+			res[i] = genRes
+			return nil
+		})
 	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
 	return &genai.Candidate{
 		Content: &genai.Content{
 			Parts: res,
