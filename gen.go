@@ -200,12 +200,12 @@ func (g *Generator) saveEmbeddings() error {
 }
 
 func (g *Generator) searchDigests() error {
+	query, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, []*genai.Content{{Parts: g.parts}}, nil)
+	if err != nil {
+		return err
+	}
 	var res []QueryResult
 	for _, digestPathVal := range g.params.DigestPaths {
-		query, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, []*genai.Content{{Parts: g.parts}}, nil)
-		if err != nil {
-			return err
-		}
 		res, err = queryDigest(digestPathVal, query.Embeddings[0], res, g.params.K, float32(g.params.Lambda), g.params.Verbose)
 		if err != nil {
 			return err
