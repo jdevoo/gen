@@ -94,14 +94,13 @@ func validCombos(params *core.Parameters) error {
 	(params.JSON && !zeroOrOneMatches(params.FilePaths, ".json")) ||
 		// code execution with incompatible flags
 		(params.CodeGen &&
-			(params.Tool || params.GoogleSearch || params.Embed || params.JSON)) ||
+			(params.Tool || params.Embed || params.JSON)) ||
 		// tool registration with incompatible flags
 		(params.Tool &&
-			(params.CodeGen || params.GoogleSearch ||
-				params.SystemInstruction || params.Embed)) ||
+			(params.CodeGen || params.SystemInstruction || params.Embed)) ||
 		// search with incompatible flags
 		(params.GoogleSearch &&
-			(params.Tool || params.CodeGen || params.Embed)) ||
+			params.Embed) ||
 		// image modality with incompatible flags
 		(params.ImgModality &&
 			(params.GoogleSearch || params.CodeGen ||

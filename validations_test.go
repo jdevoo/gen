@@ -143,6 +143,18 @@ func TestArgsInvalid(t *testing.T) {
 			expected:    false,
 		},
 		{
+			name:        "-g with -code and prompt",
+			args:        []string{"-g", "-code", "calculate current weather trend"},
+			interactive: true,
+			expected:    false,
+		},
+		{
+			name:        "-g with -tool and prompt",
+			args:        []string{"-g", "-tool", "list available models and latest news"},
+			interactive: true,
+			expected:    false,
+		},
+		{
 			name:        "embed and digest path but nothing to embed",
 			args:        []string{"-e", "-d", "/path/to/digest"},
 			interactive: true,

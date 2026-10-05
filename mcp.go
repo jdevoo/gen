@@ -174,8 +174,19 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 			})
 		}
 
-		if len(mcpDecls) > 0 && config.Tools[0].FunctionDeclarations != nil {
-			config.Tools[0].FunctionDeclarations = append(config.Tools[0].FunctionDeclarations, mcpDecls...)
+		if len(mcpDecls) > 0 {
+			var funcTool *genai.Tool
+			for _, t := range config.Tools {
+				if t.FunctionDeclarations != nil {
+					funcTool = t
+					break
+				}
+			}
+			if funcTool == nil {
+				funcTool = &genai.Tool{}
+				config.Tools = append(config.Tools, funcTool)
+			}
+			funcTool.FunctionDeclarations = append(funcTool.FunctionDeclarations, mcpDecls...)
 		}
 	}
 

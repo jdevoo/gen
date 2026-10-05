@@ -264,7 +264,6 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 		}
 	}
 	if g.params.Tool {
-		config.Tools = []*genai.Tool{}
 		if err = registerGenTools(config); err != nil { // see tools.go
 			return err
 		}
@@ -274,14 +273,13 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 		conjTexts(&g.parts)
 	}
 	if g.params.CodeGen {
-		config.Tools =
-			[]*genai.Tool{{CodeExecution: &genai.ToolCodeExecution{}}}
+		config.Tools = append(config.Tools, &genai.Tool{CodeExecution: &genai.ToolCodeExecution{}})
 	}
 	if g.params.GoogleSearch {
-		config.Tools = []*genai.Tool{
-			{GoogleSearch: &genai.GoogleSearch{}},
-			{URLContext: &genai.URLContext{}},
-		}
+		config.Tools = append(config.Tools,
+			&genai.Tool{GoogleSearch: &genai.GoogleSearch{}},
+			&genai.Tool{URLContext: &genai.URLContext{}},
+		)
 	}
 	if g.params.Unsafe {
 		config.SafetySettings = []*genai.SafetySetting{

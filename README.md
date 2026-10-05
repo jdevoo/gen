@@ -115,7 +115,7 @@ Options:
   -V    output model details, system instructions, chat history and thoughts
   -c    enter chat mode (incompatible with -json or -img)
   -code
-        code execution tool (incompatible with -g, -img, -json or -tool)
+        code execution tool (incompatible with -img, -json or -tool)
   -d value
         path to a digest folder
   -e    write text embeddings to digest (default model "gemini-embedding-001")
@@ -123,7 +123,7 @@ Options:
         GCS or YouTube URL, file, directory or quoted pattern of files to attach
   -freqp value
         penalize tokens on their frequency in the generated text [-2.0,2.0]
-  -g    Google search tool (incompatible with -code, -img and -tool)
+  -g    Google search tool (incompatible with -img or -e)
   -h    show available tools, this help message and exit
   -i    only store metadata with embeddings and ignore the content
   -img
@@ -160,7 +160,7 @@ Options:
   -timeout duration
         time limit for single turn content generation (default 5m0s)
   -tool
-        invoke one of the tools (incompatible with -s, -g, -img or -code)
+        invoke one of the tools (incompatible with -s, -img or -code)
   -top_p float
         how the model selects tokens for generation [0.0,1.0] (default 0.95)
   -unsafe
