@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// TestParse_Basic tests parsing basic markdown blocks to ANSI sequences.
 func TestParse_Basic(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -60,7 +59,6 @@ func TestParse_Basic(t *testing.T) {
 	}
 }
 
-// TestParse_StatefulAndBuffering tests multi-segment parsing carrying state and buffer across boundaries.
 func TestParse_StatefulAndBuffering(t *testing.T) {
 	t.Run("bold persistence across calls", func(t *testing.T) {
 		parser := &MarkdownParser{}
@@ -204,7 +202,6 @@ func TestParse_MarkdownImages(t *testing.T) {
 	})
 }
 
-// TestParse_Concurrency tests parser safety under concurrent calls.
 func TestParse_Concurrency(t *testing.T) {
 	parser := &MarkdownParser{}
 	done := make(chan bool)
@@ -223,7 +220,6 @@ func TestParse_Concurrency(t *testing.T) {
 	<-done
 }
 
-// TestParse_SetThought tests color changes when in thought parsing state.
 func TestParse_SetThought(t *testing.T) {
 	parser := &MarkdownParser{}
 	parser.setThought(true)
@@ -234,7 +230,6 @@ func TestParse_SetThought(t *testing.T) {
 	}
 }
 
-// TestFlush tests text formatting and state resetting during buffer flushes.
 func TestFlush(t *testing.T) {
 	t.Run("flush empty", func(t *testing.T) {
 		parser := &MarkdownParser{}
@@ -264,7 +259,6 @@ func TestFlush(t *testing.T) {
 	})
 }
 
-// TestColorHelpers tests output decorators for terminal formatting.
 func TestColorHelpers(t *testing.T) {
 	if actual := infos("info"); actual != colorInfo+"info"+ansiReset {
 		t.Errorf("infos() = %q, expected %q", actual, colorInfo+"info"+ansiReset)

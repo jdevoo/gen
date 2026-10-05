@@ -81,9 +81,9 @@ func appendToSelection(selection []QueryResult, item QueryResult, k int) []Query
 }
 
 // processFunctionCalls attempts function calls, first across MCP sessions then gen tools.
-func processFunctionCalls(ctx context.Context, fcMap map[string]*genai.FunctionCall) (*genai.Candidate, error) {
+func processFunctionCalls(ctx context.Context, funCalls []*genai.FunctionCall) (*genai.Candidate, error) {
 	var res []*genai.Part
-	for _, fc := range fcMap {
+	for _, fc := range funCalls {
 		mcpRes, err := invokeMCPTool(ctx, fc)
 		if err != nil {
 			return nil, err

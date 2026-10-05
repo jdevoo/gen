@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -8,7 +9,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// TestParamMapSet tests setting prompt parameter.
 func TestParamMapSet(t *testing.T) {
 	tests := []struct {
 		arg         string
@@ -55,7 +55,6 @@ func TestParamMapSet(t *testing.T) {
 	}
 }
 
-// TestSearchReplace tests the searchReplace function.
 func TestSearchReplace(t *testing.T) {
 	tests := []struct {
 		prompt   string
@@ -92,7 +91,6 @@ func TestSearchReplace(t *testing.T) {
 	}
 }
 
-// TestAnyMatches tests list inclusion.
 func TestAnyMatches(t *testing.T) {
 	tests := []struct {
 		inputArray []string
@@ -124,7 +122,6 @@ func TestAnyMatches(t *testing.T) {
 	}
 }
 
-// TestAnyMatch tests list inclusion.
 func TestAllMatch(t *testing.T) {
 	tests := []struct {
 		inputArray []string
@@ -156,7 +153,6 @@ func TestAllMatch(t *testing.T) {
 	}
 }
 
-// TestOneMatches tests list inclusion.
 func TestOneMatches(t *testing.T) {
 	tests := []struct {
 		inputArray []string
@@ -188,7 +184,6 @@ func TestOneMatches(t *testing.T) {
 	}
 }
 
-// TestPartHasKey tests parts with {digest}.
 func TestPartHasKey(t *testing.T) {
 	tests := []struct {
 		inputParts []*genai.Part
@@ -228,7 +223,6 @@ func TestPartHasKey(t *testing.T) {
 	}
 }
 
-// TestReplacePart tests {digest} substitution.
 func TestReplacePart(t *testing.T) {
 	tests := []struct {
 		inputParts []*genai.Part
@@ -298,7 +292,6 @@ func TestReplacePart(t *testing.T) {
 	}
 }
 
-// TestConjTexts tests the conjTexts function.
 func TestConjTexts(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -349,7 +342,6 @@ func TestConjTexts(t *testing.T) {
 	}
 }
 
-// TestPrependToParts tests prepending documents.
 func TestPrependToParts(t *testing.T) {
 	parts := []*genai.Part{
 		{Text: "Existing"},
@@ -367,7 +359,6 @@ func TestPrependToParts(t *testing.T) {
 	}
 }
 
-// TestAppendToSelection tests extending selections by MMR order.
 func TestAppendToSelection(t *testing.T) {
 	selection := []QueryResult{
 		{doc: Document{content: "Doc1"}, mmr: 0.5},
@@ -385,7 +376,6 @@ func TestAppendToSelection(t *testing.T) {
 	}
 }
 
-// TestZeroOrOneMatches tests zeroOrOneMatches.
 func TestZeroOrOneMatches(t *testing.T) {
 	tests := []struct {
 		strArray []string
@@ -404,7 +394,6 @@ func TestZeroOrOneMatches(t *testing.T) {
 	}
 }
 
-// TestAlignSchema tests schema alignment function.
 func TestAlignSchema(t *testing.T) {
 	schema := map[string]any{
 		"$schema":     "http://json-schema.org/draft-07/schema#",
@@ -474,7 +463,6 @@ func TestAlignSchema(t *testing.T) {
 	alignSchema(nil) // should not panic
 }
 
-// TestIsValidPart tests part validation checker.
 func TestIsValidPart(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -561,4 +549,31 @@ func TestExtractChunks(t *testing.T) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
+}
+
+func TestProcessFunctionCalls(t *testing.T) {
+	ctx := context.WithValue(context.Background(), core.ParamsKey, &core.Parameters{})
+
+	calls := []*genai.FunctionCall{
+		{Name: "NonExistentTool", Args: map[string]any{"id": float64(1)}},
+		{Name: "NonExistentTool", Args: map[string]any{"id": float64(2)}},
+	}
+
+	cand, err := processFunctionCalls(ctx, calls)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cand.Content.Parts) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(cand.Content.Parts))
+	}
+
+	for i, part := range cand.Content.Parts {
+		if part.FunctionResponse == nil {
+			t.Fatalf("part %d missing FunctionResponse", i)
+		}
+		if part.FunctionResponse.Name != "NonExistentTool" {
+			t.Errorf("part %d expected name NonExistentTool, got %s", i, part.FunctionResponse.Name)
+		}
+	}
 }

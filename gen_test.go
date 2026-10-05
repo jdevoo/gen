@@ -110,7 +110,7 @@ func TestFormatPreFlightUsage(t *testing.T) {
 	}
 }
 
-func TestTokenUsage_Add(t *testing.T) {
+func TestTokenUsage(t *testing.T) {
 	u1 := &core.TokenUsage{
 		TotalTokens:         100,
 		PromptTokens:        40,

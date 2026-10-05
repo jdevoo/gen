@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// TestSpinner_OptionsAndSpinning tests creating, updating, and running the terminal activity spinner.
-func TestSpinner_OptionsAndSpinning(t *testing.T) {
+func TestSpinner(t *testing.T) {
 	var buf bytes.Buffer
 
 	s := NewSpinner("Test Spinner %s",
@@ -16,7 +15,6 @@ func TestSpinner_OptionsAndSpinning(t *testing.T) {
 		WithWriter(&buf),
 	)
 
-	// Verify Set and next
 	s.Set("ABC")
 	if s.next() != "A" {
 		t.Errorf("Expected first next() to be 'A'")
@@ -31,25 +29,24 @@ func TestSpinner_OptionsAndSpinning(t *testing.T) {
 		t.Errorf("Expected wrap next() to be 'A'")
 	}
 
-	// Change s.tpf to be extremely fast for test speed
+	// set s.tpf to be extremely fast for test speed
 	s.tpf = 1 * time.Millisecond
 
-	// Start the spinner
+	// start the spinner
 	s.Start()
 
-	// Double start should be a no-op
+	// double start should be a no-op
 	s.Start()
 
-	// Let it tick a few times
+	// let it tick a few times
 	time.Sleep(10 * time.Millisecond)
 
-	// Stop the spinner
 	stopped := s.Stop()
 	if !stopped {
 		t.Errorf("Expected Stop() to return true")
 	}
 
-	// Stop it again (should return false since already inactive)
+	// stop it again (should return false since already inactive)
 	if s.Stop() {
 		t.Errorf("Expected second Stop() to return false")
 	}

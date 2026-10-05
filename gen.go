@@ -376,7 +376,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			userAcc = g.parts
 			streamAcc := []*genai.Part{}
 			g.parts = []*genai.Part{}
-			fcMap := map[string]*genai.FunctionCall{}
+			funCalls := []*genai.FunctionCall{}
 			var textBuilder strings.Builder
 			var thoughtBuilder strings.Builder
 			var sig []byte
@@ -423,10 +423,10 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 					resp.Candidates[0].Content.Parts = partsRetained
 				}
 
-				for _, fc := range resp.FunctionCalls() {
-					fcMap[fc.Name] = fc
+				if fc := resp.FunctionCalls(); len(fc) > 0 {
+					funCalls = append(funCalls, fc...)
 				}
-				if len(fcMap) == 0 {
+				if len(funCalls) == 0 {
 					if len(resp.Candidates) > 0 {
 						err := emitCandidate(g.out, resp.Candidates[0], g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, &i, mp, g.params.OutPath)
 						if err != nil {
@@ -499,8 +499,8 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				Parts: modelAcc,
 			})
 
-			if len(fcMap) > 0 {
-				resCand, err := processFunctionCalls(g.ctx, fcMap)
+			if len(funCalls) > 0 {
+				resCand, err := processFunctionCalls(g.ctx, funCalls)
 				if err != nil {
 					return err
 				}

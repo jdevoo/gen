@@ -14,7 +14,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// TestReadLine tests user input in chat mode.
 func TestReadLine(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -218,7 +217,6 @@ func TestLoadPrompt(t *testing.T) {
 	})
 }
 
-// TestIsEmpty tests detection of empty files.
 func TestIsEmpty(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "test-empty-*.txt")
 	if err != nil {
@@ -245,7 +243,6 @@ func TestIsEmpty(t *testing.T) {
 	}
 }
 
-// TestIsValidPath tests directory validity evaluation.
 func TestIsValidPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	if !isValidPath(tmpDir) {
@@ -262,7 +259,6 @@ func TestIsValidPath(t *testing.T) {
 	}
 }
 
-// TestPersistChatAndRetrieveHistory tests serialized chat history persistence.
 func TestPersistChatAndRetrieveHistory(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -299,12 +295,11 @@ func TestPersistChatAndRetrieveHistory(t *testing.T) {
 	}
 }
 
-// TestLoadPrefs tests user preferences parsing and parameter assignment.
 func TestLoadPrefs(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	// Clean up environment variables set during this test
+	// clean up environment variables set during this test
 	t.Cleanup(func() {
 		_ = os.Unsetenv("TEST_GENRC_ENV_VAR")
 	})
@@ -398,7 +393,6 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 	})
 }
 
-// TestPNGAncillaryChunkStripper tests stripping ancillary chunks from PNG data streams.
 func TestPNGAncillaryChunkStripper(t *testing.T) {
 	t.Run("Not PNG", func(t *testing.T) {
 		input := []byte("Not a PNG file")
@@ -413,7 +407,7 @@ func TestPNGAncillaryChunkStripper(t *testing.T) {
 	})
 
 	t.Run("PNG with ancillary chunk", func(t *testing.T) {
-		// Prepare a mock PNG
+		// mock PNG
 		magic := []byte("\x89PNG\x0D\x0A\x1A\x0A")
 
 		// IHDR chunk (non-ancillary)
