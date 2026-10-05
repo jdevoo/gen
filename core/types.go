@@ -38,6 +38,7 @@ type Parameters struct {
 	JSON              bool
 	K                 int
 	Lambda            float64
+	MaxEmbedBatchSize int
 	MCPServers        ParamArray
 	MCPSessions       SessionArray
 	NoOp              bool

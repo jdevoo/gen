@@ -96,32 +96,38 @@ func TestDotProduct(t *testing.T) {
 func TestAppendAndQueryDigest(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	emb := &genai.ContentEmbedding{
-		Values: []float32{0.1, 0.2, 0.3},
+	embeddings := []*genai.ContentEmbedding{
+		{Values: []float32{0.9, 0.1, 0.0}},
+		{Values: []float32{0.0, 0.8, 0.2}},
+		{Values: []float32{0.1, 0.2, 0.9}},
+	}
+	chunks := []string{
+		"Introduction to neural networks.",
+		"Relational database query optimization.",
+		"Quantum computing and entanglement.",
 	}
 	keyVals := core.ParamMap{"source": "test-doc"}
-	part := &genai.Part{Text: "Test document content."}
 
-	err := appendToDigest(tmpDir, emb, keyVals, false, false, part)
+	err := appendToDigest(tmpDir, embeddings, chunks, keyVals, false, false)
 	if err != nil {
 		t.Fatalf("appendToDigest failed: %v", err)
 	}
 
 	queryEmb := &genai.ContentEmbedding{
-		Values: []float32{0.1, 0.2, 0.3}, // high similarity
+		Values: []float32{0.95, 0.05, 0.0}, // high similarity to first doc
 	}
 
-	results, err := queryDigest(tmpDir, queryEmb, nil, 1, 0.5, false)
+	results, err := queryDigest(tmpDir, queryEmb, nil, 2, 0.5, false)
 	if err != nil {
 		t.Fatalf("queryDigest failed: %v", err)
 	}
 
-	if len(results) != 1 {
-		t.Fatalf("Expected 1 result, got %d", len(results))
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(results))
 	}
 
-	if results[0].doc.content != "Test document content." {
-		t.Errorf("Expected content 'Test document content.', got %q", results[0].doc.content)
+	if results[0].doc.content != chunks[0] {
+		t.Errorf("Expected content %q, got %q", chunks[0], results[0].doc.content)
 	}
 
 	if results[0].doc.metadata["source"] != "test-doc" {

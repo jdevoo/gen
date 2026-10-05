@@ -189,11 +189,36 @@ func (g *Generator) setPromptsAndFiles() error {
 }
 
 func (g *Generator) saveEmbeddings() error {
-	res, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, []*genai.Content{{Parts: g.parts}}, nil)
-	if err != nil {
-		return err
+	chunks := extractChunks(g.parts)
+	if len(chunks) == 0 {
+		return fmt.Errorf("no content found to embed")
 	}
-	if err := appendToDigest(g.params.DigestPaths[0], res.Embeddings[0], g.keyVals, g.params.OnlyKvs, g.params.Verbose, g.parts...); err != nil {
+
+	contents := make([]*genai.Content, len(chunks))
+	for i, chunk := range chunks {
+		contents[i] = &genai.Content{
+			Parts: []*genai.Part{
+				{Text: chunk},
+			},
+		}
+	}
+
+	var allEmbeddings []*genai.ContentEmbedding
+	for i := 0; i < len(contents); i += g.params.MaxEmbedBatchSize {
+		end := min(i+g.params.MaxEmbedBatchSize, len(contents))
+		batch := contents[i:end]
+
+		res, err := g.client.Models.EmbedContent(g.ctx, g.params.EmbModel, batch, nil)
+		if err != nil {
+			return err
+		}
+		if len(res.Embeddings) != len(batch) {
+			return fmt.Errorf("expected %d embeddings, got %d", len(batch), len(res.Embeddings))
+		}
+		allEmbeddings = append(allEmbeddings, res.Embeddings...)
+	}
+
+	if err := appendToDigest(g.params.DigestPaths[0], allEmbeddings, chunks, g.keyVals, g.params.OnlyKvs, g.params.Verbose); err != nil {
 		return err
 	}
 	return nil

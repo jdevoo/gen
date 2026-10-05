@@ -24,32 +24,42 @@ type QueryResult struct {
 	mmr float32
 }
 
-// AppendToDigest saves embedding and content to the digest folder.
-func appendToDigest(path string, embedding *genai.ContentEmbedding, keyVals core.ParamMap, onlyKvs bool, verbose bool, parts ...*genai.Part) error {
+// appendToDigest saves embeddings and contents to the digest folder.
+func appendToDigest(path string, embeddings []*genai.ContentEmbedding, chunks []string, keyVals core.ParamMap, onlyKvs bool, verbose bool) error {
+	if len(embeddings) == 0 {
+		return nil
+	}
 	d, err := Open(path, nil)
 	if err != nil {
 		return err
 	}
 	defer d.Close()
-	doc := Document{}
-	if !onlyKvs {
-		var content string
-		for _, part := range parts {
-			content += (*part).Text
+
+	var batch Batch
+	for i, emb := range embeddings {
+		doc := Document{
+			embedding: emb.Values,
+			metadata:  keyVals,
 		}
-		doc.content = content
+		if !onlyKvs && i < len(chunks) {
+			doc.content = chunks[i]
+		}
+		data, err := serializeDoc(doc)
+		if err != nil {
+			return err
+		}
+		batch.Write(data)
 	}
-	doc.embedding = embedding.Values
-	doc.metadata = keyVals
-	data, err := serializeDoc(doc)
-	if err != nil {
-		return err
-	}
-	if err := d.Write(data); err != nil {
+
+	if err := d.WriteBatch(&batch); err != nil {
 		return err
 	}
 	if verbose {
-		fmt.Fprint(os.Stderr, infos("content added.\n"))
+		if len(embeddings) == 1 {
+			fmt.Fprint(os.Stderr, infos("content added.\n"))
+		} else {
+			fmt.Fprintf(os.Stderr, infos("%d content chunks added.\n"), len(embeddings))
+		}
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jdevoo/gen/core"
@@ -506,4 +507,58 @@ func TestIsValidPart(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtractChunks(t *testing.T) {
+	t.Run("single text part", func(t *testing.T) {
+		parts := []*genai.Part{
+			{Text: "A single chunk of text."},
+		}
+		got := extractChunks(parts)
+		want := []string{"A single chunk of text."}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("file header followed by text", func(t *testing.T) {
+		parts := []*genai.Part{
+			{Text: "*** file1.txt ***\n"},
+			{Text: "Content of file 1"},
+			{Text: "*** file2.txt ***\n"},
+			{Text: "Content of file 2"},
+		}
+		got := extractChunks(parts)
+		want := []string{
+			"*** file1.txt ***\nContent of file 1",
+			"*** file2.txt ***\nContent of file 2",
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("form-feed page split", func(t *testing.T) {
+		parts := []*genai.Part{
+			{Text: "Page 1 content\fPage 2 content\fPage 3 content\n"},
+		}
+		got := extractChunks(parts)
+		want := []string{"Page 1 content", "Page 2 content", "Page 3 content"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("ignores empty parts and whitespace", func(t *testing.T) {
+		parts := []*genai.Part{
+			{Text: "   "},
+			{Text: "Real content"},
+			{Text: ""},
+		}
+		got := extractChunks(parts)
+		want := []string{"Real content"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
 }

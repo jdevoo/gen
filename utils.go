@@ -224,3 +224,37 @@ func isYouTubeURL(path string) bool {
 	youtubeRegex := regexp.MustCompile(`(?i)^((?:https?:)?//)?((?:www|m)\.)?((?:youtube(?:-nocookie)?\.com|youtu.be))(/(?:[\w\-]+\?v=|embed/|v/|shorts/|live/)?)([\w\-]+)(\S+)?$`)
 	return youtubeRegex.MatchString(path)
 }
+
+// extractChunks collates text parts keeping file headers with their respective content
+func extractChunks(parts []*genai.Part) []string {
+	var rawTexts []string
+
+	for i := 0; i < len(parts); i++ {
+		text := parts[i].Text
+		if strings.HasPrefix(text, "*** ") && strings.HasSuffix(text, " ***\n") && i+1 < len(parts) {
+			rawTexts = append(rawTexts, text+parts[i+1].Text)
+			i++
+		} else if strings.TrimSpace(text) != "" {
+			rawTexts = append(rawTexts, text)
+		}
+	}
+
+	var chunks []string
+	for _, text := range rawTexts {
+		if strings.Contains(text, "\f") {
+			for page := range strings.SplitSeq(text, "\f") {
+				trimmed := strings.TrimSpace(page)
+				if trimmed != "" {
+					chunks = append(chunks, trimmed)
+				}
+			}
+		} else {
+			trimmed := strings.TrimSpace(text)
+			if trimmed != "" {
+				chunks = append(chunks, trimmed)
+			}
+		}
+	}
+
+	return chunks
+}
