@@ -571,17 +571,13 @@ func loadPrefs(params *core.Parameters, keyVals *core.ParamMap) error {
 					params.ThinkingLevel = val
 				}
 			case "temp":
-				if val, err := strconv.ParseFloat(value, 64); err == nil {
-					params.Temp = val
-				}
+				_ = params.Temp.Set(value)
 			case "timeout":
 				if val, err := time.ParseDuration(value); err == nil {
 					params.Timeout = val
 				}
 			case "topp":
-				if val, err := strconv.ParseFloat(value, 64); err == nil {
-					params.TopP = val
-				}
+				_ = params.TopP.Set(value)
 			case "embmodel":
 				params.EmbModel = value
 			case "genmodel":

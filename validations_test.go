@@ -41,10 +41,10 @@ func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.Var(&params.Seed, "seed", "")
 	fs.Var(&params.StopSequences, "stop", "")
 	fs.BoolVar(&params.CountTokens, "t", false, "")
-	fs.Float64Var(&params.Temp, "temp", 1.0, "")
+	fs.Var(&params.Temp, "temp", "")
 	fs.DurationVar(&params.Timeout, "timeout", 90*time.Second, "")
 	fs.BoolVar(&params.Tool, "tool", false, "")
-	fs.Float64Var(&params.TopP, "top_p", 0.95, "")
+	fs.Var(&params.TopP, "top_p", "")
 	fs.BoolVar(&params.Unsafe, "unsafe", false, "")
 	fs.BoolVar(&params.Version, "v", false, "")
 }

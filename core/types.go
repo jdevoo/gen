@@ -50,12 +50,12 @@ type Parameters struct {
 	SystemInstruction bool
 	Seed              OptionalInt32
 	StopSequences     ParamArray
-	Temp              float64
+	Temp              OptionalFloat32
 	ThinkingLevel     genai.ThinkingLevel
 	Timeout           time.Duration
 	Tool              bool
 	ToolRegistry      ToolMap
-	TopP              float64
+	TopP              OptionalFloat32
 	Unsafe            bool
 	Usage             TokenUsage
 	Verbose           bool

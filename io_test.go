@@ -349,13 +349,13 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 	if params.ThinkingLevel != genai.ThinkingLevelMedium {
 		t.Errorf("Expected ThinkingLevel=MEDIUM, got %v", params.ThinkingLevel)
 	}
-	if params.Temp != 1.5 {
+	if !params.Temp.Defined || *params.Temp.Value != 1.5 {
 		t.Errorf("Expected Temp=1.5, got %v", params.Temp)
 	}
 	if params.Timeout != 10*time.Second {
 		t.Errorf("Expected Timeout=10s, got %v", params.Timeout)
 	}
-	if params.TopP != 0.8 {
+	if !params.TopP.Defined || *params.TopP.Value != 0.8 {
 		t.Errorf("Expected TopP=0.8, got %v", params.TopP)
 	}
 	if params.EmbModel != "custom-emb" {

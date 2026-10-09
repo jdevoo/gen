@@ -101,8 +101,6 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	// default parameter values
 	params.K = 3
 	params.Lambda = 0.5
-	params.Temp = 1.0
-	params.TopP = 0.95
 	params.ThinkingLevel = genai.ThinkingLevelUnspecified
 	params.Timeout = 300 * time.Second
 	params.EmbModel = "gemini-embedding-001"
@@ -148,10 +146,10 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.Var(&params.Seed, "seed", "integer which makes the model's output mostly deterministic")
 	fs.Var(&params.StopSequences, "stop", "string that, if generated, tells the model to stop")
 	fs.BoolVar(&params.CountTokens, "t", false, "output total number of tokens")
-	fs.Float64Var(&params.Temp, "temp", params.Temp, "sampling during response generation (0.0,2.0]")
+	fs.Var(&params.Temp, "temp", "sampling during response generation (0.0,2.0]")
 	fs.DurationVar(&params.Timeout, "timeout", params.Timeout, "time limit for single turn content generation")
 	fs.BoolVar(&params.Tool, "tool", false, "invoke one of the tools (incompatible with -s, -img or -code)")
-	fs.Float64Var(&params.TopP, "top_p", params.TopP, "how the model selects tokens for generation [0.0,1.0]")
+	fs.Var(&params.TopP, "top_p", "how the model selects tokens for generation [0.0,1.0]")
 	fs.BoolVar(&params.Unsafe, "unsafe", false, "force generation when gen aborts with FinishReasonSafety")
 	fs.BoolVar(&params.Version, "v", false, "show version and exit")
 	if err := fs.Parse(args); err != nil {

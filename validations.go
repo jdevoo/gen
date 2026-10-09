@@ -76,9 +76,9 @@ func validRanges(params *core.Parameters) error {
 		// invalid lambda values
 		(params.Lambda < 0 || params.Lambda > 1) ||
 		// invalid temperature values
-		(params.Temp <= 0 || params.Temp > 2) ||
+		(params.Temp.Defined && (*params.Temp.Value <= 0 || *params.Temp.Value > 2)) ||
 		// invalid topP values
-		(params.TopP < 0 || params.TopP > 1) ||
+		(params.TopP.Defined && (*params.TopP.Value < 0 || *params.TopP.Value > 1)) ||
 		// invalid frequency penalty value
 		(params.FrequencyPenalty.Defined && (*params.FrequencyPenalty.Value < -2 || *params.FrequencyPenalty.Value > 2)) ||
 		// invalid presence penalty value

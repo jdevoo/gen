@@ -156,7 +156,7 @@ Options:
         string that, if generated, tells the model to stop
   -t    output total number of tokens
   -temp float
-        sampling during response generation (0.0,2.0] (default 1)
+        sampling during response generation (0.0,2.0]
   -think value
         MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -timeout duration
@@ -164,7 +164,7 @@ Options:
   -tool
         invoke one of the tools (incompatible with -s, -img or -code)
   -top_p float
-        how the model selects tokens for generation [0.0,1.0] (default 0.95)
+        how the model selects tokens for generation [0.0,1.0]
   -unsafe
         force generation when gen aborts with FinishReasonSafety
   -v    show version and exit

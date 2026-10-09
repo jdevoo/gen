@@ -79,10 +79,7 @@ func (g *Generator) run() error {
 		}
 	}
 
-	config := genai.GenerateContentConfig{
-		Temperature: genai.Ptr(float32(g.params.Temp)),
-		TopP:        genai.Ptr(float32(g.params.TopP)),
-	}
+	config := genai.GenerateContentConfig{}
 	if err := g.buildConfig(&config); err != nil {
 		return err
 	}
@@ -263,6 +260,12 @@ func (g *Generator) searchDigests() error {
 func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 	var err error
 
+	if g.params.Temp.Defined && g.params.Temp.Value != nil {
+		config.Temperature = g.params.Temp.Value
+	}
+	if g.params.TopP.Defined && g.params.TopP.Value != nil {
+		config.TopP = g.params.TopP.Value
+	}
 	if g.params.ImgModality {
 		config.ResponseModalities = []string{"TEXT", "IMAGE"}
 	} else {
