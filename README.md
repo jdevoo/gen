@@ -114,6 +114,8 @@ Options:
 
   -V    output model details, system instructions, chat history and thoughts
   -c    enter chat mode (incompatible with -json or -img)
+  -cache
+        cache attached files and use any previously cached files
   -code
         code execution tool (incompatible with -img, -json or -tool)
   -d value

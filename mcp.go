@@ -135,10 +135,7 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 
 // registerMCPTools declares tools of MCP servers in genai.FunctionDeclaration format.
 func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) error {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return fmt.Errorf("registerMCPTools: params not found in context")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
 	for _, sess := range params.MCPSessions {
 		ltr, err := sess.ListTools(ctx, nil)
@@ -252,12 +249,7 @@ func genLoggingHandler(_ context.Context, r *mcp.LoggingMessageRequest) {
 
 // invokeMCPTool looks for a tool across MCP sessions matching the provided FunctionCall signature.
 func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, error) {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
-			"error": "invokeMCPTool: params not found in context",
-		}), nil
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
 	// Lookup tool
 	sess, ok := params.ToolRegistry[fc.Name]
@@ -420,10 +412,7 @@ func convertMCPType(val string, t string) (any, error) {
 
 // genSampling message callback for MCP servers.
 func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return nil, fmt.Errorf("genSampling: params not found in context")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
@@ -465,10 +454,7 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 		return nil, fmt.Errorf("'properties' not found in requested schema")
 	}
 
-	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("genElicitation: keyVals not found in context")
-	}
+	keyVals, _ := ctx.Value(core.KeyValsKey).(core.ParamMap)
 
 	var propNames []string
 	for propName := range propsMap {

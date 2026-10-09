@@ -21,6 +21,7 @@ const (
 // Parameters holds gen flag values as well as Args and MCP sessions.
 type Parameters struct {
 	Args              []string // non-flag command-line arguments i.e. prompt
+	Cache             bool
 	ChatMode          bool
 	CodeGen           bool
 	CountTokens       bool
@@ -28,7 +29,7 @@ type Parameters struct {
 	Embed             bool       // RAG
 	EmbModel          string
 	FilePaths         ParamArray
-	FileURIs          []string
+	FileURIs          ParamMap
 	FrequencyPenalty  OptionalFloat32
 	GenModel          string
 	GoogleSearch      bool

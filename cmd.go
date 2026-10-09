@@ -115,6 +115,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 
 	fs.BoolVar(&params.Verbose, "V", false, "output model details, system instructions, chat history and thoughts")
 	fs.BoolVar(&params.ChatMode, "c", false, "enter chat mode (incompatible with -json or -img)")
+	fs.BoolVar(&params.Cache, "cache", false, "cache attached files and use any previously cached files")
 	fs.BoolVar(&params.CodeGen, "code", false, "code execution tool (incompatible with -img, -json or -tool)")
 	fs.Var(&params.DigestPaths, "d", "path to a digest folder")
 	fs.BoolVar(&params.Embed, "e", false, fmt.Sprintf("write text embeddings to digest (default model \"%s\")", params.EmbModel))
@@ -161,6 +162,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	params.Interactive = !isRedirected(os.Stdin)
 	params.OutRedirected = isRedirected(os.Stdout)
 	params.ToolRegistry = core.ToolMap{}
+	params.FileURIs = core.ParamMap{}
 
 	return nil
 }
@@ -228,7 +230,7 @@ func cleanup(params *core.Parameters) {
 		}
 	}
 	// delete uploaded files
-	if len(params.FileURIs) > 0 {
+	if !params.Cache && len(params.FileURIs) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		client, err := genai.NewClient(ctx, nil)

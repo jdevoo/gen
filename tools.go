@@ -65,10 +65,7 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 
 // knownTools returns string of comma-separated function names.
 func knownTools(ctx context.Context) (string, error) {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return "", fmt.Errorf("knownTools: params not found in context")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
 	var res []string
 

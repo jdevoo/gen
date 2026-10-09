@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"net/http"
+	"mime"
 	"os"
 	"path"
 	"path/filepath"
@@ -283,7 +283,9 @@ func emitHistory(out io.Writer, hist []*genai.Content) {
 // uploadFile tracks state until FileStateActive reached.
 // TODO timeout hardcoded
 func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
-	file, err := client.Files.UploadFromPath(ctx, path, nil)
+	file, err := client.Files.UploadFromPath(ctx, path, &genai.UploadFileConfig{
+		DisplayName: filepath.Base(path),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("uploading file '%s': %v", path, err)
 	}
@@ -347,10 +349,8 @@ func loadPrompt(filePath string, seen map[string]bool) (string, error) {
 // filePathHandler processes a single file path for glob.
 // parts and sysParts are extended with file content.
 func filePathHandler(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
-	if !ok {
-		return fmt.Errorf("filePathHandler: keyVals not found in context")
-	}
+	keyVals, _ := ctx.Value(core.KeyValsKey).(core.ParamMap)
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 	f, err := os.Open(filePathVal)
 	if err != nil {
 		return fmt.Errorf("opening file '%s': %v", filePathVal, err)
@@ -360,43 +360,41 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	case PExt, SPExt:
 		data, err := loadPrompt(filePathVal, make(map[string]bool))
 		if err != nil {
-			return fmt.Errorf("filePathHandler '%s': %v", filePathVal, err)
+			return fmt.Errorf("loading prompt '%s': %v", filePathVal, err)
 		}
 		if path.Ext(filePathVal) == SPExt {
 			*sysParts = append(*sysParts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 		} else {
 			*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})
 		}
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp",
-		".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".pdf":
-		file, err := uploadFile(ctx, client, filePathVal)
-		if err != nil {
-			return fmt.Errorf("uploading file '%s': %v", filePathVal, err)
-		}
-		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
-			FileURI:  file.URI,
-			MIMEType: strings.Split(file.MIMEType, ";")[0],
-		}})
 	case ".json":
 		data, err := io.ReadAll(f)
 		if err != nil {
-			return fmt.Errorf("reading file %s: %v", filePathVal, err)
+			return fmt.Errorf("reading file '%s': %v", filePathVal, err)
 		}
 		if err := json.Unmarshal(data, jsonSchema); err != nil {
 			return err
 		}
 	default:
-		data, err := io.ReadAll(f)
-		if err != nil {
-			return fmt.Errorf("reading file %s: %v", filePathVal, err)
+		var fileURI, mimeType string
+		filename := filepath.Base(filePathVal)
+		if uri, exists := params.FileURIs[filename]; exists {
+			fileURI = uri
+			mimeType = mime.TypeByExtension(filepath.Ext(filename))
+		} else {
+			file, err := uploadFile(ctx, client, filePathVal)
+			if err != nil {
+				return fmt.Errorf("uploading file '%s': %v", filePathVal, err)
+			}
+			fileURI = file.URI
+			mimeType = strings.Split(file.MIMEType, ";")[0]
+			params.FileURIs[filename] = fileURI
 		}
-		sniffLen := min(512, len(data))
-		sniffedType := http.DetectContentType(data[:sniffLen])
-		if !strings.HasPrefix(sniffedType, "text") {
-			return fmt.Errorf("reading file %s: type %s not supported", filePathVal, sniffedType)
-		}
-		*parts = append(*parts, &genai.Part{Text: fmt.Sprintf("*** %s ***\n", filePathVal)})
-		*parts = append(*parts, &genai.Part{Text: searchReplace(string(data), keyVals)})
+		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
+			FileURI:     fileURI,
+			MIMEType:    mimeType,
+			DisplayName: filename,
+		}})
 	}
 
 	return nil
@@ -408,10 +406,7 @@ func isHidden(name string) bool {
 
 // glob processes files and directories passed as argument (recursively if walk is true).
 func glob(ctx context.Context, client *genai.Client, filePathVal string, parts *[]*genai.Part, sysParts *[]*genai.Part, jsonSchema *map[string]any) error {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return fmt.Errorf("glob: params not found in context")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 	// GCS URI case
 	if strings.HasPrefix(filePathVal, "gs://") {
 		*parts = append(*parts, genai.NewPartFromFile(genai.File{URI: filePathVal}))

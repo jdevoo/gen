@@ -26,10 +26,7 @@ type Generator struct {
 }
 
 func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return fmt.Errorf("missing params")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !params.ChatMode {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, params.Timeout)
@@ -43,14 +40,8 @@ func genContent(ctx context.Context, in io.Reader, out io.Writer) error {
 }
 
 func newGenerator(ctx context.Context, in io.Reader, out io.Writer) (*Generator, error) {
-	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
-	if !ok {
-		return nil, fmt.Errorf("missing params")
-	}
-	keyVals, ok := ctx.Value(core.KeyValsKey).(core.ParamMap)
-	if !ok {
-		return nil, fmt.Errorf("missing keyVals")
-	}
+	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
+	keyVals, _ := ctx.Value(core.KeyValsKey).(core.ParamMap)
 
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
@@ -136,6 +127,19 @@ func (g *Generator) setPromptsAndFiles() error {
 	var stdinData []byte
 	var err error
 
+	cachedCount := 0
+	if g.params.Cache {
+		for file, err := range g.client.Files.All(g.ctx) {
+			if err != nil {
+				return err
+			}
+			if file.State == genai.FileStateActive {
+				g.params.FileURIs[file.DisplayName] = file.URI
+			}
+		}
+		cachedCount = len(g.params.FileURIs)
+	}
+
 	// handle redirect/piped data
 	if !g.params.Interactive {
 		stdinData, err = io.ReadAll(g.in)
@@ -177,11 +181,18 @@ func (g *Generator) setPromptsAndFiles() error {
 				return err
 			}
 		}
-		// stash URIs of FileData parts for removal
+	}
+
+	if g.params.Cache {
+		var accounted []string
 		for _, p := range g.parts {
 			if p.FileData != nil {
-				g.params.FileURIs = append(g.params.FileURIs, p.FileData.FileURI)
+				accounted = append(accounted, p.FileData.DisplayName)
 			}
+		}
+		delta := cachedCount - len(accounted)
+		if delta > 0 {
+			fmt.Fprintf(g.out, important("%d other file(s) in cache\n"), delta)
 		}
 	}
 

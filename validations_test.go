@@ -13,6 +13,7 @@ import (
 func SetupFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMap) {
 	fs.BoolVar(&params.Verbose, "V", false, "")
 	fs.BoolVar(&params.ChatMode, "c", false, "")
+	fs.BoolVar(&params.Cache, "cache", false, "")
 	fs.BoolVar(&params.CodeGen, "code", false, "")
 	fs.Var(&params.DigestPaths, "d", "")
 	fs.BoolVar(&params.Embed, "e", false, "")
@@ -231,7 +232,7 @@ func TestArgsInvalid(t *testing.T) {
 			params = &core.Parameters{}
 			keyVals := core.ParamMap{}
 			params.FilePaths = core.ParamArray{}
-			params.FileURIs = []string{}
+			params.FileURIs = core.ParamMap{}
 			params.DigestPaths = core.ParamArray{}
 			SetupFlags(fs, params, &keyVals)
 

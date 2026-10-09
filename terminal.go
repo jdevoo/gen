@@ -15,7 +15,7 @@ const (
 	ansiWhite  = "\033[97m"
 
 	colorInfo      = "\033[36m"
-	colorImportant = "\033[30;47m"
+	colorImportant = "\033[1;31m"
 	colorRole      = "\033[1;37;46m"
 )
 
