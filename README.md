@@ -158,7 +158,7 @@ Options:
   -temp float
         sampling during response generation (0.0,2.0]
   -think value
-        MINIMAL, LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
+        LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -timeout duration
         time limit for single turn content generation (default 5m0s)
   -tool

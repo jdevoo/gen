@@ -206,6 +206,9 @@ func isValidPart(p *genai.Part) bool {
 	if p == nil {
 		return false
 	}
+	if len(p.ThoughtSignature) > 0 {
+		return true
+	}
 	if p.Text != "" {
 		return true
 	}

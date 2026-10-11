@@ -49,9 +49,6 @@ func validPrompts(params *core.Parameters) error {
 
 func validRanges(params *core.Parameters) error {
 	// ThinkingLevel
-	if strings.HasPrefix(string(genai.ThinkingLevelMinimal), string(params.ThinkingLevel)) {
-		params.ThinkingLevel = genai.ThinkingLevelMinimal
-	}
 	if strings.HasPrefix(string(genai.ThinkingLevelLow), string(params.ThinkingLevel)) {
 		params.ThinkingLevel = genai.ThinkingLevelLow
 	}
@@ -65,7 +62,6 @@ func validRanges(params *core.Parameters) error {
 	// invalid thinking level
 	(len(params.ThinkingLevel) < 3 ||
 		params.ThinkingLevel != genai.ThinkingLevelUnspecified &&
-			params.ThinkingLevel != genai.ThinkingLevelMinimal &&
 			params.ThinkingLevel != genai.ThinkingLevelLow &&
 			params.ThinkingLevel != genai.ThinkingLevelMedium &&
 			params.ThinkingLevel != genai.ThinkingLevelHigh) ||

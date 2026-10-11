@@ -564,8 +564,7 @@ func loadPrefs(params *core.Parameters, keyVals *core.ParamMap) error {
 			case "thinkinglevel":
 				val := genai.ThinkingLevel(strings.ToUpper(value))
 				switch val {
-				case genai.ThinkingLevelMinimal,
-					genai.ThinkingLevelLow,
+				case genai.ThinkingLevelLow,
 					genai.ThinkingLevelMedium,
 					genai.ThinkingLevelHigh:
 					params.ThinkingLevel = val

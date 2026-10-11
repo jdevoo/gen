@@ -407,11 +407,11 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 						if !isValidPart(p) {
 							continue
 						}
+						if len(p.ThoughtSignature) > 0 {
+							sig = p.ThoughtSignature
+						}
 						if p.Thought {
 							thoughtBuilder.WriteString(p.Text)
-							if len(p.ThoughtSignature) > 0 {
-								sig = p.ThoughtSignature
-							}
 						} else if p.Text != "" {
 							textBuilder.WriteString(p.Text)
 						} else if p.InlineData != nil {
@@ -427,7 +427,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 								streamAcc = append(streamAcc, p)
 							}
 							continue
-						} else {
+						} else if p.FunctionCall != nil || p.FileData != nil || p.ExecutableCode != nil || p.CodeExecutionResult != nil {
 							streamAcc = append(streamAcc, p)
 						}
 						partsRetained = append(partsRetained, p)
@@ -482,6 +482,14 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			}
 
 			modelAcc = []*genai.Part{}
+			if thoughtBuilder.Len() == 0 && len(sig) > 0 {
+				for _, p := range streamAcc {
+					if p.FunctionCall != nil && len(p.ThoughtSignature) == 0 {
+						p.ThoughtSignature = sig
+						break
+					}
+				}
+			}
 			if thoughtBuilder.Len() > 0 {
 				modelAcc = append(modelAcc, &genai.Part{
 					Text:             thoughtBuilder.String(),
@@ -490,9 +498,13 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				})
 			}
 			if textBuilder.Len() > 0 {
-				modelAcc = append(modelAcc, &genai.Part{
+				p := &genai.Part{
 					Text: textBuilder.String(),
-				})
+				}
+				if thoughtBuilder.Len() == 0 && len(sig) > 0 && len(funCalls) == 0 {
+					p.ThoughtSignature = sig
+				}
+				modelAcc = append(modelAcc, p)
 			}
 			if len(streamAcc) > 0 {
 				modelAcc = append(modelAcc, streamAcc...)

@@ -127,8 +127,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	fs.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
 	fs.StringVar(&params.OutPath, "out", "", "output path for images (incompatible with a redirect)")
-	fs.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
-		genai.ThinkingLevelMinimal,
+	fs.Func("think", fmt.Sprintf("%s, %s or %s (default: %s)",
 		genai.ThinkingLevelLow,
 		genai.ThinkingLevelMedium,
 		genai.ThinkingLevelHigh,

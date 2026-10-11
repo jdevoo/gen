@@ -471,6 +471,7 @@ func TestIsValidPart(t *testing.T) {
 	}{
 		{"nil", nil, false},
 		{"empty", &genai.Part{}, false},
+		{"thought signature valid", &genai.Part{ThoughtSignature: []byte{1, 2, 3}}, true},
 		{"text", &genai.Part{Text: "hello"}, true},
 		{"inline data empty", &genai.Part{InlineData: &genai.Blob{}}, false},
 		{"inline data valid", &genai.Part{InlineData: &genai.Blob{Data: []byte{1, 2, 3}}}, true},
