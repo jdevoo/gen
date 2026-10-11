@@ -47,7 +47,18 @@ func (t Tool) GetMCPPrompt(ctx context.Context, args GetMCPPromptArgs) (*genai.P
 					case *mcp.TextContent:
 						textStrings = append(textStrings, c.Text)
 					case *mcp.ResourceLink:
-						parts = append(parts, genai.NewFunctionResponsePartFromURI(c.URI, c.MIMEType))
+						if res, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{URI: c.URI}); err != nil {
+							textStrings = append(textStrings, fmt.Sprintf("[Resource link: %s (%s)]", c.URI, c.MIMEType))
+						} else {
+							for _, rc := range res.Contents {
+								if len(rc.Text) > 0 {
+									textStrings = append(textStrings, rc.Text)
+								}
+								if len(rc.Blob) > 0 {
+									parts = append(parts, genai.NewFunctionResponsePartFromBytes(rc.Blob, rc.MIMEType))
+								}
+							}
+						}
 					case *mcp.EmbeddedResource:
 						if c.Resource != nil {
 							if len(c.Resource.Blob) > 0 {

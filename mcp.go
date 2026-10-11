@@ -282,7 +282,18 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 		case *mcp.TextContent:
 			textStrings = append(textStrings, v.Text)
 		case *mcp.ResourceLink:
-			parts = append(parts, genai.NewFunctionResponsePartFromURI(v.URI, v.MIMEType))
+			if res, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{URI: v.URI}); err != nil {
+				textStrings = append(textStrings, fmt.Sprintf("[Resource link: %s (%s)]", v.URI, v.MIMEType))
+			} else {
+				for _, rc := range res.Contents {
+					if len(rc.Text) > 0 {
+						textStrings = append(textStrings, rc.Text)
+					}
+					if len(rc.Blob) > 0 {
+						parts = append(parts, genai.NewFunctionResponsePartFromBytes(rc.Blob, rc.MIMEType))
+					}
+				}
+			}
 		case *mcp.ImageContent:
 			stripper := &PNGAncillaryChunkStripper{Reader: bytes.NewReader(v.Data)}
 			strippedData, err := io.ReadAll(stripper)
