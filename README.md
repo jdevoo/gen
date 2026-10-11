@@ -64,7 +64,7 @@ Basic information extraction (Google Gemini [cookbook example](https://github.co
 `gen -f extract.sprompt -f extract.prompt | gen -f format.sprompt -`
 
 Generate an image  
-`gen -m gemini-2.5-flash-image-preview -img une cigogne porte un cuistax en survolant le plat pays`
+`gen -m gemini-3.1-flash-image -img une cigogne porte un cuistax en survolant le plat pays`
 
 ## Multi-turn Examples
 Set a system instruction from argument and enter chat  
