@@ -147,28 +147,14 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 		mcpDecls := []*genai.FunctionDeclaration{}
 		for _, tool := range ltr.Tools {
 			params.ToolRegistry[tool.Name] = sess
-			if tool.InputSchema == nil {
-				return fmt.Errorf("no input schema for MCP tool: '%s'", tool.Name)
-			}
-			schemaBytes, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				return fmt.Errorf("failed to marshal input schema for MCP tool '%s': %v", tool.Name, err)
-			}
-			var schemaMap map[string]any
-			if err = json.Unmarshal(schemaBytes, &schemaMap); err != nil {
-				return fmt.Errorf("failed to unmarshal schema map for MCP tool '%s': %v", tool.Name, err)
-			}
-			alignSchema(schemaMap)
-			schemaBytes, _ = json.Marshal(schemaMap)
-			var mcpInputSchema genai.Schema
-			if err = json.Unmarshal(schemaBytes, &mcpInputSchema); err != nil {
-				return fmt.Errorf("failed to unmarshal into genai.Schema for MCP tool '%s': %v", tool.Name, err)
-			}
-			mcpDecls = append(mcpDecls, &genai.FunctionDeclaration{
+			decl := &genai.FunctionDeclaration{
 				Name:        tool.Name,
 				Description: tool.Description,
-				Parameters:  &mcpInputSchema,
-			})
+			}
+			if tool.InputSchema != nil {
+				decl.ParametersJsonSchema = tool.InputSchema
+			}
+			mcpDecls = append(mcpDecls, decl)
 		}
 
 		if len(mcpDecls) > 0 {
