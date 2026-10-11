@@ -181,16 +181,17 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 #Timeout=5m
 #TopP=0.95
 #EmbModel=gemini-embedding-001
-#GenModel=gemini-2.5-flash
+#GenModel=gemini-3.5-flash-lite
 
 [parameters]
 #key1=val
 #key2=val
+#...
 
 [mcpservers]
 #path to STDIO executable1
 #path to STDIO executable2
-#URL to server3
+#URL to server1
 #...
 
 [digestpaths]

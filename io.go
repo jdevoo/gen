@@ -96,7 +96,7 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser, outPath string) error {
 	for _, p := range content.Parts {
 		if p.Text != "" {
-			_ = emitText(out, p, outRedirected, imgModality, idx, mp)
+			_ = emitText(out, p, outRedirected, imgModality, verbose, idx, mp)
 			continue
 		}
 		if p.FunctionResponse != nil {
@@ -118,7 +118,7 @@ func emitContent(out io.Writer, content *genai.Content, outRedirected bool, imgM
 	return nil
 }
 
-func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, idx *int, mp *MarkdownParser) error {
+func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality bool, verbose bool, idx *int, mp *MarkdownParser) error {
 	if !outRedirected {
 		if mp != nil {
 			mp.setThought(part.Thought)
@@ -128,7 +128,11 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 			s = mp.parse(part.Text)
 		}
 		fmt.Fprint(out, s)
-	} else if !imgModality || part.Thought {
+	} else if part.Thought {
+		if verbose {
+			fmt.Fprint(os.Stderr, part.Text)
+		}
+	} else if !imgModality {
 		fmt.Fprintf(out, "%s", part.Text)
 	}
 	if idx != nil {
