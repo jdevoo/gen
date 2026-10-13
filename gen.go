@@ -360,9 +360,10 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 			return err
 		}
 		if len(history) > 0 {
-			fmt.Fprintf(g.out, important("%s found\n"), DotGen)
-			if g.params.Verbose {
-				emitHistory(os.Stderr, history)
+			emitHistory(g.out, history, g.params.OutRedirected, g.params.ImgModality, g.params.Verbose, g.params.OutPath)
+		} else {
+			if len(g.sysParts) > 0 && len(g.parts) == 0 {
+				g.parts = append(g.parts, &genai.Part{Text: "\u200b"})
 			}
 		}
 	}

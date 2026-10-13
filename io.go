@@ -11,6 +11,7 @@ import (
 	"image"
 	"io"
 	"mime"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -266,22 +267,31 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 	return nil
 }
 
-// emitHistory prints the chat history (verbose).
-func emitHistory(out io.Writer, hist []*genai.Content) {
-	var prev string
-	fmt.Fprint(out, "\nHISTORY START\n")
+// emitHistory prints the chat history reproducing the live console experience.
+func emitHistory(out io.Writer, hist []*genai.Content, outRedirected bool, imgModality bool, verbose bool, outPath string) {
 	for _, c := range hist {
-		if prev != c.Role {
-			if !isRedirected(out) {
-				fmt.Fprintf(out, "\n"+roles("%s")+"\n", c.Role)
-			} else {
-				fmt.Fprintf(out, "\n<%s>\n", c.Role)
+		switch c.Role {
+		case "user":
+			for _, p := range c.Parts {
+				if p.Text == "\u200b" { // skip synthetic zero-width space
+					continue
+				}
+				if p.Text != "" {
+					if !outRedirected {
+						fmt.Fprintf(out, "%s%s\n", ansiReset, p.Text)
+					} else {
+						fmt.Fprintf(out, "%s\n", p.Text)
+					}
+				}
 			}
-			prev = c.Role
+		case "model":
+			idx := 0
+			mp := &MarkdownParser{}
+			_ = emitContent(out, c, outRedirected, imgModality, verbose, &idx, mp, outPath)
+			fmt.Fprint(out, mp.flush(outRedirected))
+			fmt.Fprintln(out)
 		}
-		_ = emitContent(out, c, false, false, true, nil, nil, "")
 	}
-	fmt.Fprint(out, "\nHISTORY END\n")
 }
 
 // uploadFile tracks state until FileStateActive reached.
@@ -382,16 +392,32 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 	default:
 		var fileURI, mimeType string
 		filename := filepath.Base(filePathVal)
+
+		buf := make([]byte, 512)
+		n, _ := f.Read(buf)
+		if n > 0 {
+			sniffed := http.DetectContentType(buf[:n])
+			if sniffed != "" && sniffed != "application/octet-stream" {
+				mimeType = strings.Split(sniffed, ";")[0]
+			}
+		}
+		if mimeType == "" {
+			if extType := mime.TypeByExtension(filepath.Ext(filename)); extType != "" {
+				mimeType = strings.Split(extType, ";")[0]
+			}
+		}
+
 		if uri, exists := params.FileURIs[filename]; exists {
 			fileURI = uri
-			mimeType = mime.TypeByExtension(filepath.Ext(filename))
 		} else {
 			file, err := uploadFile(ctx, client, filePathVal)
 			if err != nil {
 				return fmt.Errorf("uploading file '%s': %v", filePathVal, err)
 			}
 			fileURI = file.URI
-			mimeType = strings.Split(file.MIMEType, ";")[0]
+			if mimeType == "" {
+				mimeType = strings.Split(file.MIMEType, ";")[0]
+			}
 			params.FileURIs[filename] = fileURI
 		}
 		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
