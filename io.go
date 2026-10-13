@@ -296,10 +296,14 @@ func emitHistory(out io.Writer, hist []*genai.Content, outRedirected bool, imgMo
 
 // uploadFile tracks state until FileStateActive reached.
 // TODO timeout hardcoded
-func uploadFile(ctx context.Context, client *genai.Client, path string) (*genai.File, error) {
-	file, err := client.Files.UploadFromPath(ctx, path, &genai.UploadFileConfig{
+func uploadFile(ctx context.Context, client *genai.Client, path string, mimeType string) (*genai.File, error) {
+	cfg := &genai.UploadFileConfig{
 		DisplayName: filepath.Base(path),
-	})
+	}
+	if mimeType != "" {
+		cfg.MIMEType = mimeType
+	}
+	file, err := client.Files.UploadFromPath(ctx, path, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("uploading file '%s': %v", path, err)
 	}
@@ -410,7 +414,7 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 		if uri, exists := params.FileURIs[filename]; exists {
 			fileURI = uri
 		} else {
-			file, err := uploadFile(ctx, client, filePathVal)
+			file, err := uploadFile(ctx, client, filePathVal, mimeType)
 			if err != nil {
 				return fmt.Errorf("uploading file '%s': %v", filePathVal, err)
 			}
