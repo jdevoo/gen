@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/jdevoo/gen/core"
@@ -124,7 +125,7 @@ func (g *Generator) setPromptsAndFiles() error {
 	var stdinData []byte
 	var err error
 
-	cachedCount := 0
+	cachedFiles := make(map[string]*genai.File)
 	if g.params.Cache {
 		for file, err := range g.client.Files.All(g.ctx) {
 			if err != nil {
@@ -132,9 +133,9 @@ func (g *Generator) setPromptsAndFiles() error {
 			}
 			if file.State == genai.FileStateActive {
 				g.params.FileURIs[file.DisplayName] = file.URI
+				cachedFiles[file.DisplayName] = file
 			}
 		}
-		cachedCount = len(g.params.FileURIs)
 	}
 
 	// handle redirect/piped data
@@ -181,15 +182,34 @@ func (g *Generator) setPromptsAndFiles() error {
 	}
 
 	if g.params.Cache {
-		var accounted []string
+		attached := make(map[string]bool)
 		for _, p := range g.parts {
 			if p.FileData != nil {
-				accounted = append(accounted, p.FileData.DisplayName)
+				attached[p.FileData.DisplayName] = true
 			}
 		}
-		delta := cachedCount - len(accounted)
-		if delta > 0 {
-			fmt.Fprintf(g.out, important("%d other file(s) in cache\n"), delta)
+
+		var cached []*genai.File
+		for name, file := range cachedFiles {
+			if !attached[name] {
+				cached = append(cached, file)
+				g.parts = append(g.parts, &genai.Part{
+					FileData: &genai.FileData{
+						DisplayName: file.DisplayName,
+						FileURI:     file.URI,
+						MIMEType:    file.MIMEType,
+					},
+				})
+			}
+		}
+
+		if g.params.Verbose {
+			sort.Slice(cached, func(i, j int) bool {
+				return cached[i].DisplayName < cached[j].DisplayName
+			})
+			for _, file := range cached {
+				fmt.Fprintf(os.Stderr, important("cached: %s\n"), file.DisplayName)
+			}
 		}
 	}
 
