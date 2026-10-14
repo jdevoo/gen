@@ -295,6 +295,8 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 		config.ResponseMIMEType = "application/json"
 		if g.schema != nil {
 			config.ResponseJsonSchema = g.schema
+		} else if g.params.GoogleSearch {
+			config.ResponseJsonSchema = map[string]any{}
 		}
 	}
 	if g.params.Tool {

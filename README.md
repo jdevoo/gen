@@ -137,7 +137,7 @@ Options:
   -l float
         balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-        model name (default "gemini-3.5-flash-lite")
+        model name (default "gemini-flash-lite-latest")
   -mcp value
         mcp stdio or streamable server command
   -no-op
@@ -181,7 +181,7 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 #Timeout=5m
 #TopP=0.95
 #EmbModel=gemini-embedding-001
-#GenModel=gemini-3.5-flash-lite
+#GenModel=gemini-2.5-flash-lite
 
 [parameters]
 #key1=val
