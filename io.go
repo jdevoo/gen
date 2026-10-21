@@ -48,16 +48,6 @@ func readLine(r io.Reader) (string, error) {
 	return "", scanner.Err()
 }
 
-// isEmpty `out` was already used.
-func isEmpty(out io.Writer) bool {
-	if f, ok := out.(*os.File); ok {
-		if fileInfo, err := f.Stat(); err == nil {
-			return fileInfo.Size() == 0
-		}
-	}
-	return false
-}
-
 func isValidPath(path string) bool {
 	fileInfo, err := os.Stat(path)
 	if err == nil && fileInfo.IsDir() {
@@ -77,17 +67,14 @@ func emitCandidate(out io.Writer, cand *genai.Candidate, outRedirected bool, img
 	}
 	finish = cand.FinishReason
 	if finish != "" {
-		if mp != nil {
+		if mp != nil && !(outRedirected && imgModality) {
 			fmt.Fprint(out, mp.flush(outRedirected))
 		}
-		if verbose {
-			if !outRedirected {
-				fmt.Fprintf(out, "\n"+infos("%s")+"\n", finish)
-			} else if !imgModality {
-				fmt.Fprintf(out, "\n%s\n", finish)
-			}
-		} else {
+		if !(outRedirected && imgModality) {
 			fmt.Fprintln(out)
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "\n"+infos("%s")+"\n", finish)
 		}
 	}
 	return nil
@@ -129,15 +116,22 @@ func emitText(out io.Writer, part *genai.Part, outRedirected bool, imgModality b
 			s = mp.parse(part.Text)
 		}
 		fmt.Fprint(out, s)
+		if idx != nil {
+			*idx++
+		}
 	} else if part.Thought {
 		if verbose {
 			fmt.Fprint(os.Stderr, part.Text)
 		}
-	} else if !imgModality {
+	} else if imgModality {
+		if verbose {
+			fmt.Fprint(os.Stderr, part.Text)
+		}
+	} else {
 		fmt.Fprintf(out, "%s", part.Text)
-	}
-	if idx != nil {
-		*idx++
+		if idx != nil {
+			*idx++
+		}
 	}
 	return nil
 }
@@ -233,7 +227,7 @@ func emitInlineData(out io.Writer, part *genai.Part, outRedirected bool, idx *in
 		return fmt.Errorf("emitInlineData of type %s: %v", part.InlineData.MIMEType, err)
 	}
 	if outRedirected {
-		if isEmpty(out) { // output first image only
+		if idx == nil || *idx == 0 { // no idx counts in emitText on redirect
 			if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 100}); err != nil {
 				return fmt.Errorf("emitInlineData of type %s: %v", part.InlineData.MIMEType, err)
 			}

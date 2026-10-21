@@ -217,32 +217,6 @@ func TestLoadPrompt(t *testing.T) {
 	})
 }
 
-func TestIsEmpty(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "test-empty-*.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	if !isEmpty(tmpFile) {
-		t.Errorf("Expected empty file to be detected as empty")
-	}
-
-	if _, err := tmpFile.WriteString("non-empty"); err != nil {
-		t.Fatal(err)
-	}
-
-	if isEmpty(tmpFile) {
-		t.Errorf("Expected non-empty file to NOT be detected as empty")
-	}
-
-	// Non-*os.File should return false
-	if isEmpty(nil) {
-		t.Errorf("Expected non-*os.File to return false")
-	}
-}
-
 func TestIsValidPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	if !isValidPath(tmpDir) {

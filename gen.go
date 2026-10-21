@@ -614,7 +614,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 				}
 			}
 
-			if mp != nil {
+			if mp != nil && !(g.params.OutRedirected && g.params.ImgModality) {
 				fmt.Fprint(g.out, mp.flush(g.params.OutRedirected))
 			}
 
