@@ -227,4 +227,3 @@ func (p *MarkdownParser) flush(isRedirected bool) string {
 
 func infos(s string) string     { return colorInfo + s + ansiReset }
 func important(s string) string { return colorImportant + s + ansiReset }
-func roles(s string) string     { return colorRole + s + ansiReset }

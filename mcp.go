@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,8 +49,9 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 		return nil
 	}
 
+	var spinner *Spinner
 	if !params.OutRedirected && !params.Verbose {
-		spinner := NewSpinner("%s")
+		spinner = NewSpinner("%s")
 		spinner.Start()
 		defer spinner.Stop()
 	}
@@ -99,8 +101,17 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 			defer cancel()
 
 			if isStreamableServer {
+				httpClient := &http.Client{
+					Transport: http.DefaultTransport.(*http.Transport).Clone(),
+				}
+				oauthHandler, oerr := buildOAuthHandler(srvStr, httpClient, spinner)
+				if oerr != nil {
+					return fmt.Errorf("failed to setup OAuth for MCP server '%s': %v", srvStr, oerr)
+				}
 				session, connErr = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
-					Endpoint: srvStr,
+					Endpoint:     srvStr,
+					HTTPClient:   httpClient,
+					OAuthHandler: oauthHandler,
 				}, nil)
 			} else {
 				parts, err := shlex.Split(srvStr)

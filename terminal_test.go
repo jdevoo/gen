@@ -266,7 +266,4 @@ func TestColorHelpers(t *testing.T) {
 	if actual := important("important"); actual != colorImportant+"important"+ansiReset {
 		t.Errorf("important() = %q, expected %q", actual, colorImportant+"important"+ansiReset)
 	}
-	if actual := roles("role"); actual != colorRole+"role"+ansiReset {
-		t.Errorf("roles() = %q, expected %q", actual, colorRole+"role"+ansiReset)
-	}
 }
