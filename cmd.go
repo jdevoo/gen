@@ -202,15 +202,16 @@ func emitUsage(ctx context.Context, out io.Writer, emitTools bool) {
 // validateEnv checks for required Google Cloud/AI Studio credentials.
 func validateEnv() error {
 	hasCloudProject := os.Getenv("GOOGLE_CLOUD_PROJECT") != ""
-	hasAPIKey := os.Getenv("GOOGLE_API_KEY") != ""
+	hasAPIKey := os.Getenv("GOOGLE_API_KEY") != "" || os.Getenv("GEMINI_API_KEY") != ""
+	hasLocation := os.Getenv("GOOGLE_CLOUD_LOCATION") != "" || os.Getenv("GOOGLE_CLOUD_REGION") != ""
 
 	if !hasCloudProject && !hasAPIKey {
-		return fmt.Errorf("neither GOOGLE_CLOUD_PROJECT nor GOOGLE_API_KEY is set")
+		return fmt.Errorf("neither GOOGLE_CLOUD_PROJECT nor GOOGLE_API_KEY (or GEMINI_API_KEY) is set")
 	}
 
 	if hasCloudProject {
-		if os.Getenv("GOOGLE_CLOUD_LOCATION") == "" {
-			return fmt.Errorf("GOOGLE_CLOUD_LOCATION must be set when using GOOGLE_CLOUD_PROJECT")
+		if !hasLocation {
+			return fmt.Errorf("GOOGLE_CLOUD_LOCATION or GOOGLE_CLOUD_REGION must be set when using GOOGLE_CLOUD_PROJECT")
 		}
 		if hasAPIKey && os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "" {
 			return fmt.Errorf("set GOOGLE_GENAI_USE_VERTEXAI to 'true' or 'false' when both API Key and Project ID are present")

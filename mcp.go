@@ -74,9 +74,8 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 
 			options := mcp.ClientOptions{
 				Capabilities: &mcp.ClientCapabilities{
-					RootsV2:     &mcp.RootCapabilities{ListChanged: false},
-					Elicitation: &mcp.ElicitationCapabilities{},
-					Sampling:    &mcp.SamplingCapabilities{},
+					RootsV2:  &mcp.RootCapabilities{ListChanged: false},
+					Sampling: &mcp.SamplingCapabilities{},
 				},
 				CreateMessageHandler: genSampling,
 				ElicitationHandler:   genElicitation,
@@ -149,14 +148,12 @@ func registerMCPTools(ctx context.Context, config *genai.GenerateContentConfig) 
 	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
 	for _, sess := range params.MCPSessions {
-		ltr, err := sess.ListTools(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("failed to list MCP tools: %v", err)
-		}
-
 		// TODO risk of name collision
 		mcpDecls := []*genai.FunctionDeclaration{}
-		for _, tool := range ltr.Tools {
+		for tool, err := range sess.Tools(ctx, nil) {
+			if err != nil {
+				return fmt.Errorf("failed to list MCP tools: %v", err)
+			}
 			params.ToolRegistry[tool.Name] = sess
 			decl := &genai.FunctionDeclaration{
 				Name:        tool.Name,
@@ -337,6 +334,10 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 		"output": "SUCCESS",
 	}
 
+	if ctr.StructuredContent != nil {
+		resMap["result"] = ctr.StructuredContent
+	}
+
 	if len(textStrings) > 0 {
 		var parsedItems []any
 		for _, s := range textStrings {
@@ -361,7 +362,7 @@ func invokeMCPTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 				resMap["text"] = textStrings
 			}
 		}
-	} else {
+	} else if ctr.StructuredContent == nil {
 		resMap["text"] = ""
 	}
 
@@ -450,6 +451,10 @@ func genElicitation(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitRes
 	res := mcp.ElicitResult{
 		Action:  "accept",
 		Content: map[string]any{},
+	}
+
+	if (*req.Params).RequestedSchema == nil {
+		return nil, fmt.Errorf("elicitation request has no schema (mode: %s, url: %s)", (*req.Params).Mode, (*req.Params).URL)
 	}
 
 	schemaMap, ok := (*req.Params).RequestedSchema.(map[string]any)

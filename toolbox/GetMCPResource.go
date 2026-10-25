@@ -10,47 +10,40 @@ import (
 )
 
 type GetMCPResourceArgs struct {
-	Name string `json:"name"`
+	URI string `json:"uri"`
 }
 
-// GetResource retrieves a specific resource by name from available MCP servers.
+// GetMCPResource retrieves a specific resource by URI from available MCP servers.
 func (t Tool) GetMCPResource(ctx context.Context, args GetMCPResourceArgs) (*genai.Part, error) {
 	params, ok := ctx.Value(core.ParamsKey).(*core.Parameters)
 	if !ok {
 		return nil, fmt.Errorf("GetResource: params not found in context")
 	}
 	for _, sess := range params.MCPSessions {
-		for r, err := range sess.Resources(ctx, nil) {
-			if err != nil {
-				continue // skip this MCP server
+		res, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{
+			URI: args.URI,
+		})
+		if err != nil {
+			continue // try next session
+		}
+		var textStrings []string
+		var parts []*genai.FunctionResponsePart
+		for _, c := range res.Contents {
+			if len(c.Text) > 0 {
+				textStrings = append(textStrings, c.Text)
 			}
-			if args.Name == r.URI {
-				res, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{
-					URI: args.Name,
-				})
-				if err != nil {
-					return nil, err
-				}
-				var textStrings []string
-				var parts []*genai.FunctionResponsePart
-				for _, c := range res.Contents {
-					if len(c.Text) > 0 {
-						textStrings = append(textStrings, c.Text)
-					}
-					if len(c.Blob) > 0 {
-						parts = append(parts, genai.NewFunctionResponsePartFromBytes(c.Blob, c.MIMEType))
-					}
-				}
-				return genai.NewPartFromFunctionResponseWithParts(
-					"GetMCPResource",
-					map[string]any{
-						"output": "SUCCESS",
-						"text":   textStrings,
-					},
-					parts,
-				), nil
+			if len(c.Blob) > 0 {
+				parts = append(parts, genai.NewFunctionResponsePartFromBytes(c.Blob, c.MIMEType))
 			}
 		}
+		return genai.NewPartFromFunctionResponseWithParts(
+			"GetMCPResource",
+			map[string]any{
+				"output": "SUCCESS",
+				"text":   textStrings,
+			},
+			parts,
+		), nil
 	}
-	return nil, fmt.Errorf("GetMCPResource: '%s' not found", args.Name)
+	return nil, fmt.Errorf("GetMCPResource: '%s' not found", args.URI)
 }

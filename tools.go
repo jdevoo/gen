@@ -33,9 +33,11 @@ func goTypeToGenAIType(k reflect.Kind) (genai.Type, error) {
 func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, error) {
 	fieldType := field.Type
 	isOptional := false
+	isNullable := false
 
 	if fieldType.Kind() == reflect.Ptr {
 		isOptional = true
+		isNullable = true
 		fieldType = fieldType.Elem()
 	}
 
@@ -59,7 +61,7 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 
 	return &genai.Schema{
 		Type:     genaiType,
-		Nullable: &isOptional,
+		Nullable: &isNullable,
 	}, name, isOptional, nil
 }
 
@@ -80,11 +82,10 @@ func knownTools(ctx context.Context) (string, error) {
 		if sess == nil {
 			return "", fmt.Errorf("knownTools: nil session pointer found")
 		}
-		ltr, err := sess.ListTools(ctx, nil)
-		if err != nil {
-			break
-		}
-		for _, tool := range ltr.Tools {
+		for tool, err := range sess.Tools(ctx, nil) {
+			if err != nil {
+				break
+			}
 			res = append(res, sigMCPTool(tool))
 		}
 	}
