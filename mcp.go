@@ -73,6 +73,7 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 			var connErr error
 
 			options := mcp.ClientOptions{
+				// deprecated under SEP-2577 but supported during the transition window
 				Capabilities: &mcp.ClientCapabilities{
 					RootsV2:  &mcp.RootCapabilities{ListChanged: false},
 					Sampling: &mcp.SamplingCapabilities{},
@@ -81,6 +82,7 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 				ElicitationHandler:   genElicitation,
 			}
 			if params.Verbose && params.Tool {
+				// deprecated under SEP-2577 but kept for verbose output
 				options.LoggingMessageHandler = genLoggingHandler
 			}
 
@@ -425,24 +427,83 @@ func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.Creat
 
 	client, err := core.GetGenClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("genSampling: failed to create genai client")
+		return nil, fmt.Errorf("genSampling: failed to get genai client: %w", err)
 	}
 
-	if len((*req.Params).Messages) == 0 || (*req.Params).Messages[0].Content == nil {
+	p := req.Params
+	if p == nil || len(p.Messages) == 0 {
 		return nil, fmt.Errorf("genSampling: prompt missing")
 	}
-	prompt := genai.Text((*req.Params).Messages[0].Content.(*mcp.TextContent).Text)
 
-	res, err := client.Models.GenerateContent(ctx, params.GenModel, prompt, nil)
+	var contents []*genai.Content
+	for _, msg := range p.Messages {
+		if msg == nil || msg.Content == nil {
+			continue
+		}
+		role := genai.Role(genai.RoleUser)
+		if msg.Role == "assistant" {
+			role = genai.Role(genai.RoleModel)
+		}
+		var parts []*genai.Part
+		switch c := msg.Content.(type) {
+		case *mcp.TextContent:
+			parts = append(parts, genai.NewPartFromText(c.Text))
+		case *mcp.ImageContent:
+			parts = append(parts, genai.NewPartFromBytes(c.Data, c.MIMEType))
+		case *mcp.EmbeddedResource:
+			if c.Resource != nil {
+				if len(c.Resource.Text) > 0 {
+					parts = append(parts, genai.NewPartFromText(c.Resource.Text))
+				} else if len(c.Resource.Blob) > 0 {
+					parts = append(parts, genai.NewPartFromBytes(c.Resource.Blob, c.Resource.MIMEType))
+				}
+			}
+		}
+		if len(parts) > 0 {
+			contents = append(contents, genai.NewContentFromParts(parts, role))
+		}
+	}
+
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("genSampling: no valid text or media parts found in messages")
+	}
+
+	modelName := params.GenModel
+	cfg := &genai.GenerateContentConfig{}
+	if p.SystemPrompt != "" {
+		cfg.SystemInstruction = genai.NewContentFromText(p.SystemPrompt, genai.RoleUser)
+	}
+	if p.Temperature > 0 {
+		t := float32(p.Temperature)
+		cfg.Temperature = &t
+	}
+	if p.MaxTokens > 0 {
+		cfg.MaxOutputTokens = int32(p.MaxTokens)
+	}
+	if len(p.StopSequences) > 0 {
+		cfg.StopSequences = p.StopSequences
+	}
+
+	res, err := client.Models.GenerateContent(ctx, modelName, contents, cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	var outText strings.Builder
+	if len(res.Candidates) > 0 && res.Candidates[0].Content != nil {
+		for _, pt := range res.Candidates[0].Content.Parts {
+			if !pt.Thought && pt.Text != "" {
+				outText.WriteString(pt.Text)
+			}
+		}
+	}
+
 	return &mcp.CreateMessageResult{
 		Content: &mcp.TextContent{
-			Text: string(res.Candidates[0].Content.Parts[0].Text),
+			Text: outText.String(),
 		},
-		Role: "assistant",
+		Model: modelName,
+		Role:  "assistant",
 	}, nil
 }
 

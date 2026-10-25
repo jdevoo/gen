@@ -102,9 +102,16 @@ Query digest and read out loud using TTS system
 
 ## Model Context Protocol
 The following client capabilities are supported:
-- [x] current working directory added as root
-- [x] sampling using the model defined by `-m`
-- [x] elicitation looks for inputs defined by `-p`
+- [x] tool discovery and invocation
+- [x] stdio and streamable HTTP with OAuth 2.0 PKCE / DCR
+- [x] elicitation with input requests via `-p key=val`
+- [x] resources & prompts
+- [x] multimodal content (SEP-2106)
+
+Legacy Compatibility (SEP-2577)
+- [x] current working directory advertised as root
+- [x] sampling: message creation using model defined by `-m`
+- [x] logging: server message forwarding under `-V`
 
 ## Usage
 ```
