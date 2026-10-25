@@ -55,7 +55,7 @@ type Serializable interface {
 // Serialize returns the serialized literal string.
 func (l Literal) Serialize() string {
 	s := fmt.Sprint(l.Value)
-	s = strings.Replace(s, `"""`, `\"\"\"`, -1)
+	s = strings.ReplaceAll(s, `"""`, `\"\"\"`)
 	if l.LanguageTag != "" {
 		return strings.Join([]string{`"""`, s, `"""@`, l.LanguageTag}, "")
 	}
@@ -72,10 +72,10 @@ func (p Param) Serialize() string {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
 		return fmt.Sprint(v)
 	case []byte:
-		s := strings.Replace(string(v), `"""`, `\"\"\"`, -1)
+		s := strings.ReplaceAll(string(v), `"""`, `\"\"\"`)
 		return strings.Join([]string{`"""`, s, `"""`}, "")
 	case string:
-		s := strings.Replace(v, `"""`, `\"\"\"`, -1)
+		s := strings.ReplaceAll(v, `"""`, `\"\"\"`)
 		if p.LanguageTag != "" {
 			return strings.Join([]string{`"""`, s, `"""@`, p.LanguageTag}, "")
 		}
@@ -86,14 +86,14 @@ func (p Param) Serialize() string {
 	case time.Time:
 		return v.Format(dateTimeFormat)
 	case DataType:
-		s := strings.Replace(fmt.Sprint(v.Value), `"""`, `\"\"\"`, -1)
+		s := strings.ReplaceAll(fmt.Sprint(v.Value), `"""`, `\"\"\"`)
 		return strings.Join([]string{`"""`, s, `"""^^`, v.Ref()}, "")
 	case IRIRef:
 		return v.Ref()
 	case Serializable:
 		return v.Serialize()
 	default:
-		s := strings.Replace(fmt.Sprint(v), `"""`, `\"\"\"`, -1)
+		s := strings.ReplaceAll(fmt.Sprint(v), `"""`, `\"\"\"`)
 		if p.LanguageTag != "" {
 			return strings.Join([]string{`"""`, s, `"""@`, p.LanguageTag}, "")
 		}

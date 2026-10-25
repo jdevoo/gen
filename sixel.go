@@ -137,19 +137,19 @@ func (e *Encoder) Encode(img image.Image) error {
 
 	// Encode image
 	tmpBuf := make([]byte, width*nc)
-	for line := 0; line < (height+5)/6; line++ {
+	for line := range (height + 5) / 6 {
 		if line > 0 {
 			buf.WriteString(GraphicsNextLine)
 		}
 
 		cset := make([]bool, nc) // reset cset for this slice
 
-		for p := 0; p < 6; p++ {
+		for p := range 6 {
 			y := line*6 + p
 			if y >= height {
 				break // height is not multiple of 6
 			}
-			for x := 0; x < width; x++ {
+			for x := range width {
 				_, _, _, alpha := img.At(x, y).RGBA()
 				if alpha > 0 {
 					idx := paletted.ColorIndexAt(x, y) + 1

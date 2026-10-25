@@ -207,7 +207,7 @@ func TestParse_Concurrency(t *testing.T) {
 	done := make(chan bool)
 
 	worker := func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			_ = parser.parse("test **concurrency** stuff")
 		}
 		done <- true

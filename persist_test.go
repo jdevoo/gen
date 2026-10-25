@@ -33,7 +33,7 @@ func TestWriteCloseRead(t *testing.T) {
 
 	segs := d.Segments()
 	for i := 1; i <= segs; i++ {
-		for j := 0; j < 10; j++ {
+		for j := range 10 {
 			rec := fmt.Sprintf("rec_%d", j+1)
 			data, err := p.Read(uint64(i), uint64(j))
 			if err != nil {

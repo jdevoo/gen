@@ -658,11 +658,11 @@ func describeElicitField(name string, schema map[string]any) string {
 	}
 
 	var limits []string
-	if min, ok := schema["minimum"]; ok {
-		limits = append(limits, fmt.Sprintf("min: %v", min))
+	if minVal, ok := schema["minimum"]; ok {
+		limits = append(limits, fmt.Sprintf("min: %v", minVal))
 	}
-	if max, ok := schema["maximum"]; ok {
-		limits = append(limits, fmt.Sprintf("max: %v", max))
+	if maxVal, ok := schema["maximum"]; ok {
+		limits = append(limits, fmt.Sprintf("max: %v", maxVal))
 	}
 	if minItems, ok := schema["minItems"]; ok {
 		limits = append(limits, fmt.Sprintf("minItems: %v", minItems))

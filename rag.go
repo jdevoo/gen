@@ -127,10 +127,10 @@ func deserializeDoc(data []byte) (Document, error) {
 			return doc, fmt.Errorf("error reading compressed content: %v", err)
 		}
 		r, err := gzip.NewReader(bytes.NewReader(contentBytes))
-		defer r.Close()
 		if err != nil {
 			return doc, fmt.Errorf("error creating gzip reader: %v", err)
 		}
+		defer r.Close()
 		var decompressedContent bytes.Buffer
 		if _, err := io.Copy(&decompressedContent, r); err != nil {
 			return doc, fmt.Errorf("error decompressing content: %v", err)
@@ -145,7 +145,7 @@ func deserializeDoc(data []byte) (Document, error) {
 		return doc, fmt.Errorf("error reading metadata length: %v", err)
 	}
 	doc.metadata = map[string]string{}
-	for i := 0; i < int(metadataLength); i++ {
+	for range metadataLength {
 		var keySize, valueSize uint64
 		if err := binary.Read(buf, binary.LittleEndian, &keySize); err != nil {
 			return doc, fmt.Errorf("error reading key size: %v", err)

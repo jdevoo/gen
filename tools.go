@@ -16,7 +16,7 @@ import (
 // typeToGenAISchema recursively converts a Go type into a genai Schema.
 func typeToGenAISchema(t reflect.Type) (*genai.Schema, error) {
 	isNullable := false
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		isNullable = true
 		t = t.Elem()
 	}
@@ -44,8 +44,7 @@ func typeToGenAISchema(t reflect.Type) (*genai.Schema, error) {
 	case reflect.Struct:
 		propMap := make(map[string]*genai.Schema)
 		var req []string
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+		for _, field := range reflect.VisibleFields(t) {
 			if !field.IsExported() {
 				continue
 			}
@@ -72,7 +71,7 @@ func typeToGenAISchema(t reflect.Type) (*genai.Schema, error) {
 // buildFieldSchema parses a struct field tag and type to construct a genai Schema.
 func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, error) {
 	fieldType := field.Type
-	isOptional := fieldType.Kind() == reflect.Ptr
+	isOptional := fieldType.Kind() == reflect.Pointer
 
 	name := field.Tag.Get("json")
 	parts := strings.Split(name, ",")
@@ -102,9 +101,9 @@ func knownTools(ctx context.Context) (string, error) {
 	var res []string
 
 	// gen tools
-	genTool := reflect.TypeOf(toolbox.Tool{})
-	for i := 0; i < genTool.NumMethod(); i++ {
-		res = append(res, sigGenTool(genTool.Method(i)))
+	genTool := reflect.TypeFor[toolbox.Tool]()
+	for m := range genTool.Methods() {
+		res = append(res, sigGenTool(m))
 	}
 
 	// MCP tools
@@ -132,11 +131,13 @@ func sigGenTool(m reflect.Method) string {
 	if t.NumIn() > 1 {
 		argType := t.In(1)
 		if argType.Kind() == reflect.Struct {
-			for j := 0; j < argType.NumField(); j++ {
-				field := argType.Field(j)
+			for _, field := range reflect.VisibleFields(argType) {
+				if !field.IsExported() {
+					continue
+				}
 				fieldType := field.Type
 				isOptional := false
-				if fieldType.Kind() == reflect.Ptr {
+				if fieldType.Kind() == reflect.Pointer {
 					isOptional = true
 					fieldType = fieldType.Elem()
 				}
@@ -180,12 +181,10 @@ func sigGenTool(m reflect.Method) string {
 
 // registerTools declares functions of type Tool in genai.FunctionDeclaration format.
 func registerGenTools(config *genai.GenerateContentConfig) error {
-	genTool := reflect.TypeOf(toolbox.Tool{})
-	n := genTool.NumMethod()
-	genDecls := make([]*genai.FunctionDeclaration, n)
+	genTool := reflect.TypeFor[toolbox.Tool]()
+	var genDecls []*genai.FunctionDeclaration
 
-	for i := 0; i < n; i++ {
-		m := genTool.Method(i)
+	for m := range genTool.Methods() {
 		f := reflect.ValueOf(toolbox.Tool{}).MethodByName(m.Name)
 		t := f.Type()
 		argMap := map[string]*genai.Schema{}
@@ -194,8 +193,11 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 		// first tool arg must be context.Context, check if second args
 		if t.NumIn() > 1 {
 			argType := t.In(1)
-			for j := 0; j < argType.NumField(); j++ {
-				schema, name, isOptional, err := buildFieldSchema(argType.Field(j))
+			for _, field := range reflect.VisibleFields(argType) {
+				if !field.IsExported() {
+					continue
+				}
+				schema, name, isOptional, err := buildFieldSchema(field)
 				if err != nil {
 					return fmt.Errorf("tool '%s': %v", m.Name, err)
 				}
@@ -214,7 +216,7 @@ func registerGenTools(config *genai.GenerateContentConfig) error {
 				Required:   req,
 			}
 		}
-		genDecls[i] = decl
+		genDecls = append(genDecls, decl)
 	}
 
 	if len(genDecls) > 0 {
@@ -244,8 +246,10 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 		}
 
 		structVal := reflect.New(structType).Elem()
-		for i := 0; i < structType.NumField(); i++ {
-			field := structType.Field(i)
+		for _, field := range reflect.VisibleFields(structType) {
+			if !field.IsExported() {
+				continue
+			}
 			name := field.Tag.Get("json")
 			parts := strings.Split(name, ",")
 			name = parts[0]
@@ -253,7 +257,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 				name = field.Name
 			}
 			isOptional := false
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				isOptional = true
 			}
 			if len(parts) > 1 {
@@ -275,10 +279,10 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 			}
 
 			// Dereference / assign values to fields
-			targetField := structVal.Field(i)
+			targetField := structVal.FieldByIndex(field.Index)
 			fieldType := field.Type
 			var val reflect.Value
-			isPtr := fieldType.Kind() == reflect.Ptr
+			isPtr := fieldType.Kind() == reflect.Pointer
 			var baseType reflect.Type
 			if isPtr {
 				baseType = fieldType.Elem()
@@ -372,9 +376,8 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 
 	vals := f.Call(args)
 	if !vals[1].IsNil() {
-		var paramErr *core.ParamError
 		err := vals[1].Interface().(error)
-		if errors.As(err, &paramErr) {
+		if paramErr, ok := errors.AsType[*core.ParamError](err); ok {
 			return nil, paramErr
 		}
 		return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{

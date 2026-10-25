@@ -25,7 +25,7 @@ type ComplexArgs struct {
 }
 
 func TestBuildFieldSchema_PrimitivesAndComplexTypes(t *testing.T) {
-	structType := reflect.TypeOf(ComplexArgs{})
+	structType := reflect.TypeFor[ComplexArgs]()
 
 	tests := []struct {
 		fieldName    string
@@ -137,7 +137,7 @@ func TestBuildFieldSchema_UnsupportedKind(t *testing.T) {
 	type InvalidStruct struct {
 		Ch chan int `json:"ch"`
 	}
-	field, _ := reflect.TypeOf(InvalidStruct{}).FieldByName("Ch")
+	field, _ := reflect.TypeFor[InvalidStruct]().FieldByName("Ch")
 	_, _, _, err := buildFieldSchema(field)
 	if err == nil {
 		t.Fatalf("expected error for chan kind, got nil")

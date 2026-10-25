@@ -56,9 +56,7 @@ func parseDSN(dsn string) (driver string, connStr string, err error) {
 	switch {
 	case strings.HasPrefix(trimmed, "sqlite:"):
 		rawPath := strings.TrimPrefix(trimmed, "sqlite:")
-		if strings.HasPrefix(rawPath, "//") {
-			rawPath = strings.TrimPrefix(rawPath, "//")
-		}
+		rawPath = strings.TrimPrefix(rawPath, "//")
 		return "sqlite", rawPath, nil
 	case strings.HasPrefix(trimmed, "postgres://"),
 		strings.HasPrefix(trimmed, "postgresql://"):
