@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -12,34 +13,66 @@ import (
 	"google.golang.org/genai"
 )
 
-// goTypeToGenAIType maps Go basic types to GenAI schema types.
-func goTypeToGenAIType(k reflect.Kind) (genai.Type, error) {
-	switch k {
+// typeToGenAISchema recursively converts a Go type into a genai Schema.
+func typeToGenAISchema(t reflect.Type) (*genai.Schema, error) {
+	isNullable := false
+	if t.Kind() == reflect.Ptr {
+		isNullable = true
+		t = t.Elem()
+	}
+
+	switch t.Kind() {
 	case reflect.String:
-		return genai.TypeString, nil
+		return &genai.Schema{Type: genai.TypeString, Nullable: &isNullable}, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return genai.TypeInteger, nil
+		return &genai.Schema{Type: genai.TypeInteger, Nullable: &isNullable}, nil
 	case reflect.Float32, reflect.Float64:
-		return genai.TypeNumber, nil
+		return &genai.Schema{Type: genai.TypeNumber, Nullable: &isNullable}, nil
 	case reflect.Bool:
-		return genai.TypeBoolean, nil
+		return &genai.Schema{Type: genai.TypeBoolean, Nullable: &isNullable}, nil
+	case reflect.Slice:
+		itemSchema, err := typeToGenAISchema(t.Elem())
+		if err != nil {
+			return nil, err
+		}
+		return &genai.Schema{
+			Type:     genai.TypeArray,
+			Items:    itemSchema,
+			Nullable: &isNullable,
+		}, nil
+	case reflect.Struct:
+		propMap := make(map[string]*genai.Schema)
+		var req []string
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			fSchema, fName, fOptional, err := buildFieldSchema(field)
+			if err != nil {
+				return nil, err
+			}
+			propMap[fName] = fSchema
+			if !fOptional {
+				req = append(req, fName)
+			}
+		}
+		return &genai.Schema{
+			Type:       genai.TypeObject,
+			Properties: propMap,
+			Required:   req,
+			Nullable:   &isNullable,
+		}, nil
 	default:
-		return "", fmt.Errorf("unsupported kind: %s", k)
+		return nil, fmt.Errorf("unsupported type: %s", t)
 	}
 }
 
-// buildFieldSchema parses a struct field tag and type to construct a GenAI schema.
+// buildFieldSchema parses a struct field tag and type to construct a genai Schema.
 func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, error) {
 	fieldType := field.Type
-	isOptional := false
-	isNullable := false
-
-	if fieldType.Kind() == reflect.Ptr {
-		isOptional = true
-		isNullable = true
-		fieldType = fieldType.Elem()
-	}
+	isOptional := fieldType.Kind() == reflect.Ptr
 
 	name := field.Tag.Get("json")
 	parts := strings.Split(name, ",")
@@ -54,15 +87,12 @@ func buildFieldSchema(field reflect.StructField) (*genai.Schema, string, bool, e
 		}
 	}
 
-	genaiType, err := goTypeToGenAIType(fieldType.Kind())
+	schema, err := typeToGenAISchema(fieldType)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("field '%s': %v", field.Name, err)
 	}
 
-	return &genai.Schema{
-		Type:     genaiType,
-		Nullable: &isNullable,
-	}, name, isOptional, nil
+	return schema, name, isOptional, nil
 }
 
 // knownTools returns string of comma-separated function names.
@@ -129,6 +159,10 @@ func sigGenTool(m reflect.Method) string {
 				var paramStr string
 				if fieldType.Kind() == reflect.String {
 					paramStr = name
+				} else if fieldType.Kind() == reflect.Slice {
+					paramStr = fmt.Sprintf("%s ([]%s)", name, fieldType.Elem().Kind().String())
+				} else if fieldType.Kind() == reflect.Struct {
+					paramStr = fmt.Sprintf("%s (object)", name)
 				} else {
 					paramStr = fmt.Sprintf("%s (%s)", name, fieldType.Kind().String())
 				}
@@ -145,7 +179,6 @@ func sigGenTool(m reflect.Method) string {
 }
 
 // registerTools declares functions of type Tool in genai.FunctionDeclaration format.
-// TODO add support for arrays and objects
 func registerGenTools(config *genai.GenerateContentConfig) error {
 	genTool := reflect.TypeOf(toolbox.Tool{})
 	n := genTool.NumMethod()
@@ -241,7 +274,7 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 				continue
 			}
 
-			// Dereference / assign values to fields recursively
+			// Dereference / assign values to fields
 			targetField := structVal.Field(i)
 			fieldType := field.Type
 			var val reflect.Value
@@ -256,6 +289,20 @@ func invokeGenTool(ctx context.Context, fc *genai.FunctionCall) (*genai.Part, er
 			}
 
 			switch baseType.Kind() {
+			case reflect.Slice, reflect.Struct:
+				jsonBytes, err := json.Marshal(argVal)
+				if err != nil {
+					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+						"error": fmt.Sprintf("%s error marshaling parameter '%s': %v", fc.Name, name, err),
+					}), nil
+				}
+				targetPtr := reflect.New(baseType)
+				if err := json.Unmarshal(jsonBytes, targetPtr.Interface()); err != nil {
+					return genai.NewPartFromFunctionResponse(fc.Name, map[string]any{
+						"error": fmt.Sprintf("%s error unmarshaling parameter '%s' as %s: %v", fc.Name, name, baseType, err),
+					}), nil
+				}
+				val.Set(targetPtr.Elem())
 			case reflect.String:
 				if s, ok := argVal.(string); ok {
 					val.SetString(s)
