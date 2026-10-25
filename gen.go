@@ -317,6 +317,12 @@ func (g *Generator) buildConfig(config *genai.GenerateContentConfig) error {
 			&genai.Tool{URLContext: &genai.URLContext{}},
 		)
 	}
+	if g.params.Tool && g.params.GoogleSearch {
+		if config.ToolConfig == nil {
+			config.ToolConfig = &genai.ToolConfig{}
+		}
+		config.ToolConfig.IncludeServerSideToolInvocations = genai.Ptr(true)
+	}
 	if g.params.Unsafe {
 		config.SafetySettings = []*genai.SafetySetting{
 			{
@@ -450,7 +456,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 								streamAcc = append(streamAcc, p)
 							}
 							continue
-						} else if p.FunctionCall != nil || p.FileData != nil || p.ExecutableCode != nil || p.CodeExecutionResult != nil {
+						} else if p.FunctionCall != nil || p.FileData != nil || p.ExecutableCode != nil || p.CodeExecutionResult != nil || p.ToolCall != nil || p.ToolResponse != nil {
 							streamAcc = append(streamAcc, p)
 						}
 						partsRetained = append(partsRetained, p)
@@ -607,6 +613,7 @@ func (g *Generator) generateContent(config *genai.GenerateContentConfig) error {
 							config.ResponseJsonSchema = g.schema
 						}
 						config.Tools = nil
+						config.ToolConfig = nil
 					}
 					// carry forward function response to next iteration
 					g.parts = append(g.parts, resCand.Content.Parts...)

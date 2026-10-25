@@ -412,6 +412,8 @@ func TestIsValidPart(t *testing.T) {
 		{"function call valid", &genai.Part{FunctionCall: &genai.FunctionCall{Name: "my_func"}}, true},
 		{"function response empty", &genai.Part{FunctionResponse: &genai.FunctionResponse{}}, false},
 		{"function response valid", &genai.Part{FunctionResponse: &genai.FunctionResponse{Name: "my_func"}}, true},
+		{"tool call valid", &genai.Part{ToolCall: &genai.ToolCall{ID: "call_1"}}, true},
+		{"tool response valid", &genai.Part{ToolResponse: &genai.ToolResponse{ID: "call_1"}}, true},
 		{"code exec result empty", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{}}, false},
 		{"code exec result valid output", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{Output: "ok"}}, true},
 		{"code exec result valid outcome", &genai.Part{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: "ok"}}, true},

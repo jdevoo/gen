@@ -177,6 +177,12 @@ func isValidPart(p *genai.Part) bool {
 	if p.FunctionResponse != nil && p.FunctionResponse.Name != "" {
 		return true
 	}
+	if p.ToolCall != nil {
+		return true
+	}
+	if p.ToolResponse != nil {
+		return true
+	}
 	if p.CodeExecutionResult != nil && (p.CodeExecutionResult.Outcome != "" || p.CodeExecutionResult.Output != "") {
 		return true
 	}
