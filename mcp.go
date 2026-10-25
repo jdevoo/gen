@@ -423,7 +423,7 @@ func convertMCPType(val string, t string) (any, error) {
 func genSampling(ctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
 	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 
-	client, err := genai.NewClient(ctx, nil)
+	client, err := core.GetGenClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("genSampling: failed to create genai client")
 	}

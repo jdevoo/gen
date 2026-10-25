@@ -10,7 +10,7 @@ import (
 
 // FlushCache deletes all files previously uploaded to the Gemini Files API cache.
 func (t Tool) FlushCache(ctx context.Context) (*genai.Part, error) {
-	client, err := genai.NewClient(ctx, nil)
+	client, err := core.GetGenClient(ctx)
 	if err != nil {
 		return genai.NewPartFromFunctionResponse("FlushCache", map[string]any{
 			"output": "ERROR",

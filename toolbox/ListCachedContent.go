@@ -11,7 +11,7 @@ import (
 
 // ListCachedContent lists files previously uploaded to the Gemini Files API cache.
 func (t Tool) ListCachedContent(ctx context.Context) (*genai.Part, error) {
-	client, err := genai.NewClient(ctx, nil)
+	client, err := core.GetGenClient(ctx)
 	if err != nil {
 		return nil, err
 	}

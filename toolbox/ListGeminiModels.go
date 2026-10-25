@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jdevoo/gen/core"
 	"google.golang.org/genai"
 )
 
 // GetKnownGeminiModels retrieves the list of available Gemini models.
 func (t Tool) ListGeminiModels(ctx context.Context) (*genai.Part, error) {
 	var res []string
-	client, err := genai.NewClient(ctx, nil)
+	client, err := core.GetGenClient(ctx)
 	if err != nil {
 		return nil, err
 	}

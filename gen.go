@@ -44,7 +44,7 @@ func newGenerator(ctx context.Context, in io.Reader, out io.Writer) (*Generator,
 	params, _ := ctx.Value(core.ParamsKey).(*core.Parameters)
 	keyVals, _ := ctx.Value(core.KeyValsKey).(core.ParamMap)
 
-	client, err := genai.NewClient(ctx, nil)
+	client, err := core.GetGenClient(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -57,7 +57,7 @@ func run(ctx context.Context) error {
 		return nil
 	}
 
-	defer cleanup(params)
+	defer cleanup(ctx, params)
 
 	// store keyVals and params in context
 	ctx = context.WithValue(ctx, core.KeyValsKey, keyVals)
@@ -88,6 +88,12 @@ func run(ctx context.Context) error {
 	if err := validateEnv(); err != nil {
 		return fmt.Errorf("environment error: %v", err)
 	}
+
+	client, err := genai.NewClient(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create GenAI client: %v", err)
+	}
+	ctx = context.WithValue(ctx, core.ClientKey, client)
 
 	if err := genContent(ctx, os.Stdin, os.Stdout); err != nil {
 		return fmt.Errorf("generation error: %v", err)
@@ -220,7 +226,7 @@ func validateEnv() error {
 	return nil
 }
 
-func cleanup(params *core.Parameters) {
+func cleanup(ctx context.Context, params *core.Parameters) {
 	// close MCP sessions
 	for _, session := range params.MCPSessions {
 		if session != nil {
@@ -229,21 +235,22 @@ func cleanup(params *core.Parameters) {
 	}
 	// delete uploaded files
 	if !params.Cache && len(params.FileURIs) > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		client, err := genai.NewClient(ctx, nil)
+		client, err := core.GetGenClient(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cleanup: failed to create client %v\n", err)
+			return
 		}
 		for _, fileURI := range params.FileURIs {
 			if isYouTubeURL(fileURI) {
 				continue
 			}
-			_, err := client.Files.Delete(ctx, fileURI, nil)
+			_, err := client.Files.Delete(cleanupCtx, fileURI, nil)
 			if err != nil {
 				select {
-				case <-ctx.Done():
-					fmt.Fprintf(os.Stderr, "cancel during cleanup %s: %v\n", fileURI, ctx.Err())
+				case <-cleanupCtx.Done():
+					fmt.Fprintf(os.Stderr, "cancel during cleanup %s: %v\n", fileURI, cleanupCtx.Err())
 				default:
 					fmt.Fprintf(os.Stderr, "failed to delete %s\n", fileURI)
 				}

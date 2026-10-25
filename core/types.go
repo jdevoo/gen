@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,7 +17,16 @@ const (
 	ParamsKey    ContextKey = "params"
 	KeyValsKey   ContextKey = "keyVals"
 	ElicitErrKey ContextKey = "elicitError"
+	ClientKey    ContextKey = "genClient"
 )
+
+// GetGenClient retrieves the shared *genai.Client from context, or initializes one if absent.
+func GetGenClient(ctx context.Context) (*genai.Client, error) {
+	if client, ok := ctx.Value(ClientKey).(*genai.Client); ok && client != nil {
+		return client, nil
+	}
+	return genai.NewClient(ctx, nil)
+}
 
 // Parameters holds gen flag values as well as Args and MCP sessions.
 type Parameters struct {
