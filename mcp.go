@@ -96,29 +96,39 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 				URI:  "file://" + filepath.ToSlash(cwd),
 			})
 
-			isStreamableServer := strings.HasPrefix(srvStr, "http://") ||
-				strings.HasPrefix(srvStr, "https://")
+			parts, err := shlex.Split(srvStr)
+			if err != nil || len(parts) == 0 {
+				return fmt.Errorf("invalid MCP entry '%s': %v", srvStr, err)
+			}
+
+			endpoint := parts[0]
+			isStreamableServer := strings.HasPrefix(endpoint, "http://") ||
+				strings.HasPrefix(endpoint, "https://")
 			mcpCtx, cancel := context.WithTimeout(gCtx, 30*time.Second)
 			defer cancel()
 
 			if isStreamableServer {
+				var clientID, clientSecret string
+				if len(parts) > 1 {
+					clientID = parts[1]
+				}
+				if len(parts) > 2 {
+					clientSecret = parts[2]
+				}
+
 				httpClient := &http.Client{
 					Transport: http.DefaultTransport.(*http.Transport).Clone(),
 				}
-				oauthHandler, oerr := buildOAuthHandler(srvStr, httpClient, spinner)
+				oauthHandler, oerr := buildOAuthHandler(endpoint, clientID, clientSecret, httpClient, spinner)
 				if oerr != nil {
-					return fmt.Errorf("failed to setup OAuth for MCP server '%s': %v", srvStr, oerr)
+					return fmt.Errorf("failed to setup OAuth for MCP server '%s': %v", endpoint, oerr)
 				}
 				session, connErr = client.Connect(mcpCtx, &mcp.StreamableClientTransport{
-					Endpoint:     srvStr,
+					Endpoint:     endpoint,
 					HTTPClient:   httpClient,
 					OAuthHandler: oauthHandler,
 				}, nil)
 			} else {
-				parts, err := shlex.Split(srvStr)
-				if err != nil || len(parts) == 0 {
-					return fmt.Errorf("invalid MCP command '%s': %v", srvStr, err)
-				}
 				cmdPath, err := exec.LookPath(parts[0])
 				if err != nil {
 					return fmt.Errorf("cannot find MCP server '%s': %v", parts[0], err)
@@ -133,12 +143,14 @@ func initMCPSessions(ctx context.Context, params *core.Parameters) error {
 					Command: cmd,
 				}, nil)
 			}
+
 			if connErr != nil {
 				return fmt.Errorf("MCP connect error: %v", connErr)
 			}
 			mu.Lock()
 			params.MCPSessions = append(params.MCPSessions, session)
 			mu.Unlock()
+
 			return nil
 		})
 	}

@@ -96,8 +96,9 @@ func (c *cachingTokenSource) Token() (*oauth2.Token, error) {
 	return tok, err
 }
 
-// buildOAuthHandler creates an OAuthHandler.
-func buildOAuthHandler(serverURL string, httpClient *http.Client, spinner *Spinner) (auth.OAuthHandler, error) {
+// buildOAuthHandler creates an OAuthHandler configured with pre-registered credentials
+// or Dynamic Client Registration, along with token caching in ~/.cache/gen/mcp_tokens.json.
+func buildOAuthHandler(serverURL, clientID, clientSecret string, httpClient *http.Client, spinner *Spinner) (auth.OAuthHandler, error) {
 	store, err := newTokenStore()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize token store: %w", err)
@@ -170,7 +171,7 @@ func buildOAuthHandler(serverURL string, httpClient *http.Client, spinner *Spinn
 			}
 		}()
 
-		fmt.Fprintf(os.Stderr, "To authorize %s, visit: %s\n", serverURL, args.URL)
+		fmt.Fprintf(os.Stderr, "\nTo authorize %s, visit: %s\n\n", serverURL, args.URL)
 
 		select {
 		case <-fetchCtx.Done():
@@ -188,19 +189,12 @@ func buildOAuthHandler(serverURL string, httpClient *http.Client, spinner *Spinn
 		}
 	}
 
-	handler, err := auth.NewAuthorizationCodeHandler(&auth.AuthorizationCodeHandlerConfig{
+	authCfg := &auth.AuthorizationCodeHandlerConfig{
 		Client:                   httpClient,
 		RedirectURL:              redirectURI,
 		InitialTokenSource:       initialTS,
 		RequestRefreshToken:      true,
 		AuthorizationCodeFetcher: fetcher,
-		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{
-			Metadata: &oauthex.ClientRegistrationMetadata{
-				ClientName:   "gen",
-				RedirectURIs: []string{redirectURI},
-				GrantTypes:   []string{"authorization_code", "refresh_token"},
-			},
-		},
 		NewTokenSource: func(tsCtx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (oauth2.TokenSource, error) {
 			_ = store.Put(serverURL, tok)
 			return &cachingTokenSource{
@@ -209,7 +203,29 @@ func buildOAuthHandler(serverURL string, httpClient *http.Client, spinner *Spinn
 				store:     store,
 			}, nil
 		},
-	})
+	}
+
+	if clientID != "" {
+		prereg := &oauthex.ClientCredentials{
+			ClientID: clientID,
+		}
+		if clientSecret != "" {
+			prereg.ClientSecretAuth = &oauthex.ClientSecretAuth{
+				ClientSecret: clientSecret,
+			}
+		}
+		authCfg.PreregisteredClient = prereg
+	} else {
+		authCfg.DynamicClientRegistrationConfig = &auth.DynamicClientRegistrationConfig{
+			Metadata: &oauthex.ClientRegistrationMetadata{
+				ClientName:   "gen",
+				RedirectURIs: []string{redirectURI},
+				GrantTypes:   []string{"authorization_code", "refresh_token"},
+			},
+		}
+	}
+
+	handler, err := auth.NewAuthorizationCodeHandler(authCfg)
 	if err != nil {
 		return nil, err
 	}
