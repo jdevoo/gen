@@ -23,11 +23,13 @@ var (
 )
 
 const (
-	SPExt     = ".sprompt" // system prompt extension
-	PExt      = ".prompt"  // regular prompt extension
-	DigestKey = "{digest}" // key to replace with embedded content
-	DotGen    = ".gen"     // name of chat history file
-	DotGenRc  = ".genrc"   // name of preferences file
+	SPExt           = ".sprompt"        // system prompt extension
+	PExt            = ".prompt"         // regular prompt extension
+	DigestKey       = "{digest}"        // key to replace with embedded content
+	DotGen          = ".gen"            // name of chat history file
+	DotGenRc        = ".genrc"          // name of preferences file
+	MCPAuthFileName = "mcp_tokens.json" // tokens storage
+	CacheDir        = ".cache"          // default directory for tokens storage
 )
 
 func main() {

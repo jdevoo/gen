@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ func newTokenStore() (*tokenStore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get user home directory: %w", err)
 		}
-		cacheDir = filepath.Join(homeDir, ".cache")
+		cacheDir = filepath.Join(homeDir, CacheDir)
 	}
 	genDir := filepath.Join(cacheDir, "gen")
 	if err := os.MkdirAll(genDir, 0700); err != nil {
@@ -41,7 +42,7 @@ func newTokenStore() (*tokenStore, error) {
 	}
 
 	store := &tokenStore{
-		filePath: filepath.Join(genDir, "mcp_tokens.json"),
+		filePath: filepath.Join(genDir, MCPAuthFileName),
 		tokens:   make(map[string]*oauth2.Token),
 	}
 	store.load()
@@ -96,6 +97,19 @@ func (c *cachingTokenSource) Token() (*oauth2.Token, error) {
 	return tok, err
 }
 
+type trailingSlashTransport struct {
+	base http.RoundTripper
+}
+
+func (t *trailingSlashTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.HasPrefix(req.URL.Path, "/.well-known/") && strings.HasSuffix(req.URL.Path, "/") {
+		clone := req.Clone(req.Context())
+		clone.URL.Path = strings.TrimSuffix(req.URL.Path, "/")
+		return t.base.RoundTrip(clone)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // buildOAuthHandler creates an OAuthHandler configured with pre-registered credentials
 // or Dynamic Client Registration, along with token caching in ~/.cache/gen/mcp_tokens.json.
 func buildOAuthHandler(serverURL, clientID, clientSecret string, httpClient *http.Client, spinner *Spinner) (auth.OAuthHandler, error) {
@@ -148,14 +162,11 @@ func buildOAuthHandler(serverURL, clientID, clientSecret string, httpClient *htt
 				http.Error(w, "Authorization failed. You may close this tab.", http.StatusUnauthorized)
 				return
 			}
-			code := q.Get("code")
-			state := q.Get("state")
-			iss := q.Get("iss")
 
 			resChan <- &auth.AuthorizationResult{
-				Code:  code,
-				State: state,
-				Iss:   iss,
+				Code:  q.Get("code"),
+				State: q.Get("state"),
+				Iss:   q.Get("iss"),
 			}
 
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -189,8 +200,17 @@ func buildOAuthHandler(serverURL, clientID, clientSecret string, httpClient *htt
 		}
 	}
 
+	baseTransport := httpClient.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	fixedClient := &http.Client{
+		Transport: &trailingSlashTransport{base: baseTransport},
+		Timeout:   httpClient.Timeout,
+	}
+
 	authCfg := &auth.AuthorizationCodeHandlerConfig{
-		Client:                   httpClient,
+		Client:                   fixedClient,
 		RedirectURL:              redirectURI,
 		InitialTokenSource:       initialTS,
 		RequestRefreshToken:      true,
