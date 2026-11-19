@@ -58,13 +58,17 @@ func validRanges(params *core.Parameters) error {
 	if strings.HasPrefix(string(genai.ThinkingLevelHigh), string(params.ThinkingLevel)) {
 		params.ThinkingLevel = genai.ThinkingLevelHigh
 	}
+	if strings.HasPrefix(string(genai.ThinkingLevelXhigh), string(params.ThinkingLevel)) {
+		params.ThinkingLevel = genai.ThinkingLevelXhigh
+	}
 	if
 	// invalid thinking level
 	(len(params.ThinkingLevel) < 3 ||
 		params.ThinkingLevel != genai.ThinkingLevelUnspecified &&
 			params.ThinkingLevel != genai.ThinkingLevelLow &&
 			params.ThinkingLevel != genai.ThinkingLevelMedium &&
-			params.ThinkingLevel != genai.ThinkingLevelHigh) ||
+			params.ThinkingLevel != genai.ThinkingLevelHigh &&
+			params.ThinkingLevel != genai.ThinkingLevelXhigh) ||
 		// invalid out path
 		(len(params.OutPath) > 0 && !isValidPath(params.OutPath)) ||
 		// invalid k values

@@ -112,7 +112,7 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	params.ThinkingLevel = genai.ThinkingLevelUnspecified
 	params.Timeout = 300 * time.Second
 	params.EmbModel = "gemini-embedding-001"
-	params.GenModel = "gemini-flash-lite-latest"
+	params.GenModel = "gemini-3.5-flash-lite"
 	params.MaxEmbedBatchSize = 100 // 250 on Vertex AI
 
 	if err := loadPrefs(params, keyVals); err != nil {
@@ -135,10 +135,11 @@ func parseFlags(fs *flag.FlagSet, params *core.Parameters, keyVals *core.ParamMa
 	fs.IntVar(&params.K, "k", params.K, "maximum number of entries from digest to retrieve")
 	fs.Float64Var(&params.Lambda, "l", params.Lambda, "balance accuracy and diversity querying digests [0.0,1.0]")
 	fs.StringVar(&params.OutPath, "out", "", "output path for images (incompatible with a redirect)")
-	fs.Func("think", fmt.Sprintf("%s, %s or %s (default: %s)",
+	fs.Func("think", fmt.Sprintf("%s, %s, %s or %s (default: %s)",
 		genai.ThinkingLevelLow,
 		genai.ThinkingLevelMedium,
 		genai.ThinkingLevelHigh,
+		genai.ThinkingLevelXhigh,
 		params.ThinkingLevel), func(val string) error {
 		params.ThinkingLevel = genai.ThinkingLevel(strings.ToUpper(val))
 		return nil

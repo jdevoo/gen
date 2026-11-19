@@ -288,6 +288,10 @@ topp = 0.8
 embmodel = custom-emb
 genmodel = custom-gen
 
+[files]
+path/to/file1
+path/to/file2
+
 [digestpaths]
 path/to/digest1
 path/to/digest2
@@ -337,6 +341,9 @@ TEST_GENRC_ENV_VAR = hello_from_genrc
 	}
 	if params.GenModel != "custom-gen" {
 		t.Errorf("Expected GenModel=custom-gen, got %q", params.GenModel)
+	}
+	if len(params.FilePaths) != 2 || params.FilePaths[0] != "path/to/file1" {
+		t.Errorf("Unexpected FilePaths: %v", params.FilePaths)
 	}
 	if len(params.DigestPaths) != 2 || params.DigestPaths[0] != "path/to/digest1" {
 		t.Errorf("Unexpected DigestPaths: %v", params.DigestPaths)

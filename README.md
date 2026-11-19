@@ -144,7 +144,7 @@ Options:
   -l float
         balance accuracy and diversity querying digests [0.0,1.0] (default 0.5)
   -m string
-        model name (default "gemini-flash-lite-latest")
+        model name (default "gemini-3.5-flash-lite")
   -mcp value
         mcp stdio or streamable server command
   -no-op
@@ -162,15 +162,15 @@ Options:
   -stop value
         string that, if generated, tells the model to stop
   -t    output total number of tokens
-  -temp float
+  -temp value
         sampling during response generation (0.0,2.0]
   -think value
-        LOW, MEDIUM or HIGH (default: THINKING_LEVEL_UNSPECIFIED)
+        LOW, MEDIUM, HIGH or XHIGH (default: THINKING_LEVEL_UNSPECIFIED)
   -timeout duration
         time limit for single turn content generation (default 5m0s)
   -tool
         invoke one of the tools (incompatible with -s, -img or -code)
-  -top_p float
+  -top_p value
         how the model selects tokens for generation [0.0,1.0]
   -unsafe
         force generation when gen aborts with FinishReasonSafety
@@ -189,6 +189,11 @@ Some flags can be set in a preferences file named `.genrc` to be placed in the h
 #TopP=0.95
 #EmbModel=gemini-embedding-001
 #GenModel=gemini-2.5-flash-lite
+
+[files]
+#path to prompt1
+#path to prompt2
+#...
 
 [parameters]
 #key1=val

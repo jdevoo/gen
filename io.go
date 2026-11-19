@@ -594,7 +594,8 @@ func loadPrefs(params *core.Parameters, keyVals *core.ParamMap) error {
 				switch val {
 				case genai.ThinkingLevelLow,
 					genai.ThinkingLevelMedium,
-					genai.ThinkingLevelHigh:
+					genai.ThinkingLevelHigh,
+					genai.ThinkingLevelXhigh:
 					params.ThinkingLevel = val
 				}
 			case "temp":
@@ -622,6 +623,8 @@ func loadPrefs(params *core.Parameters, keyVals *core.ParamMap) error {
 			if err := os.Setenv(key, val); err != nil {
 				return fmt.Errorf("failed to set env '%s': %v", key, err)
 			}
+		case "files":
+			params.FilePaths = append(params.FilePaths, line)
 		case "digestpaths":
 			params.DigestPaths = append(params.DigestPaths, line)
 		case "mcpservers":
