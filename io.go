@@ -419,9 +419,8 @@ func filePathHandler(ctx context.Context, client *genai.Client, filePathVal stri
 			params.FileURIs[filename] = fileURI
 		}
 		*parts = append(*parts, &genai.Part{FileData: &genai.FileData{
-			FileURI:     fileURI,
-			MIMEType:    mimeType,
-			DisplayName: filename,
+			FileURI:  fileURI,
+			MIMEType: mimeType,
 		}})
 	}
 
